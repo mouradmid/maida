@@ -28,6 +28,37 @@ export interface Produit {
   creeLe: string;
 }
 
+export interface ProduitMenu {
+  id: string;
+  nom: string;
+  description: string | null;
+  prix: number;
+}
+
+export interface CategorieMenu {
+  id: string;
+  nom: string;
+  produits: ProduitMenu[];
+}
+
+export interface LigneCommande {
+  id: string;
+  nomProduit: string;
+  prixUnitaire: number;
+  quantite: number;
+}
+
+export interface Commande {
+  id: string;
+  canal: 'SUR_PLACE' | 'EMPORTER';
+  numeroTable: string | null;
+  statut: 'ENVOYEE' | 'ANNULEE';
+  creeLe: string;
+  serveur: { nom: string; prenom: string };
+  lignes: LigneCommande[];
+  total: number;
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -87,4 +118,14 @@ export const api = {
 
   createServeur: (data: { nom: string; prenom: string; codePin: string }) =>
     apiFetch('/gerant/serveurs', { method: 'POST', body: JSON.stringify(data) }),
+
+  caisseMenu: () => apiFetch<CategorieMenu[]>('/caisse/menu'),
+
+  listCommandes: () => apiFetch<Commande[]>('/caisse/commandes'),
+
+  creerCommande: (data: {
+    canal: 'SUR_PLACE' | 'EMPORTER';
+    numeroTable?: string;
+    lignes: Array<{ produitId: string; quantite: number }>;
+  }) => apiFetch<Commande>('/caisse/commandes', { method: 'POST', body: JSON.stringify(data) }),
 };

@@ -43,6 +43,16 @@ enum StatutProduit {
   INACTIF
 }
 
+enum CanalCommande {
+  SUR_PLACE
+  EMPORTER
+}
+
+enum StatutCommande {
+  ENVOYEE
+  ANNULEE
+}
+
 model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
@@ -69,6 +79,7 @@ model Etablissement {
   utilisateurs Utilisateur[]
   categories   Categorie[]
   produits     Produit[]
+  commandes    Commande[]
 
   @@map("etablissements")
 }
@@ -90,6 +101,8 @@ model Utilisateur {
 
   etablissementId String?
   etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
+
+  commandes Commande[]
 
   @@map("utilisateurs")
 }
@@ -122,5 +135,41 @@ model Produit {
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
+  lignesCommande LigneCommande[]
+
   @@map("produits")
+}
+
+model Commande {
+  id          String         @id @default(cuid())
+  canal       CanalCommande
+  numeroTable String?
+  statut      StatutCommande @default(ENVOYEE)
+  creeLe      DateTime       @default(now())
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  serveurId String
+  serveur   Utilisateur @relation(fields: [serveurId], references: [id])
+
+  lignes LigneCommande[]
+
+  @@map("commandes")
+}
+
+model LigneCommande {
+  id           String   @id @default(cuid())
+  nomProduit   String
+  prixUnitaire Decimal  @db.Decimal(10, 2)
+  quantite     Int
+  creeLe       DateTime @default(now())
+
+  commandeId String
+  commande   Commande @relation(fields: [commandeId], references: [id])
+
+  produitId String
+  produit   Produit @relation(fields: [produitId], references: [id])
+
+  @@map("lignes_commande")
 }
