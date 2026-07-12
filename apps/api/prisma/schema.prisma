@@ -33,6 +33,16 @@ enum StatutUtilisateur {
   DESACTIVE
 }
 
+enum StatutCategorie {
+  ACTIF
+  INACTIF
+}
+
+enum StatutProduit {
+  ACTIF
+  INACTIF
+}
+
 model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
@@ -57,6 +67,8 @@ model Etablissement {
   compteClient   CompteClient @relation(fields: [compteClientId], references: [id])
 
   utilisateurs Utilisateur[]
+  categories   Categorie[]
+  produits     Produit[]
 
   @@map("etablissements")
 }
@@ -80,4 +92,35 @@ model Utilisateur {
   etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
 
   @@map("utilisateurs")
+}
+
+model Categorie {
+  id     String          @id @default(cuid())
+  nom    String
+  statut StatutCategorie @default(ACTIF)
+  creeLe DateTime        @default(now())
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  produits Produit[]
+
+  @@map("categories")
+}
+
+model Produit {
+  id          String        @id @default(cuid())
+  nom         String
+  description String?
+  prix        Decimal       @db.Decimal(10, 2)
+  statut      StatutProduit @default(ACTIF)
+  creeLe      DateTime      @default(now())
+
+  categorieId String
+  categorie   Categorie @relation(fields: [categorieId], references: [id])
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  @@map("produits")
 }

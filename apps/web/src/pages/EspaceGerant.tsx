@@ -1,5 +1,7 @@
 import { LoginMotDePasse } from '../components/LoginMotDePasse';
-import { EspaceConnecte } from '../components/EspaceConnecte';
+import { GestionMenu } from '../components/GestionMenu';
+import { GestionServeurs } from '../components/GestionServeurs';
+import { api } from '../lib/api';
 import { useMe } from '../hooks/useMe';
 
 export function EspaceGerant() {
@@ -8,7 +10,31 @@ export function EspaceGerant() {
   if (loading) return <p>Chargement...</p>;
 
   if (user?.role === 'GERANT') {
-    return <EspaceConnecte titre="Espace gérant" user={user} onLogout={refresh} />;
+    return (
+      <div className="w-full max-w-2xl flex flex-col gap-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Espace gérant</h1>
+            <p className="text-sm text-gray-500">
+              {user.prenom} {user.nom}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await api.logout();
+              refresh();
+            }}
+            className="rounded border border-gray-300 px-4 py-2"
+          >
+            Se déconnecter
+          </button>
+        </div>
+
+        <GestionMenu />
+        <GestionServeurs />
+      </div>
+    );
   }
 
   return (

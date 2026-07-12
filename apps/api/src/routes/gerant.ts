@@ -75,3 +75,158 @@ gerantRouter.post('/serveurs', async (req, res) => {
     statut: serveur.statut,
   });
 });
+
+// --- Catégories ---
+
+gerantRouter.get('/categories', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const categories = await prisma.categorie.findMany({
+    where: { etablissementId },
+    select: { id: true, nom: true, statut: true, creeLe: true },
+    orderBy: { creeLe: 'asc' },
+  });
+
+  res.json(categories);
+});
+
+gerantRouter.post('/categories', async (req, res) => {
+  const { nom } = req.body ?? {};
+
+  if (typeof nom !== 'string' || !nom.trim()) {
+    res.status(400).json({ error: 'Le nom de la catégorie est requis' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const categorie = await prisma.categorie.create({
+    data: { nom, etablissementId },
+  });
+
+  res.status(201).json(categorie);
+});
+
+gerantRouter.patch('/categories/:id', async (req, res) => {
+  const { nom, statut } = req.body ?? {};
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const categorie = await prisma.categorie.findUnique({ where: { id: req.params.id } });
+  if (!categorie || categorie.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Catégorie introuvable' });
+    return;
+  }
+
+  if (statut !== undefined && statut !== 'ACTIF' && statut !== 'INACTIF') {
+    res.status(400).json({ error: 'Statut invalide' });
+    return;
+  }
+
+  const categorieMaj = await prisma.categorie.update({
+    where: { id: categorie.id },
+    data: {
+      nom: typeof nom === 'string' && nom.trim() ? nom : undefined,
+      statut: statut ?? undefined,
+    },
+  });
+
+  res.json(categorieMaj);
+});
+
+// --- Produits ---
+
+function toPublicProduit(produit: { prix: { toString(): string } } & Record<string, unknown>) {
+  return { ...produit, prix: Number(produit.prix) };
+}
+
+gerantRouter.get('/produits', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { categorieId } = req.query;
+
+  const produits = await prisma.produit.findMany({
+    where: {
+      etablissementId,
+      categorieId: typeof categorieId === 'string' ? categorieId : undefined,
+    },
+    orderBy: { creeLe: 'asc' },
+  });
+
+  res.json(produits.map(toPublicProduit));
+});
+
+gerantRouter.post('/produits', async (req, res) => {
+  const { nom, description, prix, categorieId } = req.body ?? {};
+
+  if (typeof nom !== 'string' || !nom.trim()) {
+    res.status(400).json({ error: 'Le nom du produit est requis' });
+    return;
+  }
+  if (typeof prix !== 'number' || !Number.isFinite(prix) || prix <= 0) {
+    res.status(400).json({ error: 'Le prix doit être un nombre positif' });
+    return;
+  }
+  if (typeof categorieId !== 'string') {
+    res.status(400).json({ error: 'La catégorie est requise' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const categorie = await prisma.categorie.findUnique({ where: { id: categorieId } });
+  if (!categorie || categorie.etablissementId !== etablissementId) {
+    res.status(400).json({ error: 'Catégorie invalide' });
+    return;
+  }
+
+  const produit = await prisma.produit.create({
+    data: {
+      nom,
+      description: typeof description === 'string' ? description : null,
+      prix,
+      categorieId,
+      etablissementId,
+    },
+  });
+
+  res.status(201).json(toPublicProduit(produit));
+});
+
+gerantRouter.patch('/produits/:id', async (req, res) => {
+  const { nom, description, prix, categorieId, statut } = req.body ?? {};
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const produit = await prisma.produit.findUnique({ where: { id: req.params.id } });
+  if (!produit || produit.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Produit introuvable' });
+    return;
+  }
+
+  if (statut !== undefined && statut !== 'ACTIF' && statut !== 'INACTIF') {
+    res.status(400).json({ error: 'Statut invalide' });
+    return;
+  }
+  if (prix !== undefined && (typeof prix !== 'number' || !Number.isFinite(prix) || prix <= 0)) {
+    res.status(400).json({ error: 'Le prix doit être un nombre positif' });
+    return;
+  }
+  if (categorieId !== undefined) {
+    const categorie = await prisma.categorie.findUnique({ where: { id: categorieId } });
+    if (!categorie || categorie.etablissementId !== etablissementId) {
+      res.status(400).json({ error: 'Catégorie invalide' });
+      return;
+    }
+  }
+
+  const produitMaj = await prisma.produit.update({
+    where: { id: produit.id },
+    data: {
+      nom: typeof nom === 'string' && nom.trim() ? nom : undefined,
+      description: typeof description === 'string' ? description : undefined,
+      prix: prix ?? undefined,
+      categorieId: categorieId ?? undefined,
+      statut: statut ?? undefined,
+    },
+  });
+
+  res.json(toPublicProduit(produitMaj));
+});

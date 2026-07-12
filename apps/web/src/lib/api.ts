@@ -10,6 +10,24 @@ export interface Utilisateur {
   etablissementId: string | null;
 }
 
+export interface Categorie {
+  id: string;
+  nom: string;
+  statut: 'ACTIF' | 'INACTIF';
+  creeLe: string;
+}
+
+export interface Produit {
+  id: string;
+  nom: string;
+  description: string | null;
+  prix: number;
+  statut: 'ACTIF' | 'INACTIF';
+  categorieId: string;
+  etablissementId: string;
+  creeLe: string;
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -43,4 +61,30 @@ export const api = {
   me: () => apiFetch<Utilisateur>('/auth/me'),
 
   logout: () => apiFetch<void>('/auth/logout', { method: 'POST' }),
+
+  listCategories: () => apiFetch<Categorie[]>('/gerant/categories'),
+
+  createCategorie: (nom: string) =>
+    apiFetch<Categorie>('/gerant/categories', { method: 'POST', body: JSON.stringify({ nom }) }),
+
+  updateCategorie: (id: string, data: { nom?: string; statut?: 'ACTIF' | 'INACTIF' }) =>
+    apiFetch<Categorie>(`/gerant/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  listProduits: () => apiFetch<Produit[]>('/gerant/produits'),
+
+  createProduit: (data: { nom: string; prix: number; categorieId: string; description?: string }) =>
+    apiFetch<Produit>('/gerant/produits', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateProduit: (
+    id: string,
+    data: Partial<{ nom: string; prix: number; categorieId: string; description: string; statut: 'ACTIF' | 'INACTIF' }>,
+  ) => apiFetch<Produit>(`/gerant/produits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  listServeurs: () =>
+    apiFetch<Array<{ id: string; nom: string; prenom: string; statut: string; creeLe: string }>>(
+      '/gerant/serveurs',
+    ),
+
+  createServeur: (data: { nom: string; prenom: string; codePin: string }) =>
+    apiFetch('/gerant/serveurs', { method: 'POST', body: JSON.stringify(data) }),
 };
