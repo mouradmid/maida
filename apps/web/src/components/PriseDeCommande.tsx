@@ -124,6 +124,7 @@ export function PriseDeCommande() {
                       className="w-full text-left rounded border border-gray-200 px-3 py-2 hover:bg-gray-50"
                     >
                       {produit.nom} — {produit.prix} DZD
+                      {produit.tempsPreparationMinutes != null && ` (${produit.tempsPreparationMinutes} min)`}
                     </button>
                   </li>
                 ))}

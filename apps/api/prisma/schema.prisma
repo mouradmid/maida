@@ -122,12 +122,13 @@ model Categorie {
 }
 
 model Produit {
-  id          String        @id @default(cuid())
-  nom         String
-  description String?
-  prix        Decimal       @db.Decimal(10, 2)
-  statut      StatutProduit @default(ACTIF)
-  creeLe      DateTime      @default(now())
+  id                      String        @id @default(cuid())
+  nom                     String
+  description             String?
+  prix                    Decimal       @db.Decimal(10, 2)
+  tempsPreparationMinutes Int?
+  statut                  StatutProduit @default(ACTIF)
+  creeLe                  DateTime      @default(now())
 
   categorieId String
   categorie   Categorie @relation(fields: [categorieId], references: [id])

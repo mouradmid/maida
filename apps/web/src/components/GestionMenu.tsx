@@ -11,6 +11,7 @@ export function GestionMenu() {
   const [nouveauProduitNom, setNouveauProduitNom] = useState('');
   const [nouveauProduitPrix, setNouveauProduitPrix] = useState('');
   const [nouveauProduitCategorieId, setNouveauProduitCategorieId] = useState('');
+  const [nouveauProduitTempsPrepa, setNouveauProduitTempsPrepa] = useState('');
 
   async function chargerTout() {
     setChargement(true);
@@ -57,9 +58,15 @@ export function GestionMenu() {
       return;
     }
     try {
-      await api.createProduit({ nom: nouveauProduitNom, prix, categorieId: nouveauProduitCategorieId });
+      await api.createProduit({
+        nom: nouveauProduitNom,
+        prix,
+        categorieId: nouveauProduitCategorieId,
+        tempsPreparationMinutes: nouveauProduitTempsPrepa ? Number(nouveauProduitTempsPrepa) : undefined,
+      });
       setNouveauProduitNom('');
       setNouveauProduitPrix('');
+      setNouveauProduitTempsPrepa('');
       await chargerTout();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -111,7 +118,9 @@ export function GestionMenu() {
               .map((produit) => (
                 <li key={produit.id} className="flex items-center justify-between text-sm">
                   <span className={produit.statut === 'INACTIF' ? 'text-gray-400' : ''}>
-                    {produit.nom} — {produit.prix} DZD {produit.statut === 'INACTIF' && '(désactivé)'}
+                    {produit.nom} — {produit.prix} DZD
+                    {produit.tempsPreparationMinutes != null && ` — ${produit.tempsPreparationMinutes} min`}
+                    {produit.statut === 'INACTIF' && ' (désactivé)'}
                   </span>
                   <button type="button" onClick={() => handleToggleProduit(produit)} className="underline">
                     {produit.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
@@ -146,6 +155,15 @@ export function GestionMenu() {
               onChange={(e) => setNouveauProduitPrix(e.target.value)}
               required
               className="w-32 rounded border border-gray-300 px-3 py-2"
+            />
+            <input
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Temps prépa (min, optionnel)"
+              value={nouveauProduitTempsPrepa}
+              onChange={(e) => setNouveauProduitTempsPrepa(e.target.value)}
+              className="w-44 rounded border border-gray-300 px-3 py-2"
             />
           </div>
           <select

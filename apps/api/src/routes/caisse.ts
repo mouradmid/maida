@@ -25,7 +25,7 @@ caisseRouter.get('/menu', async (req, res) => {
       nom: true,
       produits: {
         where: { statut: 'ACTIF' },
-        select: { id: true, nom: true, description: true, prix: true },
+        select: { id: true, nom: true, description: true, prix: true, tempsPreparationMinutes: true },
         orderBy: { nom: 'asc' },
       },
     },

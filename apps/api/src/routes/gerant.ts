@@ -154,8 +154,18 @@ gerantRouter.get('/produits', async (req, res) => {
   res.json(produits.map(toPublicProduit));
 });
 
+function validerTempsPreparation(valeur: unknown): { ok: true; valeur: number | null } | { ok: false } {
+  if (valeur === undefined || valeur === null || valeur === '') {
+    return { ok: true, valeur: null };
+  }
+  if (typeof valeur !== 'number' || !Number.isInteger(valeur) || valeur <= 0) {
+    return { ok: false };
+  }
+  return { ok: true, valeur };
+}
+
 gerantRouter.post('/produits', async (req, res) => {
-  const { nom, description, prix, categorieId } = req.body ?? {};
+  const { nom, description, prix, categorieId, tempsPreparationMinutes } = req.body ?? {};
 
   if (typeof nom !== 'string' || !nom.trim()) {
     res.status(400).json({ error: 'Le nom du produit est requis' });
@@ -167,6 +177,11 @@ gerantRouter.post('/produits', async (req, res) => {
   }
   if (typeof categorieId !== 'string') {
     res.status(400).json({ error: 'La catégorie est requise' });
+    return;
+  }
+  const tempsPrepa = validerTempsPreparation(tempsPreparationMinutes);
+  if (!tempsPrepa.ok) {
+    res.status(400).json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
     return;
   }
 
@@ -185,6 +200,7 @@ gerantRouter.post('/produits', async (req, res) => {
       prix,
       categorieId,
       etablissementId,
+      tempsPreparationMinutes: tempsPrepa.valeur,
     },
   });
 
@@ -192,7 +208,7 @@ gerantRouter.post('/produits', async (req, res) => {
 });
 
 gerantRouter.patch('/produits/:id', async (req, res) => {
-  const { nom, description, prix, categorieId, statut } = req.body ?? {};
+  const { nom, description, prix, categorieId, statut, tempsPreparationMinutes } = req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const produit = await prisma.produit.findUnique({ where: { id: req.params.id } });
@@ -216,6 +232,15 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
       return;
     }
   }
+  let nouveauTempsPrepa: number | null | undefined = undefined;
+  if (tempsPreparationMinutes !== undefined) {
+    const tempsPrepa = validerTempsPreparation(tempsPreparationMinutes);
+    if (!tempsPrepa.ok) {
+      res.status(400).json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
+      return;
+    }
+    nouveauTempsPrepa = tempsPrepa.valeur;
+  }
 
   const produitMaj = await prisma.produit.update({
     where: { id: produit.id },
@@ -225,6 +250,7 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
       prix: prix ?? undefined,
       categorieId: categorieId ?? undefined,
       statut: statut ?? undefined,
+      tempsPreparationMinutes: nouveauTempsPrepa,
     },
   });
 

@@ -22,6 +22,7 @@ export interface Produit {
   nom: string;
   description: string | null;
   prix: number;
+  tempsPreparationMinutes: number | null;
   statut: 'ACTIF' | 'INACTIF';
   categorieId: string;
   etablissementId: string;
@@ -33,6 +34,7 @@ export interface ProduitMenu {
   nom: string;
   description: string | null;
   prix: number;
+  tempsPreparationMinutes: number | null;
 }
 
 export interface CategorieMenu {
@@ -103,12 +105,24 @@ export const api = {
 
   listProduits: () => apiFetch<Produit[]>('/gerant/produits'),
 
-  createProduit: (data: { nom: string; prix: number; categorieId: string; description?: string }) =>
-    apiFetch<Produit>('/gerant/produits', { method: 'POST', body: JSON.stringify(data) }),
+  createProduit: (data: {
+    nom: string;
+    prix: number;
+    categorieId: string;
+    description?: string;
+    tempsPreparationMinutes?: number;
+  }) => apiFetch<Produit>('/gerant/produits', { method: 'POST', body: JSON.stringify(data) }),
 
   updateProduit: (
     id: string,
-    data: Partial<{ nom: string; prix: number; categorieId: string; description: string; statut: 'ACTIF' | 'INACTIF' }>,
+    data: Partial<{
+      nom: string;
+      prix: number;
+      categorieId: string;
+      description: string;
+      statut: 'ACTIF' | 'INACTIF';
+      tempsPreparationMinutes: number | null;
+    }>,
   ) => apiFetch<Produit>(`/gerant/produits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   listServeurs: () =>
