@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StatutCompteClient {
+  ACTIF
+  SUSPENDU
+}
+
+enum StatutEtablissement {
+  ACTIF
+  INACTIF
+}
+
+enum RoleUtilisateur {
+  SUPER_ADMIN
+  GERANT
+  SERVEUR
+}
+
+enum StatutUtilisateur {
+  ACTIF
+  DESACTIVE
+}
+
+model CompteClient {
+  id          String             @id @default(cuid())
+  nomEnseigne String
+  statut      StatutCompteClient @default(ACTIF)
+  creeLe      DateTime           @default(now())
+
+  etablissements Etablissement[]
+  utilisateurs   Utilisateur[]
+
+  @@map("comptes_clients")
+}
+
+model Etablissement {
+  id      String              @id @default(cuid())
+  nom     String
+  adresse String?
+  ville   String?
+  statut  StatutEtablissement @default(ACTIF)
+  creeLe  DateTime            @default(now())
+
+  compteClientId String
+  compteClient   CompteClient @relation(fields: [compteClientId], references: [id])
+
+  utilisateurs Utilisateur[]
+
+  @@map("etablissements")
+}
+
+model Utilisateur {
+  id             String            @id @default(cuid())
+  role           RoleUtilisateur
+  nom            String
+  prenom         String
+  email          String?           @unique
+  motDePasseHash String?
+  codePinHash    String?
+  statut         StatutUtilisateur @default(ACTIF)
+  creeLe         DateTime          @default(now())
+  majLe          DateTime          @updatedAt
+
+  compteClientId String?
+  compteClient   CompteClient? @relation(fields: [compteClientId], references: [id])
+
+  etablissementId String?
+  etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
+
+  @@map("utilisateurs")
+}

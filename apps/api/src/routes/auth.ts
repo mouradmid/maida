@@ -1,0 +1,99 @@
+import bcrypt from 'bcryptjs';
+import { Router } from 'express';
+import type { Utilisateur } from '../generated/prisma/client';
+import { AUTH_COOKIE_NAME, signToken } from '../lib/jwt';
+import { prisma } from '../lib/prisma';
+import { requireAuth } from '../middleware/requireAuth';
+
+export const authRouter = Router();
+
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  maxAge: 8 * 60 * 60 * 1000,
+};
+
+function toPublicUser(utilisateur: Utilisateur) {
+  return {
+    id: utilisateur.id,
+    email: utilisateur.email,
+    nom: utilisateur.nom,
+    prenom: utilisateur.prenom,
+    role: utilisateur.role,
+    compteClientId: utilisateur.compteClientId,
+    etablissementId: utilisateur.etablissementId,
+  };
+}
+
+authRouter.post('/login', async (req, res) => {
+  const { email, password } = req.body ?? {};
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    res.status(400).json({ error: 'Email et mot de passe requis' });
+    return;
+  }
+
+  const utilisateur = await prisma.utilisateur.findUnique({ where: { email } });
+
+  if (!utilisateur || !utilisateur.motDePasseHash || utilisateur.statut !== 'ACTIF') {
+    res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+    return;
+  }
+
+  const motDePasseValide = await bcrypt.compare(password, utilisateur.motDePasseHash);
+  if (!motDePasseValide) {
+    res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+    return;
+  }
+
+  const token = signToken({ sub: utilisateur.id, role: utilisateur.role });
+  res.cookie(AUTH_COOKIE_NAME, token, COOKIE_OPTIONS);
+  res.json(toPublicUser(utilisateur));
+});
+
+authRouter.post('/login-pin', async (req, res) => {
+  const { etablissementId, codePin } = req.body ?? {};
+
+  if (typeof etablissementId !== 'string' || typeof codePin !== 'string') {
+    res.status(400).json({ error: 'Établissement et code PIN requis' });
+    return;
+  }
+
+  const serveurs = await prisma.utilisateur.findMany({
+    where: { etablissementId, role: 'SERVEUR', statut: 'ACTIF', codePinHash: { not: null } },
+  });
+
+  let serveurTrouve: Utilisateur | null = null;
+  for (const serveur of serveurs) {
+    if (serveur.codePinHash && (await bcrypt.compare(codePin, serveur.codePinHash))) {
+      serveurTrouve = serveur;
+      break;
+    }
+  }
+
+  if (!serveurTrouve) {
+    res.status(401).json({ error: 'Code PIN incorrect' });
+    return;
+  }
+
+  const token = signToken({ sub: serveurTrouve.id, role: serveurTrouve.role });
+  res.cookie(AUTH_COOKIE_NAME, token, COOKIE_OPTIONS);
+  res.json(toPublicUser(serveurTrouve));
+});
+
+authRouter.get('/me', requireAuth, async (req, res) => {
+  const utilisateur = await prisma.utilisateur.findUnique({ where: { id: req.user!.id } });
+
+  if (!utilisateur || utilisateur.statut !== 'ACTIF') {
+    res.status(401).json({ error: 'Non authentifié' });
+    return;
+  }
+
+  res.json(toPublicUser(utilisateur));
+});
+
+authRouter.post('/logout', (_req, res) => {
+  res.clearCookie(AUTH_COOKIE_NAME);
+  res.status(204).send();
+});
