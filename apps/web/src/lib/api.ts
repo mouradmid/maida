@@ -50,6 +50,20 @@ export interface LigneCommande {
   quantite: number;
 }
 
+export interface TablePlan {
+  id: string;
+  numero: string;
+  forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE';
+  nombreCouverts: number;
+  largeur: number;
+  hauteur: number;
+  positionX: number;
+  positionY: number;
+  statut: 'ACTIF' | 'INACTIF';
+  etablissementId: string;
+  creeLe: string;
+}
+
 export interface Commande {
   id: string;
   canal: 'SUR_PLACE' | 'EMPORTER';
@@ -142,4 +156,28 @@ export const api = {
     numeroTable?: string;
     lignes: Array<{ produitId: string; quantite: number }>;
   }) => apiFetch<Commande>('/caisse/commandes', { method: 'POST', body: JSON.stringify(data) }),
+
+  listTables: () => apiFetch<TablePlan[]>('/gerant/tables'),
+
+  createTable: (data: {
+    numero: string;
+    forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE';
+    nombreCouverts: number;
+    largeur?: number;
+    hauteur?: number;
+  }) => apiFetch<TablePlan>('/gerant/tables', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateTable: (
+    id: string,
+    data: Partial<{
+      numero: string;
+      forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE';
+      nombreCouverts: number;
+      largeur: number;
+      hauteur: number;
+      positionX: number;
+      positionY: number;
+      statut: 'ACTIF' | 'INACTIF';
+    }>,
+  ) => apiFetch<TablePlan>(`/gerant/tables/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };

@@ -53,6 +53,17 @@ enum StatutCommande {
   ANNULEE
 }
 
+enum FormeTable {
+  RONDE
+  CARREE
+  RECTANGULAIRE
+}
+
+enum StatutTable {
+  ACTIF
+  INACTIF
+}
+
 model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
@@ -80,6 +91,7 @@ model Etablissement {
   categories   Categorie[]
   produits     Produit[]
   commandes    Commande[]
+  tables       Table[]
 
   @@map("etablissements")
 }
@@ -173,4 +185,23 @@ model LigneCommande {
   produit   Produit @relation(fields: [produitId], references: [id])
 
   @@map("lignes_commande")
+}
+
+model Table {
+  id             String      @id @default(cuid())
+  numero         String
+  forme          FormeTable  @default(CARREE)
+  nombreCouverts Int
+  largeur        Int         @default(80)
+  hauteur        Int         @default(80)
+  positionX      Int         @default(20)
+  positionY      Int         @default(20)
+  statut         StatutTable @default(ACTIF)
+  creeLe         DateTime    @default(now())
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  @@unique([etablissementId, numero])
+  @@map("tables")
 }

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
+import { Prisma, type FormeTable } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -255,4 +256,111 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
   });
 
   res.json(toPublicProduit(produitMaj));
+});
+
+// --- Plan de salle ---
+
+const FORMES_VALIDES = ['RONDE', 'CARREE', 'RECTANGULAIRE'];
+
+gerantRouter.get('/tables', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const tables = await prisma.table.findMany({
+    where: { etablissementId },
+    orderBy: { creeLe: 'asc' },
+  });
+
+  res.json(tables);
+});
+
+gerantRouter.post('/tables', async (req, res) => {
+  const { numero, forme, nombreCouverts, largeur, hauteur } = req.body ?? {};
+
+  if (typeof numero !== 'string' || !numero.trim()) {
+    res.status(400).json({ error: 'Le numéro de table est requis' });
+    return;
+  }
+  if (typeof forme !== 'string' || !FORMES_VALIDES.includes(forme)) {
+    res.status(400).json({ error: 'Forme invalide' });
+    return;
+  }
+  if (!Number.isInteger(nombreCouverts) || nombreCouverts <= 0) {
+    res.status(400).json({ error: 'Le nombre de couverts doit être un entier positif' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const nombreTables = await prisma.table.count({ where: { etablissementId } });
+  const positionX = 20 + (nombreTables % 6) * 110;
+  const positionY = 20 + Math.floor(nombreTables / 6) * 110;
+
+  try {
+    const table = await prisma.table.create({
+      data: {
+        numero,
+        forme: forme as FormeTable,
+        nombreCouverts,
+        largeur: Number.isInteger(largeur) && largeur > 0 ? largeur : undefined,
+        hauteur: Number.isInteger(hauteur) && hauteur > 0 ? hauteur : undefined,
+        positionX,
+        positionY,
+        etablissementId,
+      },
+    });
+    res.status(201).json(table);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      res.status(409).json({ error: 'Ce numéro de table existe déjà' });
+      return;
+    }
+    throw error;
+  }
+});
+
+gerantRouter.patch('/tables/:id', async (req, res) => {
+  const { numero, forme, nombreCouverts, largeur, hauteur, positionX, positionY, statut } = req.body ?? {};
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const table = await prisma.table.findUnique({ where: { id: req.params.id } });
+  if (!table || table.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Table introuvable' });
+    return;
+  }
+
+  if (forme !== undefined && !FORMES_VALIDES.includes(forme)) {
+    res.status(400).json({ error: 'Forme invalide' });
+    return;
+  }
+  if (nombreCouverts !== undefined && (!Number.isInteger(nombreCouverts) || nombreCouverts <= 0)) {
+    res.status(400).json({ error: 'Le nombre de couverts doit être un entier positif' });
+    return;
+  }
+  if (statut !== undefined && statut !== 'ACTIF' && statut !== 'INACTIF') {
+    res.status(400).json({ error: 'Statut invalide' });
+    return;
+  }
+
+  try {
+    const tableMaj = await prisma.table.update({
+      where: { id: table.id },
+      data: {
+        numero: typeof numero === 'string' && numero.trim() ? numero : undefined,
+        forme: forme !== undefined ? (forme as FormeTable) : undefined,
+        nombreCouverts: nombreCouverts ?? undefined,
+        largeur: Number.isInteger(largeur) ? largeur : undefined,
+        hauteur: Number.isInteger(hauteur) ? hauteur : undefined,
+        positionX: Number.isInteger(positionX) ? positionX : undefined,
+        positionY: Number.isInteger(positionY) ? positionY : undefined,
+        statut: statut ?? undefined,
+      },
+    });
+    res.json(tableMaj);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      res.status(409).json({ error: 'Ce numéro de table existe déjà' });
+      return;
+    }
+    throw error;
+  }
 });

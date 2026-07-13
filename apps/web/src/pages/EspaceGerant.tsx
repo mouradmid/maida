@@ -1,6 +1,7 @@
 import { LoginMotDePasse } from '../components/LoginMotDePasse';
 import { GestionMenu } from '../components/GestionMenu';
 import { GestionServeurs } from '../components/GestionServeurs';
+import { PlanDeSalle } from '../components/PlanDeSalle';
 import { api } from '../lib/api';
 import { useMe } from '../hooks/useMe';
 
@@ -11,7 +12,7 @@ export function EspaceGerant() {
 
   if (user?.role === 'GERANT') {
     return (
-      <div className="w-full max-w-2xl flex flex-col gap-8">
+      <div className="w-full max-w-4xl flex flex-col gap-8">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Espace gérant</h1>
@@ -31,6 +32,7 @@ export function EspaceGerant() {
           </button>
         </div>
 
+        <PlanDeSalle />
         <GestionMenu />
         <GestionServeurs />
       </div>
