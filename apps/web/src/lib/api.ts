@@ -62,6 +62,7 @@ export interface LigneCommande {
   nomProduit: string;
   prixUnitaire: number;
   quantite: number;
+  quantitePayee: number;
   options: Array<{ nomGroupe: string; valeur: string }>;
 }
 
@@ -90,12 +91,51 @@ export interface Commande {
   id: string;
   canal: 'SUR_PLACE' | 'EMPORTER';
   noteCuisine: string | null;
+  additionId: string;
+  additionStatut: 'OUVERTE' | 'PAYEE';
   table: { numero: string } | null;
   statut: 'ENVOYEE' | 'ANNULEE';
   creeLe: string;
   serveur: { nom: string; prenom: string };
   lignes: LigneCommande[];
   total: number;
+}
+
+export interface AdditionResume {
+  id: string;
+  table: { numero: string } | null;
+  statut: 'OUVERTE' | 'PAYEE';
+  ouverteLe: string;
+  total: number;
+  totalPaye: number;
+  solde: number;
+}
+
+export interface AdditionDetail extends AdditionResume {
+  fermeeLe: string | null;
+  commandes: Array<{
+    id: string;
+    canal: 'SUR_PLACE' | 'EMPORTER';
+    creeLe: string;
+    lignes: LigneCommande[];
+  }>;
+  paiements: Array<{
+    id: string;
+    montant: number;
+    moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE';
+    montantRecu: number | null;
+    creeLe: string;
+  }>;
+}
+
+export interface ResultatPaiement {
+  id: string;
+  montant: number;
+  moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE';
+  montantRecu: number | null;
+  rendu: number | null;
+  soldeRestant: number;
+  additionCloturee: boolean;
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -226,4 +266,24 @@ export const api = {
       statut: 'ACTIF' | 'INACTIF';
     }>,
   ) => apiFetch<TablePlan>(`/gerant/tables/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  listAdditionsOuvertes: () => apiFetch<AdditionResume[]>('/caisse/additions'),
+
+  getAddition: (id: string) => apiFetch<AdditionDetail>(`/caisse/additions/${id}`),
+
+  creerPaiement: (
+    additionId: string,
+    data:
+      | { mode: 'MONTANT'; montant: number; moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE'; montantRecu?: number }
+      | {
+          mode: 'ARTICLES';
+          lignes: Array<{ ligneCommandeId: string; quantite: number }>;
+          moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE';
+          montantRecu?: number;
+        },
+  ) =>
+    apiFetch<ResultatPaiement>(`/caisse/additions/${additionId}/paiements`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };

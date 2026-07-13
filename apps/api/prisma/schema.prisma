@@ -64,6 +64,17 @@ enum StatutTable {
   INACTIF
 }
 
+enum StatutAddition {
+  OUVERTE
+  PAYEE
+}
+
+enum ModePaiement {
+  ESPECES
+  CARTE
+  AUTRE
+}
+
 model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
@@ -92,6 +103,7 @@ model Etablissement {
   produits     Produit[]
   commandes    Commande[]
   tables       Table[]
+  additions    Addition[]
 
   @@map("etablissements")
 }
@@ -194,8 +206,8 @@ model Commande {
   serveurId String
   serveur   Utilisateur @relation(fields: [serveurId], references: [id])
 
-  tableId String?
-  table   Table?  @relation(fields: [tableId], references: [id])
+  additionId String
+  addition   Addition @relation(fields: [additionId], references: [id])
 
   lignes LigneCommande[]
 
@@ -203,11 +215,12 @@ model Commande {
 }
 
 model LigneCommande {
-  id           String   @id @default(cuid())
-  nomProduit   String
-  prixUnitaire Decimal  @db.Decimal(10, 2)
-  quantite     Int
-  creeLe       DateTime @default(now())
+  id            String   @id @default(cuid())
+  nomProduit    String
+  prixUnitaire  Decimal  @db.Decimal(10, 2)
+  quantite      Int
+  quantitePayee Int      @default(0)
+  creeLe        DateTime @default(now())
 
   commandeId String
   commande   Commande @relation(fields: [commandeId], references: [id])
@@ -215,9 +228,57 @@ model LigneCommande {
   produitId String
   produit   Produit @relation(fields: [produitId], references: [id])
 
-  options LigneCommandeOption[]
+  options        LigneCommandeOption[]
+  paiementLignes PaiementLigne[]
 
   @@map("lignes_commande")
+}
+
+model Addition {
+  id        String         @id @default(cuid())
+  statut    StatutAddition @default(OUVERTE)
+  ouverteLe DateTime       @default(now())
+  fermeeLe  DateTime?
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  tableId String?
+  table   Table?  @relation(fields: [tableId], references: [id])
+
+  commandes Commande[]
+  paiements Paiement[]
+
+  @@map("additions")
+}
+
+model Paiement {
+  id            String       @id @default(cuid())
+  montant       Decimal      @db.Decimal(10, 2)
+  moyenPaiement ModePaiement
+  montantRecu   Decimal?     @db.Decimal(10, 2)
+  creeLe        DateTime     @default(now())
+
+  additionId String
+  addition   Addition @relation(fields: [additionId], references: [id])
+
+  lignes PaiementLigne[]
+
+  @@map("paiements")
+}
+
+model PaiementLigne {
+  id       String  @id @default(cuid())
+  quantite Int
+  montant  Decimal @db.Decimal(10, 2)
+
+  paiementId String
+  paiement   Paiement @relation(fields: [paiementId], references: [id])
+
+  ligneCommandeId String
+  ligneCommande   LigneCommande @relation(fields: [ligneCommandeId], references: [id])
+
+  @@map("paiements_lignes")
 }
 
 model LigneCommandeOption {
@@ -250,7 +311,7 @@ model Table {
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
-  commandes Commande[]
+  additions Addition[]
 
   @@unique([etablissementId, numero])
   @@map("tables")

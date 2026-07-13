@@ -75,12 +75,13 @@ function toPublicCommande(commande: {
   statut: string;
   creeLe: Date;
   serveur: { nom: string; prenom: string };
-  table: { numero: string } | null;
+  addition: { id: string; statut: string; table: { numero: string } | null };
   lignes: Array<{
     id: string;
     nomProduit: string;
     prixUnitaire: unknown;
     quantite: number;
+    quantitePayee: number;
     options: Array<{ id: string; nomGroupe: string; valeur: string }>;
   }>;
 }) {
@@ -89,6 +90,7 @@ function toPublicCommande(commande: {
     nomProduit: l.nomProduit,
     prixUnitaire: Number(l.prixUnitaire),
     quantite: l.quantite,
+    quantitePayee: l.quantitePayee,
     options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
   }));
   const total = lignes.reduce((somme, l) => somme + l.prixUnitaire * l.quantite, 0);
@@ -97,7 +99,9 @@ function toPublicCommande(commande: {
     id: commande.id,
     canal: commande.canal,
     noteCuisine: commande.noteCuisine,
-    table: commande.table,
+    additionId: commande.addition.id,
+    additionStatut: commande.addition.statut,
+    table: commande.addition.table,
     statut: commande.statut,
     creeLe: commande.creeLe,
     serveur: commande.serveur,
@@ -109,7 +113,7 @@ function toPublicCommande(commande: {
 const INCLUDE_COMMANDE = {
   lignes: { include: { options: true } },
   serveur: { select: { nom: true, prenom: true } },
-  table: { select: { numero: true } },
+  addition: { include: { table: { select: { numero: true } } } },
 } satisfies Prisma.CommandeInclude;
 
 caisseRouter.get('/commandes', async (req, res) => {
@@ -171,12 +175,21 @@ caisseRouter.post('/commandes', async (req, res) => {
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
+  let additionId: string;
   if (canal === 'SUR_PLACE') {
     const table = await prisma.table.findUnique({ where: { id: tableId } });
     if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
       res.status(400).json({ error: 'Table invalide' });
       return;
     }
+    const additionOuverte = await prisma.addition.findFirst({
+      where: { etablissementId, tableId: table.id, statut: 'OUVERTE' },
+    });
+    additionId = additionOuverte
+      ? additionOuverte.id
+      : (await prisma.addition.create({ data: { etablissementId, tableId: table.id } })).id;
+  } else {
+    additionId = (await prisma.addition.create({ data: { etablissementId, tableId: null } })).id;
   }
 
   const lignesEntree = lignes as LigneEntree[];
@@ -249,7 +262,7 @@ caisseRouter.post('/commandes', async (req, res) => {
   const commande = await prisma.commande.create({
     data: {
       canal,
-      tableId: canal === 'SUR_PLACE' ? tableId : null,
+      additionId,
       noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
       etablissementId,
       serveurId: req.user!.id,
@@ -273,4 +286,223 @@ caisseRouter.post('/commandes', async (req, res) => {
   });
 
   res.status(201).json(toPublicCommande(commande));
+});
+
+// --- Encaissement ---
+
+const INCLUDE_ADDITION = {
+  table: { select: { numero: true } },
+  commandes: { include: { lignes: true } },
+  paiements: true,
+} satisfies Prisma.AdditionInclude;
+
+type AdditionAvecTotaux = Prisma.AdditionGetPayload<{ include: typeof INCLUDE_ADDITION }>;
+
+function calculerTotaux(addition: AdditionAvecTotaux) {
+  const total = addition.commandes
+    .flatMap((c) => c.lignes)
+    .reduce((s, l) => s + Number(l.prixUnitaire) * l.quantite, 0);
+  const totalPaye = addition.paiements.reduce((s, p) => s + Number(p.montant), 0);
+  const solde = Math.max(0, Math.round((total - totalPaye) * 100) / 100);
+  return { total: Math.round(total * 100) / 100, totalPaye: Math.round(totalPaye * 100) / 100, solde };
+}
+
+caisseRouter.get('/additions', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const additions = await prisma.addition.findMany({
+    where: { etablissementId, statut: 'OUVERTE' },
+    include: INCLUDE_ADDITION,
+    orderBy: { ouverteLe: 'asc' },
+  });
+
+  res.json(
+    additions.map((a) => ({
+      id: a.id,
+      table: a.table,
+      statut: a.statut,
+      ouverteLe: a.ouverteLe,
+      ...calculerTotaux(a),
+    })),
+  );
+});
+
+caisseRouter.get('/additions/:id', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const addition = await prisma.addition.findUnique({
+    where: { id: req.params.id },
+    include: {
+      table: { select: { numero: true } },
+      commandes: { include: { lignes: { include: { options: true } } }, orderBy: { creeLe: 'asc' } },
+      paiements: { include: { lignes: true }, orderBy: { creeLe: 'asc' } },
+    },
+  });
+
+  if (!addition || addition.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Addition introuvable' });
+    return;
+  }
+
+  res.json({
+    id: addition.id,
+    table: addition.table,
+    statut: addition.statut,
+    ouverteLe: addition.ouverteLe,
+    fermeeLe: addition.fermeeLe,
+    ...calculerTotaux(addition),
+    commandes: addition.commandes.map((c) => ({
+      id: c.id,
+      canal: c.canal,
+      creeLe: c.creeLe,
+      lignes: c.lignes.map((l) => ({
+        id: l.id,
+        nomProduit: l.nomProduit,
+        prixUnitaire: Number(l.prixUnitaire),
+        quantite: l.quantite,
+        quantitePayee: l.quantitePayee,
+        options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
+      })),
+    })),
+    paiements: addition.paiements.map((p) => ({
+      id: p.id,
+      montant: Number(p.montant),
+      moyenPaiement: p.moyenPaiement,
+      montantRecu: p.montantRecu !== null ? Number(p.montantRecu) : null,
+      creeLe: p.creeLe,
+    })),
+  });
+});
+
+interface LigneAPayer {
+  ligneCommandeId: string;
+  quantite: number;
+}
+
+caisseRouter.post('/additions/:id/paiements', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+  const { mode, montant, moyenPaiement, montantRecu, lignes } = req.body ?? {};
+
+  if (moyenPaiement !== 'ESPECES' && moyenPaiement !== 'CARTE' && moyenPaiement !== 'AUTRE') {
+    res.status(400).json({ error: 'Moyen de paiement invalide' });
+    return;
+  }
+  if (montantRecu !== undefined && (typeof montantRecu !== 'number' || montantRecu < 0)) {
+    res.status(400).json({ error: 'Montant reçu invalide' });
+    return;
+  }
+  if (mode !== 'MONTANT' && mode !== 'ARTICLES') {
+    res.status(400).json({ error: 'Mode de paiement invalide' });
+    return;
+  }
+
+  const addition = await prisma.addition.findUnique({
+    where: { id: req.params.id },
+    include: INCLUDE_ADDITION,
+  });
+  if (!addition || addition.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Addition introuvable' });
+    return;
+  }
+  if (addition.statut !== 'OUVERTE') {
+    res.status(400).json({ error: 'Cette addition est déjà soldée' });
+    return;
+  }
+
+  const { solde } = calculerTotaux(addition);
+  const lignesParId = new Map(addition.commandes.flatMap((c) => c.lignes).map((l) => [l.id, l]));
+
+  let montantFinal: number;
+  let lignesAPayer: Array<{ ligneCommandeId: string; quantite: number; montant: number }> = [];
+
+  if (mode === 'ARTICLES') {
+    if (!Array.isArray(lignes) || lignes.length === 0) {
+      res.status(400).json({ error: 'Sélectionnez au moins un article' });
+      return;
+    }
+    for (const entree of lignes as LigneAPayer[]) {
+      const ligne = lignesParId.get(entree.ligneCommandeId);
+      if (!ligne) {
+        res.status(400).json({ error: 'Article invalide pour cette addition' });
+        return;
+      }
+      if (!Number.isInteger(entree.quantite) || entree.quantite <= 0) {
+        res.status(400).json({ error: 'Quantité invalide' });
+        return;
+      }
+      const restant = ligne.quantite - ligne.quantitePayee;
+      if (entree.quantite > restant) {
+        res.status(400).json({ error: `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})` });
+        return;
+      }
+    }
+    lignesAPayer = (lignes as LigneAPayer[]).map((entree) => {
+      const ligne = lignesParId.get(entree.ligneCommandeId)!;
+      return { ligneCommandeId: ligne.id, quantite: entree.quantite, montant: Number(ligne.prixUnitaire) * entree.quantite };
+    });
+    montantFinal = Math.round(lignesAPayer.reduce((s, l) => s + l.montant, 0) * 100) / 100;
+  } else {
+    if (typeof montant !== 'number' || !Number.isFinite(montant) || montant <= 0) {
+      res.status(400).json({ error: 'Montant invalide' });
+      return;
+    }
+    montantFinal = Math.round(montant * 100) / 100;
+  }
+
+  if (montantFinal > solde + 0.01) {
+    res.status(400).json({ error: `Le montant dépasse le solde restant (${solde} DZD)` });
+    return;
+  }
+  if (moyenPaiement === 'ESPECES' && montantRecu !== undefined && montantRecu < montantFinal) {
+    res.status(400).json({ error: 'Le montant reçu est inférieur au montant encaissé' });
+    return;
+  }
+
+  const resultat = await prisma.$transaction(async (tx) => {
+    const paiement = await tx.paiement.create({
+      data: {
+        additionId: addition.id,
+        montant: montantFinal,
+        moyenPaiement,
+        montantRecu: moyenPaiement === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
+        lignes: {
+          create: lignesAPayer.map((l) => ({
+            ligneCommandeId: l.ligneCommandeId,
+            quantite: l.quantite,
+            montant: l.montant,
+          })),
+        },
+      },
+    });
+
+    for (const l of lignesAPayer) {
+      await tx.ligneCommande.update({
+        where: { id: l.ligneCommandeId },
+        data: { quantitePayee: { increment: l.quantite } },
+      });
+    }
+
+    const soldeRestant = Math.max(0, Math.round((solde - montantFinal) * 100) / 100);
+    if (soldeRestant <= 0.01) {
+      await tx.addition.update({
+        where: { id: addition.id },
+        data: { statut: 'PAYEE', fermeeLe: new Date() },
+      });
+    }
+
+    return { paiement, soldeRestant, cloturee: soldeRestant <= 0.01 };
+  });
+
+  res.status(201).json({
+    id: resultat.paiement.id,
+    montant: Number(resultat.paiement.montant),
+    moyenPaiement: resultat.paiement.moyenPaiement,
+    montantRecu: resultat.paiement.montantRecu !== null ? Number(resultat.paiement.montantRecu) : null,
+    rendu:
+      resultat.paiement.montantRecu !== null
+        ? Math.round((Number(resultat.paiement.montantRecu) - Number(resultat.paiement.montant)) * 100) / 100
+        : null,
+    soldeRestant: resultat.soldeRestant,
+    additionCloturee: resultat.cloturee,
+  });
 });
