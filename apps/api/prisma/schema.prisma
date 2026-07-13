@@ -154,17 +154,19 @@ model Produit {
 }
 
 model Commande {
-  id          String         @id @default(cuid())
-  canal       CanalCommande
-  numeroTable String?
-  statut      StatutCommande @default(ENVOYEE)
-  creeLe      DateTime       @default(now())
+  id     String         @id @default(cuid())
+  canal  CanalCommande
+  statut StatutCommande @default(ENVOYEE)
+  creeLe DateTime       @default(now())
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
   serveurId String
   serveur   Utilisateur @relation(fields: [serveurId], references: [id])
+
+  tableId String?
+  table   Table?  @relation(fields: [tableId], references: [id])
 
   lignes LigneCommande[]
 
@@ -201,6 +203,8 @@ model Table {
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  commandes Commande[]
 
   @@unique([etablissementId, numero])
   @@map("tables")

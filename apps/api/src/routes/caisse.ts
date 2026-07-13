@@ -40,13 +40,25 @@ caisseRouter.get('/menu', async (req, res) => {
   );
 });
 
+caisseRouter.get('/tables', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const tables = await prisma.table.findMany({
+    where: { etablissementId, statut: 'ACTIF' },
+    select: { id: true, numero: true, nombreCouverts: true, forme: true },
+    orderBy: { numero: 'asc' },
+  });
+
+  res.json(tables);
+});
+
 function toPublicCommande(commande: {
   id: string;
   canal: string;
-  numeroTable: string | null;
   statut: string;
   creeLe: Date;
   serveur: { nom: string; prenom: string };
+  table: { numero: string } | null;
   lignes: Array<{ id: string; nomProduit: string; prixUnitaire: unknown; quantite: number }>;
 }) {
   const lignes = commande.lignes.map((l) => ({
@@ -60,7 +72,7 @@ function toPublicCommande(commande: {
   return {
     id: commande.id,
     canal: commande.canal,
-    numeroTable: commande.numeroTable,
+    table: commande.table,
     statut: commande.statut,
     creeLe: commande.creeLe,
     serveur: commande.serveur,
@@ -74,7 +86,11 @@ caisseRouter.get('/commandes', async (req, res) => {
 
   const commandes = await prisma.commande.findMany({
     where: { etablissementId },
-    include: { lignes: true, serveur: { select: { nom: true, prenom: true } } },
+    include: {
+      lignes: true,
+      serveur: { select: { nom: true, prenom: true } },
+      table: { select: { numero: true } },
+    },
     orderBy: { creeLe: 'desc' },
     take: 50,
   });
@@ -83,10 +99,14 @@ caisseRouter.get('/commandes', async (req, res) => {
 });
 
 caisseRouter.post('/commandes', async (req, res) => {
-  const { canal, numeroTable, lignes } = req.body ?? {};
+  const { canal, tableId, lignes } = req.body ?? {};
 
   if (canal !== 'SUR_PLACE' && canal !== 'EMPORTER') {
     res.status(400).json({ error: 'Canal invalide' });
+    return;
+  }
+  if (canal === 'SUR_PLACE' && typeof tableId !== 'string') {
+    res.status(400).json({ error: 'La table est requise pour une commande sur place' });
     return;
   }
   if (!Array.isArray(lignes) || lignes.length === 0) {
@@ -101,6 +121,14 @@ caisseRouter.post('/commandes', async (req, res) => {
   }
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  if (canal === 'SUR_PLACE') {
+    const table = await prisma.table.findUnique({ where: { id: tableId } });
+    if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
+      res.status(400).json({ error: 'Table invalide' });
+      return;
+    }
+  }
 
   const produitIds = [...new Set(lignes.map((l: { produitId: string }) => l.produitId))];
   const produits = await prisma.produit.findMany({
@@ -118,7 +146,7 @@ caisseRouter.post('/commandes', async (req, res) => {
   const commande = await prisma.commande.create({
     data: {
       canal,
-      numeroTable: typeof numeroTable === 'string' && numeroTable.trim() ? numeroTable : null,
+      tableId: canal === 'SUR_PLACE' ? tableId : null,
       etablissementId,
       serveurId: req.user!.id,
       lignes: {
@@ -133,7 +161,11 @@ caisseRouter.post('/commandes', async (req, res) => {
         }),
       },
     },
-    include: { lignes: true, serveur: { select: { nom: true, prenom: true } } },
+    include: {
+      lignes: true,
+      serveur: { select: { nom: true, prenom: true } },
+      table: { select: { numero: true } },
+    },
   });
 
   res.status(201).json(toPublicCommande(commande));

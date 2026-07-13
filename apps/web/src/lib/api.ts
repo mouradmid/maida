@@ -64,10 +64,17 @@ export interface TablePlan {
   creeLe: string;
 }
 
+export interface TableCaisse {
+  id: string;
+  numero: string;
+  nombreCouverts: number;
+  forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE';
+}
+
 export interface Commande {
   id: string;
   canal: 'SUR_PLACE' | 'EMPORTER';
-  numeroTable: string | null;
+  table: { numero: string } | null;
   statut: 'ENVOYEE' | 'ANNULEE';
   creeLe: string;
   serveur: { nom: string; prenom: string };
@@ -149,11 +156,13 @@ export const api = {
 
   caisseMenu: () => apiFetch<CategorieMenu[]>('/caisse/menu'),
 
+  caisseTables: () => apiFetch<TableCaisse[]>('/caisse/tables'),
+
   listCommandes: () => apiFetch<Commande[]>('/caisse/commandes'),
 
   creerCommande: (data: {
     canal: 'SUR_PLACE' | 'EMPORTER';
-    numeroTable?: string;
+    tableId?: string;
     lignes: Array<{ produitId: string; quantite: number }>;
   }) => apiFetch<Commande>('/caisse/commandes', { method: 'POST', body: JSON.stringify(data) }),
 

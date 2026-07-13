@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type CategorieMenu, type Commande, type ProduitMenu } from '../lib/api';
+import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
 
 interface LignePanier {
   produit: ProduitMenu;
@@ -8,20 +8,26 @@ interface LignePanier {
 
 export function PriseDeCommande() {
   const [categories, setCategories] = useState<CategorieMenu[]>([]);
+  const [tables, setTables] = useState<TableCaisse[]>([]);
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
 
   const [canal, setCanal] = useState<'SUR_PLACE' | 'EMPORTER'>('SUR_PLACE');
-  const [numeroTable, setNumeroTable] = useState('');
+  const [tableId, setTableId] = useState('');
   const [panier, setPanier] = useState<Record<string, LignePanier>>({});
 
   async function chargerTout() {
     setChargement(true);
     try {
-      const [menu, commandesRecentes] = await Promise.all([api.caisseMenu(), api.listCommandes()]);
+      const [menu, tablesActives, commandesRecentes] = await Promise.all([
+        api.caisseMenu(),
+        api.caisseTables(),
+        api.listCommandes(),
+      ]);
       setCategories(menu);
+      setTables(tablesActives);
       setCommandes(commandesRecentes);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
@@ -59,15 +65,19 @@ export function PriseDeCommande() {
   async function handleEnvoyerCommande() {
     setErreur(null);
     setConfirmation(null);
+    if (canal === 'SUR_PLACE' && !tableId) {
+      setErreur('Choisissez une table');
+      return;
+    }
     try {
       const commande = await api.creerCommande({
         canal,
-        numeroTable: canal === 'SUR_PLACE' ? numeroTable : undefined,
+        tableId: canal === 'SUR_PLACE' ? tableId : undefined,
         lignes: lignesPanier.map((l) => ({ produitId: l.produit.id, quantite: l.quantite })),
       });
       setConfirmation(`Commande envoyée — total ${commande.total} DZD`);
       setPanier({});
-      setNumeroTable('');
+      setTableId('');
       await chargerTout();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -99,13 +109,18 @@ export function PriseDeCommande() {
           À emporter
         </label>
         {canal === 'SUR_PLACE' && (
-          <input
-            type="text"
-            placeholder="N° table"
-            value={numeroTable}
-            onChange={(e) => setNumeroTable(e.target.value)}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
-          />
+          <select
+            value={tableId}
+            onChange={(e) => setTableId(e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">Choisir une table</option>
+            {tables.map((t) => (
+              <option key={t.id} value={t.id}>
+                Table {t.numero} ({t.nombreCouverts} couverts)
+              </option>
+            ))}
+          </select>
         )}
       </div>
 
@@ -172,7 +187,7 @@ export function PriseDeCommande() {
         <ul className="flex flex-col gap-1">
           {commandes.map((c) => (
             <li key={c.id} className="text-sm">
-              {c.canal === 'SUR_PLACE' ? `Table ${c.numeroTable ?? '?'}` : 'À emporter'} — {c.total} DZD —{' '}
+              {c.canal === 'SUR_PLACE' ? `Table ${c.table?.numero ?? '?'}` : 'À emporter'} — {c.total} DZD —{' '}
               {c.serveur.prenom} {c.serveur.nom}
             </li>
           ))}
