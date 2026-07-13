@@ -1,9 +1,26 @@
 import { useEffect, useState } from 'react';
 import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
 
+interface ChoixOption {
+  groupeOptionId: string;
+  optionValeurId: string;
+  nomGroupe: string;
+  valeur: string;
+}
+
 interface LignePanier {
+  cle: string;
   produit: ProduitMenu;
   quantite: number;
+  options: ChoixOption[];
+}
+
+function cleLigne(produitId: string, options: ChoixOption[]): string {
+  const suffixe = options
+    .map((o) => `${o.groupeOptionId}=${o.optionValeurId}`)
+    .sort()
+    .join(',');
+  return `${produitId}::${suffixe}`;
 }
 
 export function PriseDeCommande() {
@@ -16,7 +33,11 @@ export function PriseDeCommande() {
 
   const [canal, setCanal] = useState<'SUR_PLACE' | 'EMPORTER'>('SUR_PLACE');
   const [tableId, setTableId] = useState('');
+  const [noteCuisine, setNoteCuisine] = useState('');
   const [panier, setPanier] = useState<Record<string, LignePanier>>({});
+
+  const [produitEnSelection, setProduitEnSelection] = useState<ProduitMenu | null>(null);
+  const [choixEnCours, setChoixEnCours] = useState<Record<string, string>>({});
 
   async function chargerTout() {
     setChargement(true);
@@ -40,22 +61,53 @@ export function PriseDeCommande() {
     chargerTout();
   }, []);
 
-  function ajouterAuPanier(produit: ProduitMenu) {
+  function ajouterAuPanierDirect(produit: ProduitMenu, options: ChoixOption[]) {
+    const cle = cleLigne(produit.id, options);
     setPanier((p) => ({
       ...p,
-      [produit.id]: { produit, quantite: (p[produit.id]?.quantite ?? 0) + 1 },
+      [cle]: { cle, produit, options, quantite: (p[cle]?.quantite ?? 0) + 1 },
     }));
   }
 
-  function retirerDuPanier(produitId: string) {
+  function handleClicProduit(produit: ProduitMenu) {
+    if (produit.groupesOptions.length === 0) {
+      ajouterAuPanierDirect(produit, []);
+      return;
+    }
+    setProduitEnSelection(produit);
+    setChoixEnCours({});
+  }
+
+  function handleConfirmerSelection() {
+    if (!produitEnSelection) return;
+    const groupesManquants = produitEnSelection.groupesOptions.filter(
+      (g) => g.obligatoire && !choixEnCours[g.id],
+    );
+    if (groupesManquants.length > 0) {
+      setErreur(`Choisissez : ${groupesManquants.map((g) => g.nom).join(', ')}`);
+      return;
+    }
+    setErreur(null);
+    const options: ChoixOption[] = produitEnSelection.groupesOptions
+      .filter((g) => choixEnCours[g.id])
+      .map((g) => {
+        const valeur = g.valeurs.find((v) => v.id === choixEnCours[g.id])!;
+        return { groupeOptionId: g.id, optionValeurId: valeur.id, nomGroupe: g.nom, valeur: valeur.valeur };
+      });
+    ajouterAuPanierDirect(produitEnSelection, options);
+    setProduitEnSelection(null);
+    setChoixEnCours({});
+  }
+
+  function retirerDuPanier(cle: string) {
     setPanier((p) => {
-      const existant = p[produitId];
+      const existant = p[cle];
       if (!existant) return p;
       if (existant.quantite <= 1) {
-        const { [produitId]: _retire, ...reste } = p;
+        const { [cle]: _retire, ...reste } = p;
         return reste;
       }
-      return { ...p, [produitId]: { ...existant, quantite: existant.quantite - 1 } };
+      return { ...p, [cle]: { ...existant, quantite: existant.quantite - 1 } };
     });
   }
 
@@ -73,11 +125,17 @@ export function PriseDeCommande() {
       const commande = await api.creerCommande({
         canal,
         tableId: canal === 'SUR_PLACE' ? tableId : undefined,
-        lignes: lignesPanier.map((l) => ({ produitId: l.produit.id, quantite: l.quantite })),
+        noteCuisine: noteCuisine.trim() || undefined,
+        lignes: lignesPanier.map((l) => ({
+          produitId: l.produit.id,
+          quantite: l.quantite,
+          options: l.options.map((o) => ({ groupeOptionId: o.groupeOptionId, optionValeurId: o.optionValeurId })),
+        })),
       });
       setConfirmation(`Commande envoyée — total ${commande.total} DZD`);
       setPanier({});
       setTableId('');
+      setNoteCuisine('');
       await chargerTout();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -93,19 +151,11 @@ export function PriseDeCommande() {
 
       <div className="flex gap-4 items-center">
         <label className="flex items-center gap-2 text-sm">
-          <input
-            type="radio"
-            checked={canal === 'SUR_PLACE'}
-            onChange={() => setCanal('SUR_PLACE')}
-          />
+          <input type="radio" checked={canal === 'SUR_PLACE'} onChange={() => setCanal('SUR_PLACE')} />
           Sur place
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input
-            type="radio"
-            checked={canal === 'EMPORTER'}
-            onChange={() => setCanal('EMPORTER')}
-          />
+          <input type="radio" checked={canal === 'EMPORTER'} onChange={() => setCanal('EMPORTER')} />
           À emporter
         </label>
         {canal === 'SUR_PLACE' && (
@@ -132,15 +182,61 @@ export function PriseDeCommande() {
               <h3 className="font-medium text-sm text-gray-500">{cat.nom}</h3>
               <ul className="flex flex-col gap-1">
                 {cat.produits.map((produit) => (
-                  <li key={produit.id}>
+                  <li key={produit.id} className="flex flex-col gap-1">
                     <button
                       type="button"
-                      onClick={() => ajouterAuPanier(produit)}
+                      onClick={() => handleClicProduit(produit)}
                       className="w-full text-left rounded border border-gray-200 px-3 py-2 hover:bg-gray-50"
                     >
                       {produit.nom} — {produit.prix} DZD
                       {produit.tempsPreparationMinutes != null && ` (${produit.tempsPreparationMinutes} min)`}
+                      {produit.groupesOptions.length > 0 && (
+                        <span className="text-xs text-gray-500"> · options</span>
+                      )}
                     </button>
+
+                    {produitEnSelection?.id === produit.id && (
+                      <div className="border border-gray-300 rounded p-3 flex flex-col gap-2 bg-gray-50">
+                        {produit.groupesOptions.map((groupe) => (
+                          <div key={groupe.id}>
+                            <p className="text-xs font-medium mb-1">
+                              {groupe.nom} {groupe.obligatoire && '*'}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {groupe.valeurs.map((valeur) => (
+                                <label key={valeur.id} className="flex items-center gap-1 text-xs">
+                                  <input
+                                    type="radio"
+                                    name={`groupe-${groupe.id}`}
+                                    checked={choixEnCours[groupe.id] === valeur.id}
+                                    onChange={() =>
+                                      setChoixEnCours((c) => ({ ...c, [groupe.id]: valeur.id }))
+                                    }
+                                  />
+                                  {valeur.valeur}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleConfirmerSelection}
+                            className="rounded bg-gray-900 text-white px-3 py-1 text-xs"
+                          >
+                            Ajouter au panier
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setProduitEnSelection(null)}
+                            className="rounded border border-gray-300 px-3 py-1 text-xs"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -153,17 +249,19 @@ export function PriseDeCommande() {
           {lignesPanier.length === 0 && <p className="text-sm text-gray-400">Panier vide</p>}
           <ul className="flex flex-col gap-1">
             {lignesPanier.map((ligne) => (
-              <li key={ligne.produit.id} className="flex items-center justify-between text-sm">
+              <li key={ligne.cle} className="flex items-center justify-between text-sm">
                 <span>
                   {ligne.produit.nom} × {ligne.quantite}
+                  {ligne.options.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {' '}
+                      ({ligne.options.map((o) => `${o.nomGroupe}: ${o.valeur}`).join(', ')})
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-2">
                   <span>{ligne.produit.prix * ligne.quantite} DZD</span>
-                  <button
-                    type="button"
-                    onClick={() => retirerDuPanier(ligne.produit.id)}
-                    className="underline text-xs"
-                  >
+                  <button type="button" onClick={() => retirerDuPanier(ligne.cle)} className="underline text-xs">
                     retirer
                   </button>
                 </div>
@@ -171,6 +269,21 @@ export function PriseDeCommande() {
             ))}
           </ul>
           <p className="font-semibold">Total : {total} DZD</p>
+
+          <div>
+            <label className="block text-xs font-medium mb-1" htmlFor="noteCuisine">
+              Message pour la cuisine (optionnel)
+            </label>
+            <textarea
+              id="noteCuisine"
+              value={noteCuisine}
+              onChange={(e) => setNoteCuisine(e.target.value)}
+              rows={2}
+              placeholder="ex: client allergique aux fruits de mer"
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+
           <button
             type="button"
             disabled={lignesPanier.length === 0}
@@ -184,11 +297,22 @@ export function PriseDeCommande() {
 
       <div>
         <h2 className="text-lg font-semibold mb-2">Commandes récentes</h2>
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-2">
           {commandes.map((c) => (
-            <li key={c.id} className="text-sm">
-              {c.canal === 'SUR_PLACE' ? `Table ${c.table?.numero ?? '?'}` : 'À emporter'} — {c.total} DZD —{' '}
-              {c.serveur.prenom} {c.serveur.nom}
+            <li key={c.id} className="text-sm border-b border-gray-100 pb-2">
+              <p>
+                {c.canal === 'SUR_PLACE' ? `Table ${c.table?.numero ?? '?'}` : 'À emporter'} — {c.total} DZD —{' '}
+                {c.serveur.prenom} {c.serveur.nom}
+              </p>
+              {c.noteCuisine && <p className="text-xs italic text-gray-600">Cuisine : {c.noteCuisine}</p>}
+              <ul className="text-xs text-gray-500">
+                {c.lignes.map((l) => (
+                  <li key={l.id}>
+                    {l.quantite}× {l.nomProduit}
+                    {l.options.length > 0 && ` (${l.options.map((o) => `${o.nomGroupe}: ${o.valeur}`).join(', ')})`}
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
           {commandes.length === 0 && <li className="text-sm text-gray-400">Aucune commande pour l'instant.</li>}

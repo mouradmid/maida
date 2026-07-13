@@ -149,15 +149,44 @@ model Produit {
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
   lignesCommande LigneCommande[]
+  groupesOptions GroupeOption[]
 
   @@map("produits")
 }
 
+model GroupeOption {
+  id          String   @id @default(cuid())
+  nom         String
+  obligatoire Boolean  @default(false)
+  creeLe      DateTime @default(now())
+
+  produitId String
+  produit   Produit @relation(fields: [produitId], references: [id])
+
+  valeurs OptionValeur[]
+
+  @@map("groupes_options")
+}
+
+model OptionValeur {
+  id     String   @id @default(cuid())
+  valeur String
+  creeLe DateTime @default(now())
+
+  groupeOptionId String
+  groupeOption   GroupeOption @relation(fields: [groupeOptionId], references: [id], onDelete: Cascade)
+
+  lignesOptions LigneCommandeOption[]
+
+  @@map("options_valeurs")
+}
+
 model Commande {
-  id     String         @id @default(cuid())
-  canal  CanalCommande
-  statut StatutCommande @default(ENVOYEE)
-  creeLe DateTime       @default(now())
+  id          String         @id @default(cuid())
+  canal       CanalCommande
+  noteCuisine String?
+  statut      StatutCommande @default(ENVOYEE)
+  creeLe      DateTime       @default(now())
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
@@ -186,7 +215,24 @@ model LigneCommande {
   produitId String
   produit   Produit @relation(fields: [produitId], references: [id])
 
+  options LigneCommandeOption[]
+
   @@map("lignes_commande")
+}
+
+model LigneCommandeOption {
+  id        String   @id @default(cuid())
+  nomGroupe String
+  valeur    String
+  creeLe    DateTime @default(now())
+
+  ligneCommandeId String
+  ligneCommande   LigneCommande @relation(fields: [ligneCommandeId], references: [id])
+
+  optionValeurId String?
+  optionValeur   OptionValeur? @relation(fields: [optionValeurId], references: [id], onDelete: SetNull)
+
+  @@map("lignes_commande_options")
 }
 
 model Table {

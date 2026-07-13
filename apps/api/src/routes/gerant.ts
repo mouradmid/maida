@@ -149,6 +149,12 @@ gerantRouter.get('/produits', async (req, res) => {
       etablissementId,
       categorieId: typeof categorieId === 'string' ? categorieId : undefined,
     },
+    include: {
+      groupesOptions: {
+        include: { valeurs: { orderBy: { creeLe: 'asc' } } },
+        orderBy: { creeLe: 'asc' },
+      },
+    },
     orderBy: { creeLe: 'asc' },
   });
 
@@ -363,4 +369,88 @@ gerantRouter.patch('/tables/:id', async (req, res) => {
     }
     throw error;
   }
+});
+
+// --- Mentions spéciales (groupes d'options par produit) ---
+
+gerantRouter.post('/produits/:produitId/groupes', async (req, res) => {
+  const { nom, obligatoire } = req.body ?? {};
+
+  if (typeof nom !== 'string' || !nom.trim()) {
+    res.status(400).json({ error: 'Le nom du groupe est requis' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const produit = await prisma.produit.findUnique({ where: { id: req.params.produitId } });
+  if (!produit || produit.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Produit introuvable' });
+    return;
+  }
+
+  const groupe = await prisma.groupeOption.create({
+    data: { nom, obligatoire: obligatoire === true, produitId: produit.id },
+    include: { valeurs: true },
+  });
+
+  res.status(201).json(groupe);
+});
+
+gerantRouter.delete('/groupes/:id', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const groupe = await prisma.groupeOption.findUnique({
+    where: { id: req.params.id },
+    include: { produit: true },
+  });
+  if (!groupe || groupe.produit.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Groupe introuvable' });
+    return;
+  }
+
+  await prisma.groupeOption.delete({ where: { id: groupe.id } });
+  res.status(204).send();
+});
+
+gerantRouter.post('/groupes/:groupeId/valeurs', async (req, res) => {
+  const { valeur } = req.body ?? {};
+
+  if (typeof valeur !== 'string' || !valeur.trim()) {
+    res.status(400).json({ error: 'La valeur est requise' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const groupe = await prisma.groupeOption.findUnique({
+    where: { id: req.params.groupeId },
+    include: { produit: true },
+  });
+  if (!groupe || groupe.produit.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Groupe introuvable' });
+    return;
+  }
+
+  const optionValeur = await prisma.optionValeur.create({
+    data: { valeur, groupeOptionId: groupe.id },
+  });
+
+  res.status(201).json(optionValeur);
+});
+
+gerantRouter.delete('/valeurs/:id', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const optionValeur = await prisma.optionValeur.findUnique({
+    where: { id: req.params.id },
+    include: { groupeOption: { include: { produit: true } } },
+  });
+  if (!optionValeur || optionValeur.groupeOption.produit.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Valeur introuvable' });
+    return;
+  }
+
+  await prisma.optionValeur.delete({ where: { id: optionValeur.id } });
+  res.status(204).send();
 });

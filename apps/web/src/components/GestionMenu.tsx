@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api, type Categorie, type Produit } from '../lib/api';
+import { OptionsProduit } from './OptionsProduit';
 
 export function GestionMenu() {
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [produits, setProduits] = useState<Produit[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [produitOptionsOuvert, setProduitOptionsOuvert] = useState<string | null>(null);
 
   const [nouvelleCategorie, setNouvelleCategorie] = useState('');
   const [nouveauProduitNom, setNouveauProduitNom] = useState('');
@@ -112,19 +114,35 @@ export function GestionMenu() {
             </button>
           </div>
 
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-2">
             {produits
               .filter((p) => p.categorieId === categorie.id)
               .map((produit) => (
-                <li key={produit.id} className="flex items-center justify-between text-sm">
-                  <span className={produit.statut === 'INACTIF' ? 'text-gray-400' : ''}>
-                    {produit.nom} — {produit.prix} DZD
-                    {produit.tempsPreparationMinutes != null && ` — ${produit.tempsPreparationMinutes} min`}
-                    {produit.statut === 'INACTIF' && ' (désactivé)'}
-                  </span>
-                  <button type="button" onClick={() => handleToggleProduit(produit)} className="underline">
-                    {produit.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
-                  </button>
+                <li key={produit.id} className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className={produit.statut === 'INACTIF' ? 'text-gray-400' : ''}>
+                      {produit.nom} — {produit.prix} DZD
+                      {produit.tempsPreparationMinutes != null && ` — ${produit.tempsPreparationMinutes} min`}
+                      {produit.statut === 'INACTIF' && ' (désactivé)'}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setProduitOptionsOuvert(produitOptionsOuvert === produit.id ? null : produit.id)
+                        }
+                        className="underline"
+                      >
+                        Mentions spéciales ({produit.groupesOptions.length})
+                      </button>
+                      <button type="button" onClick={() => handleToggleProduit(produit)} className="underline">
+                        {produit.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
+                      </button>
+                    </div>
+                  </div>
+                  {produitOptionsOuvert === produit.id && (
+                    <OptionsProduit produit={produit} onChange={chargerTout} />
+                  )}
                 </li>
               ))}
             {produits.filter((p) => p.categorieId === categorie.id).length === 0 && (

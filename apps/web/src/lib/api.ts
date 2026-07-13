@@ -17,6 +17,18 @@ export interface Categorie {
   creeLe: string;
 }
 
+export interface OptionValeur {
+  id: string;
+  valeur: string;
+}
+
+export interface GroupeOption {
+  id: string;
+  nom: string;
+  obligatoire: boolean;
+  valeurs: OptionValeur[];
+}
+
 export interface Produit {
   id: string;
   nom: string;
@@ -27,6 +39,7 @@ export interface Produit {
   categorieId: string;
   etablissementId: string;
   creeLe: string;
+  groupesOptions: GroupeOption[];
 }
 
 export interface ProduitMenu {
@@ -35,6 +48,7 @@ export interface ProduitMenu {
   description: string | null;
   prix: number;
   tempsPreparationMinutes: number | null;
+  groupesOptions: GroupeOption[];
 }
 
 export interface CategorieMenu {
@@ -48,6 +62,7 @@ export interface LigneCommande {
   nomProduit: string;
   prixUnitaire: number;
   quantite: number;
+  options: Array<{ nomGroupe: string; valeur: string }>;
 }
 
 export interface TablePlan {
@@ -74,6 +89,7 @@ export interface TableCaisse {
 export interface Commande {
   id: string;
   canal: 'SUR_PLACE' | 'EMPORTER';
+  noteCuisine: string | null;
   table: { numero: string } | null;
   statut: 'ENVOYEE' | 'ANNULEE';
   creeLe: string;
@@ -163,8 +179,29 @@ export const api = {
   creerCommande: (data: {
     canal: 'SUR_PLACE' | 'EMPORTER';
     tableId?: string;
-    lignes: Array<{ produitId: string; quantite: number }>;
+    noteCuisine?: string;
+    lignes: Array<{
+      produitId: string;
+      quantite: number;
+      options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
+    }>;
   }) => apiFetch<Commande>('/caisse/commandes', { method: 'POST', body: JSON.stringify(data) }),
+
+  createGroupeOption: (produitId: string, data: { nom: string; obligatoire: boolean }) =>
+    apiFetch<GroupeOption>(`/gerant/produits/${produitId}/groupes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteGroupeOption: (id: string) => apiFetch<void>(`/gerant/groupes/${id}`, { method: 'DELETE' }),
+
+  createOptionValeur: (groupeId: string, valeur: string) =>
+    apiFetch<OptionValeur>(`/gerant/groupes/${groupeId}/valeurs`, {
+      method: 'POST',
+      body: JSON.stringify({ valeur }),
+    }),
+
+  deleteOptionValeur: (id: string) => apiFetch<void>(`/gerant/valeurs/${id}`, { method: 'DELETE' }),
 
   listTables: () => apiFetch<TablePlan[]>('/gerant/tables'),
 
