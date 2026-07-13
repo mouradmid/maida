@@ -2,6 +2,7 @@ import { LoginMotDePasse } from '../components/LoginMotDePasse';
 import { GestionMenu } from '../components/GestionMenu';
 import { GestionServeurs } from '../components/GestionServeurs';
 import { PlanDeSalle } from '../components/PlanDeSalle';
+import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
 import { api } from '../lib/api';
 import { useMe } from '../hooks/useMe';
 
@@ -35,6 +36,7 @@ export function EspaceGerant() {
         <PlanDeSalle />
         <GestionMenu />
         <GestionServeurs />
+        <ConfigMoyensPaiement />
       </div>
     );
   }

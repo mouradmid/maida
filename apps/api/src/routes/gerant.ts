@@ -454,3 +454,42 @@ gerantRouter.delete('/valeurs/:id', async (req, res) => {
   await prisma.optionValeur.delete({ where: { id: optionValeur.id } });
   res.status(204).send();
 });
+
+// --- Moyens de paiement acceptés ---
+
+const MOYENS_PAIEMENT_VALIDES = ['ESPECES', 'CARTE', 'CHEQUE', 'AUTRE'];
+
+gerantRouter.get('/moyens-paiement', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const etablissement = await prisma.etablissement.findUnique({
+    where: { id: etablissementId },
+    select: { moyensPaiementActifs: true },
+  });
+
+  res.json({ actifs: etablissement?.moyensPaiementActifs ?? [], tous: MOYENS_PAIEMENT_VALIDES });
+});
+
+gerantRouter.patch('/moyens-paiement', async (req, res) => {
+  const { actifs } = req.body ?? {};
+
+  if (
+    !Array.isArray(actifs) ||
+    actifs.length === 0 ||
+    actifs.some((m: unknown) => typeof m !== 'string' || !MOYENS_PAIEMENT_VALIDES.includes(m)) ||
+    new Set(actifs).size !== actifs.length
+  ) {
+    res.status(400).json({ error: 'Il faut garder au moins un moyen de paiement actif, sans doublon' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const etablissement = await prisma.etablissement.update({
+    where: { id: etablissementId },
+    data: { moyensPaiementActifs: actifs },
+    select: { moyensPaiementActifs: true },
+  });
+
+  res.json({ actifs: etablissement.moyensPaiementActifs, tous: MOYENS_PAIEMENT_VALIDES });
+});

@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react';
-import { api, type AdditionDetail, type AdditionResume } from '../lib/api';
+import { api, type AdditionDetail, type AdditionResume, type ModePaiement } from '../lib/api';
 
 type Mode = 'TOTAL' | 'POURCENTAGE' | 'MONTANT' | 'ARTICLES';
 
+const LIBELLES_MOYEN: Record<ModePaiement, string> = {
+  ESPECES: 'Espèces',
+  CARTE: 'Carte',
+  CHEQUE: 'Chèque',
+  AUTRE: 'Autre',
+};
+
 export function Encaissement() {
   const [additions, setAdditions] = useState<AdditionResume[]>([]);
+  const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [additionId, setAdditionId] = useState<string | null>(null);
@@ -14,14 +22,22 @@ export function Encaissement() {
   const [pourcentage, setPourcentage] = useState('100');
   const [montantLibre, setMontantLibre] = useState('');
   const [selection, setSelection] = useState<Record<string, number>>({});
-  const [moyenPaiement, setMoyenPaiement] = useState<'ESPECES' | 'CARTE' | 'AUTRE'>('ESPECES');
+  const [moyenPaiement, setMoyenPaiement] = useState<ModePaiement>('ESPECES');
   const [montantRecu, setMontantRecu] = useState('');
   const [resultat, setResultat] = useState<string | null>(null);
 
   async function chargerListe() {
     setChargement(true);
     try {
-      setAdditions(await api.listAdditionsOuvertes());
+      const [additionsOuvertes, moyens] = await Promise.all([
+        api.listAdditionsOuvertes(),
+        api.caisseMoyensPaiement(),
+      ]);
+      setAdditions(additionsOuvertes);
+      setMoyensActifs(moyens.actifs);
+      if (moyens.actifs.length > 0 && !moyens.actifs.includes(moyenPaiement)) {
+        setMoyenPaiement(moyens.actifs[0]);
+      }
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -300,12 +316,14 @@ export function Encaissement() {
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <select
               value={moyenPaiement}
-              onChange={(e) => setMoyenPaiement(e.target.value as typeof moyenPaiement)}
+              onChange={(e) => setMoyenPaiement(e.target.value as ModePaiement)}
               className="rounded border border-gray-300 px-3 py-2"
             >
-              <option value="ESPECES">Espèces</option>
-              <option value="CARTE">Carte</option>
-              <option value="AUTRE">Autre</option>
+              {moyensActifs.map((m) => (
+                <option key={m} value={m}>
+                  {LIBELLES_MOYEN[m]}
+                </option>
+              ))}
             </select>
             {moyenPaiement === 'ESPECES' && (
               <input

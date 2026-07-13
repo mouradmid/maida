@@ -72,6 +72,7 @@ enum StatutAddition {
 enum ModePaiement {
   ESPECES
   CARTE
+  CHEQUE
   AUTRE
 }
 
@@ -88,12 +89,13 @@ model CompteClient {
 }
 
 model Etablissement {
-  id      String              @id @default(cuid())
-  nom     String
-  adresse String?
-  ville   String?
-  statut  StatutEtablissement @default(ACTIF)
-  creeLe  DateTime            @default(now())
+  id                   String              @id @default(cuid())
+  nom                  String
+  adresse              String?
+  ville                String?
+  statut               StatutEtablissement @default(ACTIF)
+  moyensPaiementActifs ModePaiement[]      @default([ESPECES, CARTE, CHEQUE, AUTRE])
+  creeLe               DateTime            @default(now())
 
   compteClientId String
   compteClient   CompteClient @relation(fields: [compteClientId], references: [id])

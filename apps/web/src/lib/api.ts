@@ -101,6 +101,8 @@ export interface Commande {
   total: number;
 }
 
+export type ModePaiement = 'ESPECES' | 'CARTE' | 'CHEQUE' | 'AUTRE';
+
 export interface AdditionResume {
   id: string;
   table: { numero: string } | null;
@@ -122,7 +124,7 @@ export interface AdditionDetail extends AdditionResume {
   paiements: Array<{
     id: string;
     montant: number;
-    moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE';
+    moyenPaiement: ModePaiement;
     montantRecu: number | null;
     creeLe: string;
   }>;
@@ -131,7 +133,7 @@ export interface AdditionDetail extends AdditionResume {
 export interface ResultatPaiement {
   id: string;
   montant: number;
-  moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE';
+  moyenPaiement: ModePaiement;
   montantRecu: number | null;
   rendu: number | null;
   soldeRestant: number;
@@ -274,11 +276,11 @@ export const api = {
   creerPaiement: (
     additionId: string,
     data:
-      | { mode: 'MONTANT'; montant: number; moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE'; montantRecu?: number }
+      | { mode: 'MONTANT'; montant: number; moyenPaiement: ModePaiement; montantRecu?: number }
       | {
           mode: 'ARTICLES';
           lignes: Array<{ ligneCommandeId: string; quantite: number }>;
-          moyenPaiement: 'ESPECES' | 'CARTE' | 'AUTRE';
+          moyenPaiement: ModePaiement;
           montantRecu?: number;
         },
   ) =>
@@ -286,4 +288,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  getMoyensPaiement: () =>
+    apiFetch<{ actifs: ModePaiement[]; tous: ModePaiement[] }>('/gerant/moyens-paiement'),
+
+  updateMoyensPaiement: (actifs: ModePaiement[]) =>
+    apiFetch<{ actifs: ModePaiement[]; tous: ModePaiement[] }>('/gerant/moyens-paiement', {
+      method: 'PATCH',
+      body: JSON.stringify({ actifs }),
+    }),
+
+  caisseMoyensPaiement: () => apiFetch<{ actifs: ModePaiement[] }>('/caisse/moyens-paiement'),
 };

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { Prisma } from '../generated/prisma/client';
+import type { ModePaiement, Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -15,6 +15,17 @@ async function getContexteServeur(serveurId: string) {
   }
   return { etablissementId: serveur.etablissementId };
 }
+
+caisseRouter.get('/moyens-paiement', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const etablissement = await prisma.etablissement.findUnique({
+    where: { id: etablissementId },
+    select: { moyensPaiementActifs: true },
+  });
+
+  res.json({ actifs: etablissement?.moyensPaiementActifs ?? [] });
+});
 
 caisseRouter.get('/menu', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
@@ -383,16 +394,27 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
   const { mode, montant, moyenPaiement, montantRecu, lignes } = req.body ?? {};
 
-  if (moyenPaiement !== 'ESPECES' && moyenPaiement !== 'CARTE' && moyenPaiement !== 'AUTRE') {
+  const MOYENS_VALIDES: ModePaiement[] = ['ESPECES', 'CARTE', 'CHEQUE', 'AUTRE'];
+  if (typeof moyenPaiement !== 'string' || !MOYENS_VALIDES.includes(moyenPaiement as ModePaiement)) {
     res.status(400).json({ error: 'Moyen de paiement invalide' });
     return;
   }
+  const moyenPaiementValide = moyenPaiement as ModePaiement;
   if (montantRecu !== undefined && (typeof montantRecu !== 'number' || montantRecu < 0)) {
     res.status(400).json({ error: 'Montant reçu invalide' });
     return;
   }
   if (mode !== 'MONTANT' && mode !== 'ARTICLES') {
     res.status(400).json({ error: 'Mode de paiement invalide' });
+    return;
+  }
+
+  const etablissement = await prisma.etablissement.findUnique({
+    where: { id: etablissementId },
+    select: { moyensPaiementActifs: true },
+  });
+  if (!etablissement?.moyensPaiementActifs.includes(moyenPaiementValide)) {
+    res.status(400).json({ error: "Ce moyen de paiement n'est pas activé pour cet établissement" });
     return;
   }
 
@@ -453,7 +475,7 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
     res.status(400).json({ error: `Le montant dépasse le solde restant (${solde} DZD)` });
     return;
   }
-  if (moyenPaiement === 'ESPECES' && montantRecu !== undefined && montantRecu < montantFinal) {
+  if (moyenPaiementValide === 'ESPECES' && montantRecu !== undefined && montantRecu < montantFinal) {
     res.status(400).json({ error: 'Le montant reçu est inférieur au montant encaissé' });
     return;
   }
@@ -463,8 +485,8 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
       data: {
         additionId: addition.id,
         montant: montantFinal,
-        moyenPaiement,
-        montantRecu: moyenPaiement === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
+        moyenPaiement: moyenPaiementValide,
+        montantRecu: moyenPaiementValide === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
         lignes: {
           create: lignesAPayer.map((l) => ({
             ligneCommandeId: l.ligneCommandeId,
