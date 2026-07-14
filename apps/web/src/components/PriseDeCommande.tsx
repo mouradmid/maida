@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
 import { badgeBrand, badgeNeutre, badgeVert, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
+import { ModalAnnulation } from './ModalAnnulation';
 
 interface ChoixOption {
   groupeOptionId: string;
@@ -25,7 +26,7 @@ function cleLigne(produitId: string, options: ChoixOption[]): string {
   return `${produitId}::${suffixe}`;
 }
 
-export function PriseDeCommande() {
+export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [categories, setCategories] = useState<CategorieMenu[]>([]);
   const [tables, setTables] = useState<TableCaisse[]>([]);
   const [commandes, setCommandes] = useState<Commande[]>([]);
@@ -42,6 +43,7 @@ export function PriseDeCommande() {
   const [produitEnSelection, setProduitEnSelection] = useState<ProduitMenu | null>(null);
   const [choixEnCours, setChoixEnCours] = useState<Record<string, string>>({});
   const [erreurOptions, setErreurOptions] = useState<string | null>(null);
+  const [commandeAAnnuler, setCommandeAAnnuler] = useState<Commande | null>(null);
 
   async function chargerTout() {
     setChargement(true);
@@ -375,34 +377,81 @@ export function PriseDeCommande() {
       <div className={carte}>
         <h2 className="mb-3 text-lg font-semibold text-stone-900">Commandes récentes</h2>
         <ul className="flex flex-col divide-y divide-stone-100">
-          {commandes.map((c) => (
-            <li key={c.id} className="flex flex-col gap-1 py-3 text-sm first:pt-0 last:pb-0">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-stone-900">
-                  {c.canal === 'SUR_PLACE' ? `Table ${c.table?.numero ?? '?'}` : 'À emporter'}
-                  <span className="ml-2 font-normal text-stone-500">
-                    {c.serveur.prenom} {c.serveur.nom}
+          {commandes.map((c) => {
+            const annulable =
+              c.statut !== 'ANNULEE' &&
+              c.lignes.some((l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0);
+            return (
+              <li key={c.id} className="flex flex-col gap-1 py-3 text-sm first:pt-0 last:pb-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-stone-900">
+                    {c.canal === 'SUR_PLACE' ? `Table ${c.table?.numero ?? '?'}` : 'À emporter'}
+                    <span className="ml-2 font-normal text-stone-500">
+                      {c.serveur.prenom} {c.serveur.nom}
+                    </span>
+                    {c.statut === 'PRETE' && <span className={`${badgeVert} ml-2`}>prête</span>}
+                    {c.statut === 'ANNULEE' && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                        annulée
+                      </span>
+                    )}
                   </span>
-                  {c.statut === 'PRETE' && <span className={`${badgeVert} ml-2`}>prête</span>}
-                </span>
-                <span className="font-semibold text-stone-900">{c.total} DA</span>
-              </div>
-              <p className="text-xs text-stone-500">
-                {c.lignes
-                  .map(
-                    (l) =>
-                      `${l.quantite}× ${l.nomProduit}${
-                        l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : ''
-                      }`,
-                  )
-                  .join(' · ')}
-              </p>
-              {c.noteCuisine && <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>}
-            </li>
-          ))}
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span
+                      className={`font-semibold ${c.statut === 'ANNULEE' ? 'text-stone-400 line-through' : 'text-stone-900'}`}
+                    >
+                      {c.total} DA
+                    </span>
+                    {annulable && (
+                      <button
+                        type="button"
+                        onClick={() => setCommandeAAnnuler(c)}
+                        className="text-xs font-medium text-red-600 transition-colors hover:text-red-800"
+                      >
+                        Annuler
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-500">
+                  {c.lignes.map((l, i) => {
+                    const active = l.quantite - l.quantiteAnnulee;
+                    const opts = l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
+                    return (
+                      <span key={l.id}>
+                        {i > 0 && ' · '}
+                        {active > 0 && `${active}× ${l.nomProduit}${opts}`}
+                        {l.quantiteAnnulee > 0 && (
+                          <span className="text-red-400 line-through">
+                            {active > 0 && ' '}
+                            {l.quantiteAnnulee}× {l.nomProduit}
+                            {opts}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </p>
+                {c.noteCuisine && <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>}
+              </li>
+            );
+          })}
           {commandes.length === 0 && <li className="text-sm text-stone-400">Aucune commande pour l'instant.</li>}
         </ul>
       </div>
+
+      {commandeAAnnuler && (
+        <ModalAnnulation
+          commande={commandeAAnnuler}
+          droitAnnuler={droitAnnuler}
+          onFermer={() => setCommandeAAnnuler(null)}
+          onAnnulee={async () => {
+            setCommandeAAnnuler(null);
+            setConfirmation('Annulation enregistrée');
+            await chargerTout();
+          }}
+        />
+      )}
     </div>
   );
 }

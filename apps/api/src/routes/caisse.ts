@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import type { ModePaiement, Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
@@ -113,6 +114,7 @@ function toPublicCommande(commande: {
     prixUnitaire: unknown;
     quantite: number;
     quantitePayee: number;
+    quantiteAnnulee: number;
     options: Array<{ id: string; nomGroupe: string; valeur: string }>;
   }>;
 }) {
@@ -122,9 +124,11 @@ function toPublicCommande(commande: {
     prixUnitaire: Number(l.prixUnitaire),
     quantite: l.quantite,
     quantitePayee: l.quantitePayee,
+    quantiteAnnulee: l.quantiteAnnulee,
     options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
   }));
-  const total = lignes.reduce((somme, l) => somme + l.prixUnitaire * l.quantite, 0);
+  // Les quantités annulées ne comptent pas dans le total.
+  const total = lignes.reduce((somme, l) => somme + l.prixUnitaire * (l.quantite - l.quantiteAnnulee), 0);
 
   return {
     id: commande.id,
@@ -198,6 +202,207 @@ caisseRouter.patch('/commandes/:id/prete', async (req, res) => {
   });
 
   res.json(toPublicCommande(majApres));
+});
+
+// --- Annulations ---
+
+interface LigneAAnnuler {
+  ligneCommandeId: string;
+  quantite: number;
+}
+
+caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
+  const { portee, lignes, motif, commentaire, codeGerant } = req.body ?? {};
+
+  if (portee !== 'COMMANDE' && portee !== 'LIGNES') {
+    res.status(400).json({ error: 'Portée invalide (COMMANDE ou LIGNES)' });
+    return;
+  }
+  if (typeof motif !== 'string' || !motif.trim() || motif.length > 100) {
+    res.status(400).json({ error: "Le motif d'annulation est obligatoire" });
+    return;
+  }
+  if (commentaire !== undefined && typeof commentaire !== 'string') {
+    res.status(400).json({ error: 'Commentaire invalide' });
+    return;
+  }
+  if (portee === 'LIGNES') {
+    if (!Array.isArray(lignes) || lignes.length === 0) {
+      res.status(400).json({ error: 'Sélectionnez au moins un article à annuler' });
+      return;
+    }
+    for (const l of lignes as LigneAAnnuler[]) {
+      if (typeof l?.ligneCommandeId !== 'string' || !Number.isInteger(l?.quantite) || l.quantite <= 0) {
+        res.status(400).json({ error: 'Lignes à annuler invalides' });
+        return;
+      }
+    }
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const serveur = await prisma.utilisateur.findUnique({ where: { id: req.user!.id } });
+  if (!serveur) {
+    res.status(401).json({ error: 'Non authentifié' });
+    return;
+  }
+
+  // Droit d'annuler : soit le serveur l'a, soit un gérant valide avec son code PIN.
+  let annuleeParId = serveur.id;
+  let demandeeParId: string | null = null;
+  if (!serveur.droits.includes('ANNULER')) {
+    if (typeof codeGerant !== 'string' || !codeGerant) {
+      res.status(403).json({
+        error: "Vous n'avez pas le droit d'annuler. Un gérant doit valider avec son code.",
+        codeGerantRequis: true,
+      });
+      return;
+    }
+    const gerants = await prisma.utilisateur.findMany({
+      where: { etablissementId, role: 'GERANT', statut: 'ACTIF', codePinHash: { not: null } },
+    });
+    let gerantValidant: (typeof gerants)[number] | null = null;
+    for (const gerant of gerants) {
+      if (gerant.codePinHash && (await bcrypt.compare(codeGerant, gerant.codePinHash))) {
+        gerantValidant = gerant;
+        break;
+      }
+    }
+    if (!gerantValidant) {
+      res.status(403).json({ error: 'Code gérant invalide', codeGerantRequis: true });
+      return;
+    }
+    annuleeParId = gerantValidant.id;
+    demandeeParId = serveur.id;
+  }
+
+  const commande = await prisma.commande.findFirst({
+    where: { id: req.params.id, etablissementId },
+    include: { lignes: true },
+  });
+  if (!commande) {
+    res.status(404).json({ error: 'Commande introuvable' });
+    return;
+  }
+  if (commande.statut === 'ANNULEE') {
+    res.status(409).json({ error: 'Cette commande est déjà annulée' });
+    return;
+  }
+
+  // Quantité annulable = commandée − déjà payée − déjà annulée.
+  const annulablesParId = new Map(
+    commande.lignes.map((l) => [l.id, l.quantite - l.quantitePayee - l.quantiteAnnulee]),
+  );
+
+  let cibles: Array<{ ligneCommandeId: string; quantite: number }>;
+  if (portee === 'COMMANDE') {
+    cibles = commande.lignes
+      .filter((l) => (annulablesParId.get(l.id) ?? 0) > 0)
+      .map((l) => ({ ligneCommandeId: l.id, quantite: annulablesParId.get(l.id)! }));
+    if (cibles.length === 0) {
+      res.status(400).json({ error: 'Plus rien à annuler sur cette commande (articles déjà payés ou annulés)' });
+      return;
+    }
+  } else {
+    cibles = lignes as LigneAAnnuler[];
+    for (const cible of cibles) {
+      const annulable = annulablesParId.get(cible.ligneCommandeId);
+      if (annulable === undefined) {
+        res.status(400).json({ error: 'Article invalide pour cette commande' });
+        return;
+      }
+      if (cible.quantite > annulable) {
+        const ligne = commande.lignes.find((l) => l.id === cible.ligneCommandeId)!;
+        res.status(400).json({
+          error: `Quantité non annulable pour ${ligne.nomProduit} (reste ${annulable}, le payé ne s'annule pas)`,
+        });
+        return;
+      }
+    }
+  }
+
+  const lignesParId = new Map(commande.lignes.map((l) => [l.id, l]));
+  const apresPreparation = commande.statut === 'PRETE';
+  const motifFinal = motif.trim();
+  const commentaireFinal =
+    typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null;
+
+  const commandeMaj = await prisma.$transaction(async (tx) => {
+    for (const cible of cibles) {
+      await tx.ligneCommande.update({
+        where: { id: cible.ligneCommandeId },
+        data: { quantiteAnnulee: { increment: cible.quantite } },
+      });
+    }
+
+    if (portee === 'COMMANDE') {
+      const quantiteTotale = cibles.reduce((s, c) => s + c.quantite, 0);
+      const montantTotal = cibles.reduce(
+        (s, c) => s + Number(lignesParId.get(c.ligneCommandeId)!.prixUnitaire) * c.quantite,
+        0,
+      );
+      await tx.annulation.create({
+        data: {
+          etablissementId,
+          commandeId: commande.id,
+          quantite: quantiteTotale,
+          montant: Math.round(montantTotal * 100) / 100,
+          motif: motifFinal,
+          commentaire: commentaireFinal,
+          apresPreparation,
+          annuleeParId,
+          demandeeParId,
+        },
+      });
+    } else {
+      for (const cible of cibles) {
+        const ligne = lignesParId.get(cible.ligneCommandeId)!;
+        await tx.annulation.create({
+          data: {
+            etablissementId,
+            commandeId: commande.id,
+            ligneCommandeId: ligne.id,
+            quantite: cible.quantite,
+            montant: Math.round(Number(ligne.prixUnitaire) * cible.quantite * 100) / 100,
+            motif: motifFinal,
+            commentaire: commentaireFinal,
+            apresPreparation,
+            annuleeParId,
+            demandeeParId,
+          },
+        });
+      }
+    }
+
+    // Si plus aucune quantité active, la commande entière passe en ANNULEE.
+    const lignesApres = await tx.ligneCommande.findMany({ where: { commandeId: commande.id } });
+    const toutAnnule = lignesApres.every((l) => l.quantite - l.quantiteAnnulee === 0);
+    if (toutAnnule) {
+      await tx.commande.update({ where: { id: commande.id }, data: { statut: 'ANNULEE' } });
+    }
+
+    // Si l'addition n'a plus rien à encaisser, on la clôture (libère la table).
+    const addition = await tx.addition.findUnique({
+      where: { id: commande.additionId },
+      include: { commandes: { include: { lignes: true } }, paiements: true },
+    });
+    if (addition && addition.statut === 'OUVERTE') {
+      const lignesAddition = addition.commandes.flatMap((c) => c.lignes);
+      const resteAPayer = lignesAddition.some(
+        (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0,
+      );
+      if (!resteAPayer) {
+        await tx.addition.update({
+          where: { id: addition.id },
+          data: { statut: 'PAYEE', fermeeLe: new Date() },
+        });
+      }
+    }
+
+    return tx.commande.findUniqueOrThrow({ where: { id: commande.id }, include: INCLUDE_COMMANDE });
+  });
+
+  res.status(201).json(toPublicCommande(commandeMaj));
 });
 
 interface LigneEntree {
@@ -370,9 +575,10 @@ const INCLUDE_ADDITION = {
 type AdditionAvecTotaux = Prisma.AdditionGetPayload<{ include: typeof INCLUDE_ADDITION }>;
 
 function calculerTotaux(addition: AdditionAvecTotaux) {
+  // Les quantités annulées ne comptent pas dans le total.
   const total = addition.commandes
     .flatMap((c) => c.lignes)
-    .reduce((s, l) => s + Number(l.prixUnitaire) * l.quantite, 0);
+    .reduce((s, l) => s + Number(l.prixUnitaire) * (l.quantite - l.quantiteAnnulee), 0);
   const totalPaye = addition.paiements.reduce((s, p) => s + Number(p.montant), 0);
   const solde = Math.max(0, Math.round((total - totalPaye) * 100) / 100);
   return { total: Math.round(total * 100) / 100, totalPaye: Math.round(totalPaye * 100) / 100, solde };
@@ -432,6 +638,7 @@ caisseRouter.get('/additions/:id', async (req, res) => {
         prixUnitaire: Number(l.prixUnitaire),
         quantite: l.quantite,
         quantitePayee: l.quantitePayee,
+        quantiteAnnulee: l.quantiteAnnulee,
         options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
       })),
     })),
@@ -512,7 +719,7 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
         res.status(400).json({ error: 'Quantité invalide' });
         return;
       }
-      const restant = ligne.quantite - ligne.quantitePayee;
+      const restant = ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee;
       if (entree.quantite > restant) {
         res.status(400).json({ error: `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})` });
         return;

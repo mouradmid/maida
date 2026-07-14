@@ -45,7 +45,7 @@ export function EspaceCaisse() {
             ))}
           </nav>
 
-          {onglet === 'commande' && <PriseDeCommande />}
+          {onglet === 'commande' && <PriseDeCommande droitAnnuler={user.droits.includes('ANNULER')} />}
           {onglet === 'encaissement' && <Encaissement />}
           {onglet === 'cuisine' && <EcranCuisine />}
         </main>

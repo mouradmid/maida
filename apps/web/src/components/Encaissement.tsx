@@ -96,7 +96,9 @@ export function Encaissement() {
   }
 
   const lignesToutes = detail?.commandes.flatMap((c) => c.lignes) ?? [];
-  const lignesDisponibles = lignesToutes.filter((l) => l.quantite - l.quantitePayee > 0);
+  const lignesDisponibles = lignesToutes.filter(
+    (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0,
+  );
 
   const montantArticles = lignesDisponibles.reduce((s, l) => {
     const qte = selection[l.id] ?? 0;
@@ -223,24 +225,39 @@ export function Encaissement() {
           </div>
 
           <ul className="flex flex-col divide-y divide-stone-100 border-t border-stone-100 pt-2 text-sm">
-            {lignesToutes.map((l) => (
-              <li key={l.id} className="flex items-center justify-between gap-2 py-2">
-                <span className="min-w-0">
-                  <span className="font-medium text-stone-900">
-                    {l.quantite}× {l.nomProduit}
-                  </span>
-                  {l.options.length > 0 && (
-                    <span className="ml-1 text-xs text-stone-500">
-                      ({l.options.map((o) => o.valeur).join(', ')})
+            {lignesToutes.map((l) => {
+              const quantiteActive = l.quantite - l.quantiteAnnulee;
+              const touteAnnulee = quantiteActive === 0;
+              return (
+                <li key={l.id} className="flex items-center justify-between gap-2 py-2">
+                  <span className="min-w-0">
+                    <span
+                      className={`font-medium ${touteAnnulee ? 'text-stone-400 line-through' : 'text-stone-900'}`}
+                    >
+                      {touteAnnulee ? l.quantite : quantiteActive}× {l.nomProduit}
                     </span>
-                  )}
-                  {l.quantitePayee > 0 && (
-                    <span className={`${badgeVert} ml-2`}>{l.quantitePayee} payé{l.quantitePayee > 1 ? 's' : ''}</span>
-                  )}
-                </span>
-                <span className="font-medium text-stone-900">{l.prixUnitaire * l.quantite} DA</span>
-              </li>
-            ))}
+                    {l.options.length > 0 && (
+                      <span className="ml-1 text-xs text-stone-500">
+                        ({l.options.map((o) => o.valeur).join(', ')})
+                      </span>
+                    )}
+                    {l.quantitePayee > 0 && (
+                      <span className={`${badgeVert} ml-2`}>{l.quantitePayee} payé{l.quantitePayee > 1 ? 's' : ''}</span>
+                    )}
+                    {l.quantiteAnnulee > 0 && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                        {l.quantiteAnnulee} annulé{l.quantiteAnnulee > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={`font-medium ${touteAnnulee ? 'text-stone-400 line-through' : 'text-stone-900'}`}
+                  >
+                    {l.prixUnitaire * (touteAnnulee ? l.quantite : quantiteActive)} DA
+                  </span>
+                </li>
+              );
+            })}
           </ul>
 
           {detail.paiements.length > 0 && (
@@ -310,7 +327,7 @@ export function Encaissement() {
             {mode === 'ARTICLES' && (
               <ul className="flex flex-col gap-2 text-sm">
                 {lignesDisponibles.map((l) => {
-                  const restant = l.quantite - l.quantitePayee;
+                  const restant = l.quantite - l.quantitePayee - l.quantiteAnnulee;
                   const qteChoisie = selection[l.id] ?? 0;
                   return (
                     <li key={l.id} className="flex items-center justify-between gap-2">

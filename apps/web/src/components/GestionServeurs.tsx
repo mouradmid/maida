@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, type DroitUtilisateur } from '../lib/api';
 import { badgeNeutre, badgeVert, boutonPrimaire, carte, champ, messageErreur } from '../lib/ui';
 
 interface Serveur {
@@ -7,6 +7,7 @@ interface Serveur {
   nom: string;
   prenom: string;
   statut: string;
+  droits: DroitUtilisateur[];
   creeLe: string;
 }
 
@@ -33,6 +34,19 @@ export function GestionServeurs() {
     charger();
   }, []);
 
+  async function handleToggleDroitAnnuler(serveur: Serveur) {
+    setErreur(null);
+    const droits = serveur.droits.includes('ANNULER')
+      ? serveur.droits.filter((d) => d !== 'ANNULER')
+      : [...serveur.droits, 'ANNULER' as const];
+    try {
+      await api.updateDroitsServeur(serveur.id, droits);
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   async function handleAjouter(e: React.FormEvent) {
     e.preventDefault();
     setErreur(null);
@@ -57,22 +71,37 @@ export function GestionServeurs() {
         <div className={carte}>
           <h3 className="mb-3 font-semibold text-stone-900">Serveurs ({serveurs.length})</h3>
           <ul className="flex flex-col divide-y divide-stone-100">
-            {serveurs.map((s) => (
-              <li key={s.id} className="flex items-center justify-between py-2.5 text-sm">
-                <span className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-800">
-                    {s.prenom.charAt(0)}
-                    {s.nom.charAt(0)}
+            {serveurs.map((s) => {
+              const peutAnnuler = s.droits.includes('ANNULER');
+              return (
+                <li key={s.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-800">
+                      {s.prenom.charAt(0)}
+                      {s.nom.charAt(0)}
+                    </span>
+                    <span className="font-medium text-stone-900">
+                      {s.prenom} {s.nom}
+                    </span>
+                    <span className={s.statut === 'ACTIF' ? badgeVert : badgeNeutre}>
+                      {s.statut === 'ACTIF' ? 'actif' : 'désactivé'}
+                    </span>
                   </span>
-                  <span className="font-medium text-stone-900">
-                    {s.prenom} {s.nom}
-                  </span>
-                </span>
-                <span className={s.statut === 'ACTIF' ? badgeVert : badgeNeutre}>
-                  {s.statut === 'ACTIF' ? 'actif' : 'désactivé'}
-                </span>
-              </li>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleDroitAnnuler(s)}
+                    title="Autoriser ce serveur à annuler sans validation du gérant"
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      peutAnnuler
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                    }`}
+                  >
+                    {peutAnnuler ? '✓ Peut annuler' : 'Ne peut pas annuler'}
+                  </button>
+                </li>
+              );
+            })}
             {serveurs.length === 0 && (
               <li className="py-2 text-sm text-stone-400">Aucun serveur pour l'instant.</li>
             )}

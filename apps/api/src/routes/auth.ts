@@ -21,6 +21,7 @@ function toPublicUser(utilisateur: Utilisateur) {
     nom: utilisateur.nom,
     prenom: utilisateur.prenom,
     role: utilisateur.role,
+    droits: utilisateur.droits,
     compteClientId: utilisateur.compteClientId,
     etablissementId: utilisateur.etablissementId,
   };

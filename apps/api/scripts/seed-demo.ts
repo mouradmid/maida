@@ -148,21 +148,25 @@ async function main() {
   });
   if (!gerant || serveurs.length < 2) throw new Error('Gérant ou serveurs manquants');
 
-  // Identifiants de démo connus
+  // Identifiants de démo connus. Sofiane a le droit d'annuler, Yacine non
+  // (pour démontrer la validation par code gérant : PIN 9999).
   await prisma.utilisateur.update({
     where: { id: gerant.id },
-    data: { motDePasseHash: await bcrypt.hash('demo1234', 12) },
+    data: {
+      motDePasseHash: await bcrypt.hash('demo1234', 12),
+      codePinHash: await bcrypt.hash('9999', 12),
+    },
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[0].id },
-    data: { codePinHash: await bcrypt.hash('1234', 12) },
+    data: { codePinHash: await bcrypt.hash('1234', 12), droits: ['ANNULER'] },
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[1].id },
-    data: { codePinHash: await bcrypt.hash('5678', 12) },
+    data: { codePinHash: await bcrypt.hash('5678', 12), droits: [] },
   });
-  console.log(`Gérant : ${gerant.email} / demo1234`);
-  console.log(`Serveur ${serveurs[0].prenom} : PIN 1234 — Serveur ${serveurs[1].prenom} : PIN 5678`);
+  console.log(`Gérant : ${gerant.email} / demo1234 — PIN validation 9999`);
+  console.log(`Serveur ${serveurs[0].prenom} : PIN 1234 (droit annuler) — Serveur ${serveurs[1].prenom} : PIN 5678`);
 
   // Purge des données transactionnelles et du menu existant
   await prisma.paiementLigne.deleteMany({});

@@ -33,6 +33,11 @@ enum StatutUtilisateur {
   DESACTIVE
 }
 
+// Droits spécifiques activables individuellement (en plus du rôle).
+enum DroitUtilisateur {
+  ANNULER
+}
+
 enum StatutCategorie {
   ACTIF
   INACTIF
@@ -107,6 +112,7 @@ model Etablissement {
   commandes    Commande[]
   tables       Table[]
   additions    Addition[]
+  annulations  Annulation[]
 
   @@map("etablissements")
 }
@@ -119,6 +125,7 @@ model Utilisateur {
   email          String?           @unique
   motDePasseHash String?
   codePinHash    String?
+  droits         DroitUtilisateur[] @default([])
   statut         StatutUtilisateur @default(ACTIF)
   creeLe         DateTime          @default(now())
   majLe          DateTime          @updatedAt
@@ -129,7 +136,9 @@ model Utilisateur {
   etablissementId String?
   etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
 
-  commandes Commande[]
+  commandes            Commande[]
+  annulationsValidees  Annulation[] @relation("AnnulationsValidees")
+  annulationsDemandees Annulation[] @relation("AnnulationsDemandees")
 
   @@map("utilisateurs")
 }
@@ -213,18 +222,20 @@ model Commande {
   additionId String
   addition   Addition @relation(fields: [additionId], references: [id])
 
-  lignes LigneCommande[]
+  lignes      LigneCommande[]
+  annulations Annulation[]
 
   @@map("commandes")
 }
 
 model LigneCommande {
-  id            String   @id @default(cuid())
-  nomProduit    String
-  prixUnitaire  Decimal  @db.Decimal(10, 2)
-  quantite      Int
-  quantitePayee Int      @default(0)
-  creeLe        DateTime @default(now())
+  id              String   @id @default(cuid())
+  nomProduit      String
+  prixUnitaire    Decimal  @db.Decimal(10, 2)
+  quantite        Int
+  quantitePayee   Int      @default(0)
+  quantiteAnnulee Int      @default(0)
+  creeLe          DateTime @default(now())
 
   commandeId String
   commande   Commande @relation(fields: [commandeId], references: [id])
@@ -234,6 +245,7 @@ model LigneCommande {
 
   options        LigneCommandeOption[]
   paiementLignes PaiementLigne[]
+  annulations    Annulation[]
 
   @@map("lignes_commande")
 }
@@ -298,6 +310,36 @@ model LigneCommandeOption {
   optionValeur   OptionValeur? @relation(fields: [optionValeurId], references: [id], onDelete: SetNull)
 
   @@map("lignes_commande_options")
+}
+
+// Trace de chaque annulation : qui, quand, quoi, pourquoi.
+model Annulation {
+  id               String   @id @default(cuid())
+  motif            String
+  commentaire      String?
+  quantite         Int
+  montant          Decimal  @db.Decimal(10, 2)
+  apresPreparation Boolean  @default(false)
+  creeLe           DateTime @default(now())
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  commandeId String
+  commande   Commande @relation(fields: [commandeId], references: [id])
+
+  ligneCommandeId String?
+  ligneCommande   LigneCommande? @relation(fields: [ligneCommandeId], references: [id])
+
+  // Celui qui porte la responsabilité (serveur avec le droit, ou gérant validant).
+  annuleeParId String
+  annuleePar   Utilisateur @relation("AnnulationsValidees", fields: [annuleeParId], references: [id])
+
+  // Le serveur qui a demandé, quand la validation vient d'un gérant.
+  demandeeParId String?
+  demandeePar   Utilisateur? @relation("AnnulationsDemandees", fields: [demandeeParId], references: [id])
+
+  @@map("annulations")
 }
 
 model Table {

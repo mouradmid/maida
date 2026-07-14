@@ -1,3 +1,4 @@
+// Seed initial : crée uniquement le compte super-admin (voir scripts/seed-demo.ts pour la démo).
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../src/lib/prisma';

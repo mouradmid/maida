@@ -6,6 +6,7 @@ import { GestionMenu } from '../components/GestionMenu';
 import { GestionServeurs } from '../components/GestionServeurs';
 import { PlanDeSalle } from '../components/PlanDeSalle';
 import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
+import { HistoriqueAnnulations } from '../components/HistoriqueAnnulations';
 import { useMe } from '../hooks/useMe';
 
 const ONGLETS = [
@@ -13,6 +14,7 @@ const ONGLETS = [
   { id: 'menu', libelle: 'Menu' },
   { id: 'equipe', libelle: 'Équipe' },
   { id: 'paiements', libelle: 'Paiements' },
+  { id: 'annulations', libelle: 'Annulations' },
 ] as const;
 
 type Onglet = (typeof ONGLETS)[number]['id'];
@@ -51,6 +53,7 @@ export function EspaceGerant() {
           {onglet === 'menu' && <GestionMenu />}
           {onglet === 'equipe' && <GestionServeurs />}
           {onglet === 'paiements' && <ConfigMoyensPaiement />}
+          {onglet === 'annulations' && <HistoriqueAnnulations />}
         </main>
       </div>
     );

@@ -22,11 +22,43 @@ gerantRouter.get('/serveurs', async (req, res) => {
 
   const serveurs = await prisma.utilisateur.findMany({
     where: { etablissementId, role: 'SERVEUR' },
-    select: { id: true, nom: true, prenom: true, statut: true, creeLe: true },
+    select: { id: true, nom: true, prenom: true, statut: true, droits: true, creeLe: true },
     orderBy: { creeLe: 'desc' },
   });
 
   res.json(serveurs);
+});
+
+const DROITS_VALIDES = ['ANNULER'] as const;
+
+gerantRouter.patch('/serveurs/:id/droits', async (req, res) => {
+  const { droits } = req.body ?? {};
+
+  if (
+    !Array.isArray(droits) ||
+    droits.some((d) => !DROITS_VALIDES.includes(d as (typeof DROITS_VALIDES)[number]))
+  ) {
+    res.status(400).json({ error: 'Droits invalides' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const serveur = await prisma.utilisateur.findFirst({
+    where: { id: req.params.id, etablissementId, role: 'SERVEUR' },
+  });
+  if (!serveur) {
+    res.status(404).json({ error: 'Serveur introuvable' });
+    return;
+  }
+
+  const majApres = await prisma.utilisateur.update({
+    where: { id: serveur.id },
+    data: { droits: [...new Set(droits as (typeof DROITS_VALIDES)[number][])] },
+    select: { id: true, nom: true, prenom: true, statut: true, droits: true, creeLe: true },
+  });
+
+  res.json(majApres);
 });
 
 gerantRouter.post('/serveurs', async (req, res) => {
@@ -492,4 +524,45 @@ gerantRouter.patch('/moyens-paiement', async (req, res) => {
   });
 
   res.json({ actifs: etablissement.moyensPaiementActifs, tous: MOYENS_PAIEMENT_VALIDES });
+});
+
+// --- Historique des annulations ---
+
+gerantRouter.get('/annulations', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const annulations = await prisma.annulation.findMany({
+    where: { etablissementId },
+    include: {
+      commande: {
+        select: {
+          id: true,
+          canal: true,
+          addition: { select: { table: { select: { numero: true } } } },
+        },
+      },
+      ligneCommande: { select: { nomProduit: true } },
+      annuleePar: { select: { nom: true, prenom: true, role: true } },
+      demandeePar: { select: { nom: true, prenom: true } },
+    },
+    orderBy: { creeLe: 'desc' },
+    take: 200,
+  });
+
+  res.json(
+    annulations.map((a) => ({
+      id: a.id,
+      motif: a.motif,
+      commentaire: a.commentaire,
+      quantite: a.quantite,
+      montant: Number(a.montant),
+      apresPreparation: a.apresPreparation,
+      creeLe: a.creeLe,
+      canal: a.commande.canal,
+      table: a.commande.addition.table,
+      produit: a.ligneCommande?.nomProduit ?? null,
+      annuleePar: a.annuleePar,
+      demandeePar: a.demandeePar,
+    })),
+  );
 });

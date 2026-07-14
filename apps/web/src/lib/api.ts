@@ -1,11 +1,14 @@
 const API_BASE = '/api';
 
+export type DroitUtilisateur = 'ANNULER';
+
 export interface Utilisateur {
   id: string;
   email: string | null;
   nom: string;
   prenom: string;
   role: 'SUPER_ADMIN' | 'GERANT' | 'SERVEUR';
+  droits: DroitUtilisateur[];
   compteClientId: string | null;
   etablissementId: string | null;
 }
@@ -63,6 +66,7 @@ export interface LigneCommande {
   prixUnitaire: number;
   quantite: number;
   quantitePayee: number;
+  quantiteAnnulee: number;
   options: Array<{ nomGroupe: string; valeur: string }>;
 }
 
@@ -214,12 +218,43 @@ export const api = {
   ) => apiFetch<Produit>(`/gerant/produits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   listServeurs: () =>
-    apiFetch<Array<{ id: string; nom: string; prenom: string; statut: string; creeLe: string }>>(
-      '/gerant/serveurs',
-    ),
+    apiFetch<
+      Array<{
+        id: string;
+        nom: string;
+        prenom: string;
+        statut: string;
+        droits: DroitUtilisateur[];
+        creeLe: string;
+      }>
+    >('/gerant/serveurs'),
 
   createServeur: (data: { nom: string; prenom: string; codePin: string }) =>
     apiFetch('/gerant/serveurs', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateDroitsServeur: (id: string, droits: DroitUtilisateur[]) =>
+    apiFetch<{ id: string; droits: DroitUtilisateur[] }>(`/gerant/serveurs/${id}/droits`, {
+      method: 'PATCH',
+      body: JSON.stringify({ droits }),
+    }),
+
+  listAnnulations: () =>
+    apiFetch<
+      Array<{
+        id: string;
+        motif: string;
+        commentaire: string | null;
+        quantite: number;
+        montant: number;
+        apresPreparation: boolean;
+        creeLe: string;
+        canal: 'SUR_PLACE' | 'EMPORTER';
+        table: { numero: string } | null;
+        produit: string | null;
+        annuleePar: { nom: string; prenom: string; role: string };
+        demandeePar: { nom: string; prenom: string } | null;
+      }>
+    >('/gerant/annulations'),
 
   caisseMenu: () => apiFetch<CategorieMenu[]>('/caisse/menu'),
 
@@ -231,6 +266,19 @@ export const api = {
 
   marquerCommandePrete: (id: string) =>
     apiFetch<Commande>(`/caisse/commandes/${id}/prete`, { method: 'PATCH' }),
+
+  annulerCommande: (
+    id: string,
+    data:
+      | { portee: 'COMMANDE'; motif: string; commentaire?: string; codeGerant?: string }
+      | {
+          portee: 'LIGNES';
+          lignes: Array<{ ligneCommandeId: string; quantite: number }>;
+          motif: string;
+          commentaire?: string;
+          codeGerant?: string;
+        },
+  ) => apiFetch<Commande>(`/caisse/commandes/${id}/annulation`, { method: 'POST', body: JSON.stringify(data) }),
 
   creerCommande: (data: {
     canal: 'SUR_PLACE' | 'EMPORTER';
