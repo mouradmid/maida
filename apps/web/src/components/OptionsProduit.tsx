@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Produit } from '../lib/api';
+import { boutonPrimaire, champ, messageErreur } from '../lib/ui';
 
 export function OptionsProduit({ produit, onChange }: { produit: Produit; onChange: () => void }) {
   const [nouveauGroupeNom, setNouveauGroupeNom] = useState('');
@@ -48,28 +49,41 @@ export function OptionsProduit({ produit, onChange }: { produit: Produit; onChan
   }
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded p-3 flex flex-col gap-3 text-sm">
-      {erreur && <p className="text-red-600">{erreur}</p>}
+    <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm">
+      {erreur && <p className={messageErreur}>{erreur}</p>}
 
       {produit.groupesOptions.length === 0 && (
-        <p className="text-gray-400">Aucune mention spéciale pour ce produit.</p>
+        <p className="text-stone-400">Aucune option pour ce produit.</p>
       )}
 
       {produit.groupesOptions.map((groupe) => (
-        <div key={groupe.id} className="flex flex-col gap-1">
+        <div key={groupe.id} className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="font-medium">
-              {groupe.nom} {groupe.obligatoire && <span className="text-xs text-gray-500">(obligatoire)</span>}
+            <span className="font-medium text-stone-900">
+              {groupe.nom}{' '}
+              {groupe.obligatoire && <span className="text-xs text-brand-700">(obligatoire)</span>}
             </span>
-            <button type="button" onClick={() => handleSupprimerGroupe(groupe.id)} className="underline text-xs">
+            <button
+              type="button"
+              onClick={() => handleSupprimerGroupe(groupe.id)}
+              className="text-xs font-medium text-red-600 hover:text-red-800"
+            >
               Supprimer le groupe
             </button>
           </div>
           <ul className="flex flex-wrap gap-2">
             {groupe.valeurs.map((valeur) => (
-              <li key={valeur.id} className="flex items-center gap-1 bg-white border border-gray-300 rounded px-2 py-1">
+              <li
+                key={valeur.id}
+                className="flex items-center gap-1.5 rounded-full border border-stone-300 bg-white px-3 py-1"
+              >
                 <span>{valeur.valeur}</span>
-                <button type="button" onClick={() => handleSupprimerValeur(valeur.id)} className="text-gray-400">
+                <button
+                  type="button"
+                  onClick={() => handleSupprimerValeur(valeur.id)}
+                  className="text-stone-400 transition-colors hover:text-red-600"
+                  aria-label={`Supprimer ${valeur.valeur}`}
+                >
                   ×
                 </button>
               </li>
@@ -81,33 +95,40 @@ export function OptionsProduit({ produit, onChange }: { produit: Produit; onChan
               placeholder="Nouvelle valeur"
               value={nouvellesValeurs[groupe.id] ?? ''}
               onChange={(e) => setNouvellesValeurs((v) => ({ ...v, [groupe.id]: e.target.value }))}
-              className="flex-1 rounded border border-gray-300 px-2 py-1"
+              className={champ}
             />
-            <button type="submit" className="rounded border border-gray-300 px-2 py-1">
+            <button
+              type="submit"
+              className="shrink-0 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
+            >
               Ajouter
             </button>
           </form>
         </div>
       ))}
 
-      <form onSubmit={handleAjouterGroupe} className="flex items-center gap-2 border-t border-gray-200 pt-2">
+      <form
+        onSubmit={handleAjouterGroupe}
+        className="flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3"
+      >
         <input
           type="text"
-          placeholder="Nouveau groupe (ex: Cuisson)"
+          placeholder="Nouveau groupe (ex : Cuisson)"
           value={nouveauGroupeNom}
           onChange={(e) => setNouveauGroupeNom(e.target.value)}
           required
-          className="flex-1 rounded border border-gray-300 px-2 py-1"
+          className={`${champ} flex-1`}
         />
-        <label className="flex items-center gap-1 whitespace-nowrap">
+        <label className="flex items-center gap-1.5 whitespace-nowrap text-stone-600">
           <input
             type="checkbox"
             checked={nouveauGroupeObligatoire}
             onChange={(e) => setNouveauGroupeObligatoire(e.target.checked)}
+            className="h-4 w-4 accent-brand-600"
           />
           Obligatoire
         </label>
-        <button type="submit" className="rounded bg-gray-900 text-white px-3 py-1">
+        <button type="submit" className={boutonPrimaire}>
           Ajouter le groupe
         </button>
       </form>

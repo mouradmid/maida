@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
+@theme {
+  /* Palette Maïda — terracotta chaleureux */
+  --color-brand-50: #fdf6ef;
+  --color-brand-100: #f9e8d8;
+  --color-brand-200: #f2cfaf;
+  --color-brand-300: #e9ae7d;
+  --color-brand-400: #de8749;
+  --color-brand-500: #d16a27;
+  --color-brand-600: #c2551c;
+  --color-brand-700: #a1421a;
+  --color-brand-800: #82361c;
+  --color-brand-900: #6a2e19;
+}
+
 body {
   margin: 0;
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--color-stone-100);
+  color: var(--color-stone-900);
 }

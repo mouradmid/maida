@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type ModePaiement } from '../lib/api';
+import { carte, messageErreur } from '../lib/ui';
 
 const LIBELLES: Record<ModePaiement, string> = {
   ESPECES: 'Espèces',
@@ -46,27 +47,38 @@ export function ConfigMoyensPaiement() {
     }
   }
 
-  if (chargement) return <p>Chargement...</p>;
+  if (chargement) return <p className="text-center text-stone-500">Chargement...</p>;
 
   return (
-    <div className="w-full max-w-2xl flex flex-col gap-3 text-left">
-      <h2 className="text-xl font-semibold">Moyens de paiement acceptés</h2>
-      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
-      <p className="text-sm text-gray-500">
-        Décochez un moyen pour qu'il n'apparaisse plus à l'encaissement. Vous pouvez le réactiver à tout moment.
-      </p>
-      <div className="flex flex-wrap gap-4">
-        {tous.map((mode) => (
-          <label key={mode} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={actifs.includes(mode)}
+    <div className={`${carte} flex w-full max-w-2xl flex-col gap-4`}>
+      <div>
+        <h3 className="font-semibold text-stone-900">Moyens de paiement acceptés</h3>
+        <p className="mt-1 text-sm text-stone-500">
+          Désactivez un moyen pour qu'il n'apparaisse plus à l'encaissement. Vous pouvez le réactiver à
+          tout moment.
+        </p>
+      </div>
+      {erreur && <p className={messageErreur}>{erreur}</p>}
+      <div className="flex flex-wrap gap-2">
+        {tous.map((mode) => {
+          const actif = actifs.includes(mode);
+          return (
+            <button
+              key={mode}
+              type="button"
               disabled={enregistrement}
-              onChange={() => handleToggle(mode)}
-            />
-            {LIBELLES[mode]}
-          </label>
-        ))}
+              onClick={() => handleToggle(mode)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                actif
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+              }`}
+            >
+              {actif ? '✓ ' : ''}
+              {LIBELLES[mode]}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

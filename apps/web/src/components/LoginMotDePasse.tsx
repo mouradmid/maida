@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Utilisateur } from '../lib/api';
+import { boutonPrimaire, champ, messageErreur } from '../lib/ui';
 
 export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) => void }) {
   const [email, setEmail] = useState('');
@@ -22,9 +23,9 @@ export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full max-w-sm">
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
       <div>
-        <label className="block text-sm font-medium mb-1" htmlFor="email">
+        <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="email">
           Email
         </label>
         <input
@@ -33,11 +34,12 @@ export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) 
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2"
+          className={champ}
+          placeholder="vous@exemple.dz"
         />
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1" htmlFor="password">
+        <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="password">
           Mot de passe
         </label>
         <input
@@ -46,15 +48,11 @@ export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) 
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2"
+          className={champ}
         />
       </div>
-      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
-      <button
-        type="submit"
-        disabled={enCours}
-        className="rounded bg-gray-900 text-white py-2 font-medium disabled:opacity-50"
-      >
+      {erreur && <p className={messageErreur}>{erreur}</p>}
+      <button type="submit" disabled={enCours} className={`${boutonPrimaire} py-2.5`}>
         {enCours ? 'Connexion...' : 'Se connecter'}
       </button>
     </form>

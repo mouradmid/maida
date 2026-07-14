@@ -56,7 +56,9 @@ caisseRouter.get('/menu', async (req, res) => {
         orderBy: { nom: 'asc' },
       },
     },
-    orderBy: { nom: 'asc' },
+    // Ordre de création : le gérant construit son menu dans l'ordre du repas
+    // (entrées, plats, desserts), on le respecte à la caisse.
+    orderBy: { creeLe: 'asc' },
   });
 
   res.json(
@@ -73,8 +75,10 @@ caisseRouter.get('/tables', async (req, res) => {
   const tables = await prisma.table.findMany({
     where: { etablissementId, statut: 'ACTIF' },
     select: { id: true, numero: true, nombreCouverts: true, forme: true },
-    orderBy: { numero: 'asc' },
   });
+
+  // Tri numérique naturel : « Table 2 » avant « Table 10 » (numero est une chaîne).
+  tables.sort((a, b) => a.numero.localeCompare(b.numero, 'fr', { numeric: true }));
 
   res.json(tables);
 });

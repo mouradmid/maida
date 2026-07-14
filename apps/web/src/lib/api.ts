@@ -164,6 +164,9 @@ export const api = {
   login: (email: string, password: string) =>
     apiFetch<Utilisateur>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
+  listEtablissementsPublics: () =>
+    apiFetch<Array<{ id: string; nom: string; ville: string | null }>>('/auth/etablissements'),
+
   loginPin: (etablissementId: string, codePin: string) =>
     apiFetch<Utilisateur>('/auth/login-pin', {
       method: 'POST',

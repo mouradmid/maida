@@ -1,69 +1,139 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type Utilisateur } from '../lib/api';
+import { champ, messageErreur } from '../lib/ui';
+
+const CLE_STOCKAGE_ETAB = 'maida.etablissementId';
+const LONGUEUR_PIN = 4;
 
 export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void }) {
+  const [etablissements, setEtablissements] = useState<Array<{ id: string; nom: string; ville: string | null }>>([]);
   const [etablissementId, setEtablissementId] = useState('');
   const [codePin, setCodePin] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
+  const envoiRef = useRef(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setErreur(null);
+  useEffect(() => {
+    api
+      .listEtablissementsPublics()
+      .then((liste) => {
+        setEtablissements(liste);
+        const memorise = localStorage.getItem(CLE_STOCKAGE_ETAB);
+        if (memorise && liste.some((e) => e.id === memorise)) {
+          setEtablissementId(memorise);
+        } else if (liste.length === 1) {
+          setEtablissementId(liste[0].id);
+        }
+      })
+      .catch(() => setErreur('Impossible de charger les établissements'));
+  }, []);
+
+  async function envoyer(pin: string) {
+    if (envoiRef.current) return;
+    if (!etablissementId) {
+      setErreur('Choisissez votre établissement');
+      setCodePin('');
+      return;
+    }
+    envoiRef.current = true;
     setEnCours(true);
+    setErreur(null);
     try {
-      const user = await api.loginPin(etablissementId, codePin);
+      localStorage.setItem(CLE_STOCKAGE_ETAB, etablissementId);
+      const user = await api.loginPin(etablissementId, pin);
       onSuccess(user);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur de connexion');
+      setCodePin('');
     } finally {
+      envoiRef.current = false;
       setEnCours(false);
     }
   }
 
+  function appuyerChiffre(chiffre: string) {
+    if (enCours) return;
+    setErreur(null);
+    setCodePin((pin) => {
+      if (pin.length >= LONGUEUR_PIN) return pin;
+      const nouveau = pin + chiffre;
+      if (nouveau.length === LONGUEUR_PIN) {
+        // Laisse le temps au dernier point de s'afficher avant l'envoi.
+        setTimeout(() => envoyer(nouveau), 120);
+      }
+      return nouveau;
+    });
+  }
+
+  function effacer() {
+    if (enCours) return;
+    setCodePin((pin) => pin.slice(0, -1));
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full max-w-sm">
+    <div className="flex w-full flex-col gap-5">
       <div>
-        <label className="block text-sm font-medium mb-1" htmlFor="etablissementId">
-          Identifiant établissement
+        <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="etablissementId">
+          Établissement
         </label>
-        <input
+        <select
           id="etablissementId"
-          type="text"
-          required
           value={etablissementId}
           onChange={(e) => setEtablissementId(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2"
-          placeholder="ex: cmri3h0p60001nomf1z72yucg"
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Provisoire : plus tard, chaque terminal caisse connaîtra son établissement automatiquement.
-        </p>
+          className={champ}
+        >
+          <option value="">Choisir un établissement</option>
+          {etablissements.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nom}
+              {e.ville ? ` — ${e.ville}` : ''}
+            </option>
+          ))}
+        </select>
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1" htmlFor="codePin">
-          Code PIN
-        </label>
-        <input
-          id="codePin"
-          type="password"
-          inputMode="numeric"
-          pattern="\d{4}"
-          maxLength={4}
-          required
-          value={codePin}
-          onChange={(e) => setCodePin(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-center text-2xl tracking-[0.5em]"
-        />
+
+      <div className="flex justify-center gap-3" aria-label="Code PIN">
+        {Array.from({ length: LONGUEUR_PIN }).map((_, i) => (
+          <span
+            key={i}
+            className={`h-4 w-4 rounded-full border-2 transition-colors ${
+              i < codePin.length ? 'border-brand-600 bg-brand-600' : 'border-stone-300 bg-white'
+            }`}
+          />
+        ))}
       </div>
-      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
-      <button
-        type="submit"
-        disabled={enCours}
-        className="rounded bg-gray-900 text-white py-2 font-medium disabled:opacity-50"
-      >
-        {enCours ? 'Connexion...' : 'Se connecter'}
-      </button>
-    </form>
+
+      {erreur && <p className={messageErreur}>{erreur}</p>}
+      {enCours && <p className="text-center text-sm text-stone-500">Connexion...</p>}
+
+      <div className="grid grid-cols-3 gap-2">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((chiffre) => (
+          <button
+            key={chiffre}
+            type="button"
+            onClick={() => appuyerChiffre(chiffre)}
+            className="rounded-xl border border-stone-200 bg-white py-4 text-xl font-semibold text-stone-800 transition-colors hover:bg-stone-50 active:bg-brand-50"
+          >
+            {chiffre}
+          </button>
+        ))}
+        <span />
+        <button
+          type="button"
+          onClick={() => appuyerChiffre('0')}
+          className="rounded-xl border border-stone-200 bg-white py-4 text-xl font-semibold text-stone-800 transition-colors hover:bg-stone-50 active:bg-brand-50"
+        >
+          0
+        </button>
+        <button
+          type="button"
+          onClick={effacer}
+          aria-label="Effacer"
+          className="rounded-xl border border-stone-200 bg-white py-4 text-xl text-stone-500 transition-colors hover:bg-stone-50 active:bg-brand-50"
+        >
+          ⌫
+        </button>
+      </div>
+    </div>
   );
 }

@@ -82,6 +82,17 @@ authRouter.post('/login-pin', async (req, res) => {
   res.json(toPublicUser(serveurTrouve));
 });
 
+// Provisoire : permet au terminal caisse de choisir son établissement au login.
+// Plus tard, chaque terminal sera associé à son établissement automatiquement.
+authRouter.get('/etablissements', async (_req, res) => {
+  const etablissements = await prisma.etablissement.findMany({
+    where: { statut: 'ACTIF' },
+    select: { id: true, nom: true, ville: true },
+    orderBy: { nom: 'asc' },
+  });
+  res.json(etablissements);
+});
+
 authRouter.get('/me', requireAuth, async (req, res) => {
   const utilisateur = await prisma.utilisateur.findUnique({ where: { id: req.user!.id } });
 

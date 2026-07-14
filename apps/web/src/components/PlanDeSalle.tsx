@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type TablePlan } from '../lib/api';
+import { badgeNeutre, boutonDiscret, boutonPrimaire, carte, champ, messageErreur } from '../lib/ui';
 
 const CANVAS_LARGEUR = 900;
 const CANVAS_HAUTEUR = 500;
@@ -10,8 +11,14 @@ const TAILLES_PAR_FORME: Record<TablePlan['forme'], { largeur: number; hauteur: 
   RECTANGULAIRE: { largeur: 130, hauteur: 70 },
 };
 
+const LIBELLES_FORME: Record<TablePlan['forme'], string> = {
+  RONDE: 'ronde',
+  CARREE: 'carrée',
+  RECTANGULAIRE: 'rectangulaire',
+};
+
 function radiusPour(forme: TablePlan['forme']) {
-  return forme === 'RONDE' ? '50%' : '8px';
+  return forme === 'RONDE' ? '50%' : '10px';
 }
 
 interface DragState {
@@ -121,87 +128,104 @@ export function PlanDeSalle() {
     };
   }, [tables]);
 
-  if (chargement) return <p>Chargement du plan de salle...</p>;
+  if (chargement) return <p className="text-center text-stone-500">Chargement du plan de salle...</p>;
 
   return (
-    <div className="w-full max-w-3xl flex flex-col gap-4 text-left">
-      <h2 className="text-xl font-semibold">Plan de salle</h2>
-      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+    <div className="flex w-full flex-col gap-4">
+      {erreur && <p className={messageErreur}>{erreur}</p>}
 
-      <div
-        className="relative bg-gray-50 border border-gray-300 rounded overflow-hidden"
-        style={{ width: CANVAS_LARGEUR, height: CANVAS_HAUTEUR, maxWidth: '100%' }}
-      >
-        {tables.map((table) => (
-          <div
-            key={table.id}
-            onPointerDown={(e) => handlePointerDown(e, table)}
-            className={`absolute flex flex-col items-center justify-center border-2 cursor-grab select-none text-sm font-medium ${
-              table.statut === 'INACTIF' ? 'border-gray-300 bg-gray-200 text-gray-400' : 'border-gray-700 bg-white'
-            }`}
-            style={{
-              left: table.positionX,
-              top: table.positionY,
-              width: table.largeur,
-              height: table.hauteur,
-              borderRadius: radiusPour(table.forme),
-              touchAction: 'none',
-            }}
-          >
-            <span>{table.numero}</span>
-            <span className="text-xs text-gray-500">{table.nombreCouverts} couverts</span>
-          </div>
-        ))}
+      <div className={`${carte} overflow-x-auto`}>
+        <p className="mb-3 text-sm text-stone-500">
+          Glissez-déposez les tables pour organiser votre salle.
+        </p>
+        <div
+          className="relative rounded-xl border border-stone-200 bg-stone-50"
+          style={{
+            width: CANVAS_LARGEUR,
+            height: CANVAS_HAUTEUR,
+            maxWidth: '100%',
+            backgroundImage: 'radial-gradient(circle, #d6d3d1 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+          }}
+        >
+          {tables.map((table) => (
+            <div
+              key={table.id}
+              onPointerDown={(e) => handlePointerDown(e, table)}
+              className={`absolute flex cursor-grab select-none flex-col items-center justify-center border-2 text-sm font-medium shadow-sm transition-shadow hover:shadow ${
+                table.statut === 'INACTIF'
+                  ? 'border-dashed border-stone-300 bg-stone-100 text-stone-400'
+                  : 'border-brand-300 bg-white text-stone-800'
+              }`}
+              style={{
+                left: table.positionX,
+                top: table.positionY,
+                width: table.largeur,
+                height: table.hauteur,
+                borderRadius: radiusPour(table.forme),
+                touchAction: 'none',
+              }}
+            >
+              <span className="font-semibold">{table.numero}</span>
+              <span className="text-xs text-stone-400">{table.nombreCouverts} couv.</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <ul className="flex flex-col gap-1">
-        {tables.map((table) => (
-          <li key={table.id} className="flex items-center justify-between text-sm">
-            <span>
-              Table {table.numero} — {table.forme.toLowerCase()} — {table.nombreCouverts} couverts
-              {table.statut === 'INACTIF' && ' (désactivée)'}
-            </span>
-            <button type="button" onClick={() => handleToggleTable(table)} className="underline">
-              {table.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="grid items-start gap-4 lg:grid-cols-[1fr_360px]">
+        <div className={carte}>
+          <h3 className="mb-3 font-semibold text-stone-900">Tables ({tables.length})</h3>
+          <ul className="flex flex-col divide-y divide-stone-100">
+            {tables.map((table) => (
+              <li key={table.id} className="flex items-center justify-between py-2.5 text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="font-medium text-stone-900">Table {table.numero}</span>
+                  <span className={badgeNeutre}>
+                    {LIBELLES_FORME[table.forme]} · {table.nombreCouverts} couverts
+                  </span>
+                  {table.statut === 'INACTIF' && <span className={badgeNeutre}>désactivée</span>}
+                </span>
+                <button type="button" onClick={() => handleToggleTable(table)} className={boutonDiscret}>
+                  {table.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
+                </button>
+              </li>
+            ))}
+            {tables.length === 0 && <li className="py-2 text-sm text-stone-400">Aucune table pour l'instant.</li>}
+          </ul>
+        </div>
 
-      <form onSubmit={handleAjouterTable} className="border border-gray-200 rounded p-4 flex flex-col gap-2">
-        <h3 className="font-medium">Ajouter une table</h3>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Numéro"
-            value={numero}
-            onChange={(e) => setNumero(e.target.value)}
-            required
-            className="w-24 rounded border border-gray-300 px-3 py-2"
-          />
-          <select
-            value={forme}
-            onChange={(e) => setForme(e.target.value as TablePlan['forme'])}
-            className="rounded border border-gray-300 px-3 py-2"
-          >
-            <option value="RONDE">Ronde</option>
-            <option value="CARREE">Carrée</option>
-            <option value="RECTANGULAIRE">Rectangulaire</option>
-          </select>
+        <form onSubmit={handleAjouterTable} className={`${carte} flex flex-col gap-3`}>
+          <h3 className="font-semibold text-stone-900">Ajouter une table</h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Numéro"
+              value={numero}
+              onChange={(e) => setNumero(e.target.value)}
+              required
+              className={`${champ} w-24`}
+            />
+            <select value={forme} onChange={(e) => setForme(e.target.value as TablePlan['forme'])} className={champ}>
+              <option value="RONDE">Ronde</option>
+              <option value="CARREE">Carrée</option>
+              <option value="RECTANGULAIRE">Rectangulaire</option>
+            </select>
+          </div>
           <input
             type="number"
             min="1"
-            placeholder="Couverts"
+            placeholder="Nombre de couverts"
             value={nombreCouverts}
             onChange={(e) => setNombreCouverts(e.target.value)}
             required
-            className="w-28 rounded border border-gray-300 px-3 py-2"
+            className={champ}
           />
-        </div>
-        <button type="submit" className="rounded bg-gray-900 text-white px-4 py-2">
-          Ajouter la table
-        </button>
-      </form>
+          <button type="submit" className={boutonPrimaire}>
+            Ajouter la table
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

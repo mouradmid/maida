@@ -1,64 +1,58 @@
 import { useState } from 'react';
 import { LoginPin } from '../components/LoginPin';
+import { PageConnexion } from '../components/PageConnexion';
+import { EnTeteEspace } from '../components/EnTeteEspace';
 import { PriseDeCommande } from '../components/PriseDeCommande';
 import { Encaissement } from '../components/Encaissement';
-import { api } from '../lib/api';
 import { useMe } from '../hooks/useMe';
 
 export function EspaceCaisse() {
   const { user, loading, refresh } = useMe();
   const [onglet, setOnglet] = useState<'commande' | 'encaissement'>('commande');
 
-  if (loading) return <p>Chargement...</p>;
+  if (loading) {
+    return <p className="p-8 text-center text-stone-500">Chargement...</p>;
+  }
 
   if (user?.role === 'SERVEUR') {
     return (
-      <div className="w-full max-w-3xl flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Interface caisse</h1>
-            <p className="text-sm text-gray-500">
-              {user.prenom} {user.nom}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              await api.logout();
-              refresh();
-            }}
-            className="rounded border border-gray-300 px-4 py-2"
-          >
-            Se déconnecter
-          </button>
-        </div>
+      <div className="min-h-screen">
+        <EnTeteEspace espace="Caisse" user={user} onLogout={refresh} />
+        <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+          <nav className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setOnglet('commande')}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                onglet === 'commande'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
+              }`}
+            >
+              Prise de commande
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnglet('encaissement')}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                onglet === 'encaissement'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
+              }`}
+            >
+              Encaissement
+            </button>
+          </nav>
 
-        <div className="flex gap-2 border-b border-gray-200">
-          <button
-            type="button"
-            onClick={() => setOnglet('commande')}
-            className={`px-4 py-2 text-sm ${onglet === 'commande' ? 'border-b-2 border-gray-900 font-medium' : 'text-gray-500'}`}
-          >
-            Prise de commande
-          </button>
-          <button
-            type="button"
-            onClick={() => setOnglet('encaissement')}
-            className={`px-4 py-2 text-sm ${onglet === 'encaissement' ? 'border-b-2 border-gray-900 font-medium' : 'text-gray-500'}`}
-          >
-            Encaissement
-          </button>
-        </div>
-
-        {onglet === 'commande' ? <PriseDeCommande /> : <Encaissement />}
+          {onglet === 'commande' ? <PriseDeCommande /> : <Encaissement />}
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 items-center">
-      <h1 className="text-2xl font-semibold">Interface caisse</h1>
+    <PageConnexion titre="Caisse" sousTitre="Connectez-vous avec votre code PIN.">
       <LoginPin onSuccess={refresh} />
-    </div>
+    </PageConnexion>
   );
 }
