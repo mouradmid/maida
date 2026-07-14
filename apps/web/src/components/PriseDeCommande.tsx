@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
-import { badgeNeutre, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
+import { badgeBrand, badgeNeutre, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
+import { PlanTablesCaisse } from './PlanTablesCaisse';
 
 interface ChoixOption {
   groupeOptionId: string;
@@ -121,6 +122,7 @@ export function PriseDeCommande() {
   const total = lignesPanier.reduce((s, l) => s + l.produit.prix * l.quantite, 0);
   const nbArticles = lignesPanier.reduce((s, l) => s + l.quantite, 0);
   const categorieActive = categories.find((c) => c.id === categorieActiveId) ?? categories[0];
+  const tableSelectionnee = tables.find((t) => t.id === tableId) ?? null;
 
   async function handleEnvoyerCommande() {
     setErreur(null);
@@ -181,21 +183,11 @@ export function PriseDeCommande() {
                 À emporter
               </button>
             </div>
-            {canal === 'SUR_PLACE' && (
-              <select
-                value={tableId}
-                onChange={(e) => setTableId(e.target.value)}
-                className={`${champ} w-auto`}
-              >
-                <option value="">Choisir une table</option>
-                {tables.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    Table {t.numero} ({t.nombreCouverts} couverts)
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
+
+          {canal === 'SUR_PLACE' && (
+            <PlanTablesCaisse tables={tables} tableId={tableId} onSelect={setTableId} />
+          )}
 
           <div className="flex gap-2 overflow-x-auto pb-1">
             {categories.map((cat) => (
@@ -243,6 +235,19 @@ export function PriseDeCommande() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-stone-900">Commande</h2>
             {nbArticles > 0 && <span className={badgeNeutre}>{nbArticles} article{nbArticles > 1 ? 's' : ''}</span>}
+          </div>
+
+          <div>
+            {canal === 'EMPORTER' ? (
+              <span className={badgeBrand}>À emporter</span>
+            ) : tableSelectionnee ? (
+              <span className={badgeBrand}>
+                Table {tableSelectionnee.numero}
+                {tableSelectionnee.occupee && ' — s’ajoute à l’addition en cours'}
+              </span>
+            ) : (
+              <span className={badgeNeutre}>Touchez une table sur le plan</span>
+            )}
           </div>
 
           {lignesPanier.length === 0 && (

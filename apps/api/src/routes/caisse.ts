@@ -74,13 +74,28 @@ caisseRouter.get('/tables', async (req, res) => {
 
   const tables = await prisma.table.findMany({
     where: { etablissementId, statut: 'ACTIF' },
-    select: { id: true, numero: true, nombreCouverts: true, forme: true },
+    select: {
+      id: true,
+      numero: true,
+      nombreCouverts: true,
+      forme: true,
+      largeur: true,
+      hauteur: true,
+      positionX: true,
+      positionY: true,
+      additions: { where: { statut: 'OUVERTE' }, select: { id: true } },
+    },
   });
 
   // Tri numérique naturel : « Table 2 » avant « Table 10 » (numero est une chaîne).
   tables.sort((a, b) => a.numero.localeCompare(b.numero, 'fr', { numeric: true }));
 
-  res.json(tables);
+  res.json(
+    tables.map(({ additions, ...table }) => ({
+      ...table,
+      occupee: additions.length > 0,
+    })),
+  );
 });
 
 function toPublicCommande(commande: {

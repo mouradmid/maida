@@ -85,6 +85,11 @@ export interface TableCaisse {
   numero: string;
   nombreCouverts: number;
   forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE';
+  largeur: number;
+  hauteur: number;
+  positionX: number;
+  positionY: number;
+  occupee: boolean;
 }
 
 export interface Commande {
