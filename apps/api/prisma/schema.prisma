@@ -50,6 +50,7 @@ enum CanalCommande {
 
 enum StatutCommande {
   ENVOYEE
+  PRETE
   ANNULEE
 }
 
@@ -201,6 +202,7 @@ model Commande {
   noteCuisine String?
   statut      StatutCommande @default(ENVOYEE)
   creeLe      DateTime       @default(now())
+  preteLe     DateTime?
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])

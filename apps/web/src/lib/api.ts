@@ -99,8 +99,9 @@ export interface Commande {
   additionId: string;
   additionStatut: 'OUVERTE' | 'PAYEE';
   table: { numero: string } | null;
-  statut: 'ENVOYEE' | 'ANNULEE';
+  statut: 'ENVOYEE' | 'PRETE' | 'ANNULEE';
   creeLe: string;
+  preteLe: string | null;
   serveur: { nom: string; prenom: string };
   lignes: LigneCommande[];
   total: number;
@@ -225,6 +226,11 @@ export const api = {
   caisseTables: () => apiFetch<TableCaisse[]>('/caisse/tables'),
 
   listCommandes: () => apiFetch<Commande[]>('/caisse/commandes'),
+
+  listCommandesCuisine: () => apiFetch<Commande[]>('/caisse/cuisine/commandes'),
+
+  marquerCommandePrete: (id: string) =>
+    apiFetch<Commande>(`/caisse/commandes/${id}/prete`, { method: 'PATCH' }),
 
   creerCommande: (data: {
     canal: 'SUR_PLACE' | 'EMPORTER';

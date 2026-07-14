@@ -4,11 +4,20 @@ import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
 import { PriseDeCommande } from '../components/PriseDeCommande';
 import { Encaissement } from '../components/Encaissement';
+import { EcranCuisine } from '../components/EcranCuisine';
 import { useMe } from '../hooks/useMe';
+
+const ONGLETS = [
+  { id: 'commande', libelle: 'Prise de commande' },
+  { id: 'encaissement', libelle: 'Encaissement' },
+  { id: 'cuisine', libelle: 'Cuisine' },
+] as const;
+
+type Onglet = (typeof ONGLETS)[number]['id'];
 
 export function EspaceCaisse() {
   const { user, loading, refresh } = useMe();
-  const [onglet, setOnglet] = useState<'commande' | 'encaissement'>('commande');
+  const [onglet, setOnglet] = useState<Onglet>('commande');
 
   if (loading) {
     return <p className="p-8 text-center text-stone-500">Chargement...</p>;
@@ -19,32 +28,26 @@ export function EspaceCaisse() {
       <div className="min-h-screen">
         <EnTeteEspace espace="Caisse" user={user} onLogout={refresh} />
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
-          <nav className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setOnglet('commande')}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                onglet === 'commande'
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
-              }`}
-            >
-              Prise de commande
-            </button>
-            <button
-              type="button"
-              onClick={() => setOnglet('encaissement')}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                onglet === 'encaissement'
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
-              }`}
-            >
-              Encaissement
-            </button>
+          <nav className="flex flex-wrap gap-2">
+            {ONGLETS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => setOnglet(o.id)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  onglet === o.id
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
+                }`}
+              >
+                {o.libelle}
+              </button>
+            ))}
           </nav>
 
-          {onglet === 'commande' ? <PriseDeCommande /> : <Encaissement />}
+          {onglet === 'commande' && <PriseDeCommande />}
+          {onglet === 'encaissement' && <Encaissement />}
+          {onglet === 'cuisine' && <EcranCuisine />}
         </main>
       </div>
     );

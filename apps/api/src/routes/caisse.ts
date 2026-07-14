@@ -104,6 +104,7 @@ function toPublicCommande(commande: {
   noteCuisine: string | null;
   statut: string;
   creeLe: Date;
+  preteLe: Date | null;
   serveur: { nom: string; prenom: string };
   addition: { id: string; statut: string; table: { numero: string } | null };
   lignes: Array<{
@@ -134,6 +135,7 @@ function toPublicCommande(commande: {
     table: commande.addition.table,
     statut: commande.statut,
     creeLe: commande.creeLe,
+    preteLe: commande.preteLe,
     serveur: commande.serveur,
     lignes,
     total,
@@ -157,6 +159,45 @@ caisseRouter.get('/commandes', async (req, res) => {
   });
 
   res.json(commandes.map(toPublicCommande));
+});
+
+// Écran cuisine : les commandes envoyées, de la plus ancienne à la plus récente.
+caisseRouter.get('/cuisine/commandes', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const commandes = await prisma.commande.findMany({
+    where: { etablissementId, statut: 'ENVOYEE' },
+    include: INCLUDE_COMMANDE,
+    orderBy: { creeLe: 'asc' },
+  });
+
+  res.json(commandes.map(toPublicCommande));
+});
+
+caisseRouter.patch('/commandes/:id/prete', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const commande = await prisma.commande.findFirst({
+    where: { id: req.params.id, etablissementId },
+  });
+
+  if (!commande) {
+    res.status(404).json({ error: 'Commande introuvable' });
+    return;
+  }
+
+  if (commande.statut !== 'ENVOYEE') {
+    res.status(409).json({ error: "Cette commande n'est plus en préparation" });
+    return;
+  }
+
+  const majApres = await prisma.commande.update({
+    where: { id: commande.id },
+    data: { statut: 'PRETE', preteLe: new Date() },
+    include: INCLUDE_COMMANDE,
+  });
+
+  res.json(toPublicCommande(majApres));
 });
 
 interface LigneEntree {

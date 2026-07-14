@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
-import { badgeBrand, badgeNeutre, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
+import { badgeBrand, badgeNeutre, badgeVert, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 
 interface ChoixOption {
@@ -383,6 +383,7 @@ export function PriseDeCommande() {
                   <span className="ml-2 font-normal text-stone-500">
                     {c.serveur.prenom} {c.serveur.nom}
                   </span>
+                  {c.statut === 'PRETE' && <span className={`${badgeVert} ml-2`}>prête</span>}
                 </span>
                 <span className="font-semibold text-stone-900">{c.total} DA</span>
               </div>
