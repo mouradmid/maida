@@ -170,6 +170,7 @@ function toPublicCommande(commande: {
     id: string;
     nomProduit: string;
     prixUnitaire: unknown;
+    tauxTva: number | null;
     quantite: number;
     quantitePayee: number;
     quantiteAnnulee: number;
@@ -181,6 +182,7 @@ function toPublicCommande(commande: {
     id: l.id,
     nomProduit: l.nomProduit,
     prixUnitaire: Number(l.prixUnitaire),
+    tauxTva: l.tauxTva,
     quantite: l.quantite,
     quantitePayee: l.quantitePayee,
     quantiteAnnulee: l.quantiteAnnulee,
@@ -573,6 +575,7 @@ caisseRouter.post('/commandes', async (req, res) => {
     nomProduit: string;
     prixUnitaire: (typeof produits)[number]['prix'];
     coutRevientUnitaire: (typeof produits)[number]['coutRevient'];
+    tauxTva: number;
     quantite: number;
     options: Array<{ optionValeurId: string; nomGroupe: string; valeur: string }>;
   }> = [];
@@ -617,6 +620,7 @@ caisseRouter.post('/commandes', async (req, res) => {
       nomProduit: produit.nom,
       prixUnitaire: produit.prix,
       coutRevientUnitaire: produit.coutRevient,
+      tauxTva: produit.tauxTva,
       quantite: ligne.quantite,
       options: optionsResolues,
     });
@@ -638,6 +642,7 @@ caisseRouter.post('/commandes', async (req, res) => {
             nomProduit: l.nomProduit,
             prixUnitaire: l.prixUnitaire,
             coutRevientUnitaire: l.coutRevientUnitaire,
+            tauxTva: l.tauxTva,
             quantite: l.quantite,
             options: {
               create: l.options.map((o) => ({
@@ -941,6 +946,7 @@ caisseRouter.get('/additions/:id', async (req, res) => {
         id: l.id,
         nomProduit: l.nomProduit,
         prixUnitaire: Number(l.prixUnitaire),
+        tauxTva: l.tauxTva,
         quantite: l.quantite,
         quantitePayee: l.quantitePayee,
         quantiteAnnulee: l.quantiteAnnulee,

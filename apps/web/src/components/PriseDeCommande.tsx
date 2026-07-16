@@ -205,6 +205,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             id: `${entree.cleIdempotence}-${i}`,
             nomProduit: l.produit.nom,
             prixUnitaire: l.produit.prix,
+            tauxTva: null,
             quantite: l.quantite,
             quantitePayee: 0,
             quantiteAnnulee: 0,

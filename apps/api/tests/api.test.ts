@@ -105,11 +105,25 @@ beforeAll(async () => {
     data: { nom: 'Boissons Test', type: 'BOISSON', etablissementId: etab.id },
   });
   const plat = await prisma.produit.create({
-    data: { nom: 'Plat T', prix: 1000, coutRevient: 300, categorieId: catPlats.id, etablissementId: etab.id },
+    data: {
+      nom: 'Plat T',
+      prix: 1000,
+      coutRevient: 300,
+      tauxTva: 9,
+      categorieId: catPlats.id,
+      etablissementId: etab.id,
+    },
   });
   produitPlatId = plat.id;
   const boisson = await prisma.produit.create({
-    data: { nom: 'Boisson T', prix: 200, coutRevient: 80, categorieId: catBoissons.id, etablissementId: etab.id },
+    data: {
+      nom: 'Boisson T',
+      prix: 200,
+      coutRevient: 80,
+      tauxTva: 19,
+      categorieId: catBoissons.id,
+      etablissementId: etab.id,
+    },
   });
   produitBoissonId = boisson.id;
   const platOptions = await prisma.produit.create({
@@ -224,6 +238,7 @@ describe('Commandes', () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.total).toBe(1200);
+    expect(res.body.lignes[0].tauxTva).toBe(9); // figé depuis le produit
 
     const cuisine = await serveur.get('/api/caisse/cuisine/commandes');
     expect(cuisine.body.map((c: { id: string }) => c.id)).toContain(res.body.id);
@@ -372,6 +387,23 @@ describe('Rapports', () => {
     expect(res.body.parProduit[0].nom).toBe('Plat T');
     expect(res.body.foodCost.nourriture.pct).toBe(30); // coût 300 / prix 1000
     expect(res.body.foodCost.boissons.pct).toBe(40); // coût 80 / prix 200
+  });
+
+  it('ventile la TVA collectée par taux (prix TTC)', async () => {
+    const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fin = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const res = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
+
+    // Facturable : 2 × Plat T (2000 DA à 9 %) + 2 × Boisson T (400 DA à 19 %,
+    // dont celle de la commande créée par le test de blocage après clôture)
+    const taux9 = res.body.tva.parTaux.find((t: { taux: number }) => t.taux === 9);
+    const taux19 = res.body.tva.parTaux.find((t: { taux: number }) => t.taux === 19);
+    expect(taux9.ttc).toBe(2000);
+    expect(taux9.ht).toBe(1834.86); // 2000 / 1,09
+    expect(taux9.tva).toBe(165.14);
+    expect(taux19.ttc).toBe(400);
+    expect(taux19.tva).toBe(63.87); // 400 − 400/1,19
+    expect(res.body.tva.totalTva).toBe(229.01);
   });
 });
 

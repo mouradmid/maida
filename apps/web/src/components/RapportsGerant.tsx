@@ -311,6 +311,37 @@ export function RapportsGerant() {
               </div>
 
               <div className={carte}>
+                <h3 className="mb-2 font-semibold text-stone-900">TVA collectée</h3>
+                <ul className="flex flex-col divide-y divide-stone-100 text-sm">
+                  {rapport.tva.parTaux.map((t) => (
+                    <li key={t.taux} className="flex items-center justify-between py-2">
+                      <span className="text-stone-600">
+                        TVA {t.taux} %{' '}
+                        <span className="text-xs text-stone-400">
+                          (HT {t.ht} DA · TTC {t.ttc} DA)
+                        </span>
+                      </span>
+                      <span className="font-semibold text-stone-900">{t.tva} DA</span>
+                    </li>
+                  ))}
+                  {rapport.tva.parTaux.length === 0 && (
+                    <li className="py-2 text-stone-400">Aucune vente sur cette période.</li>
+                  )}
+                  {rapport.tva.parTaux.length > 1 && (
+                    <li className="flex items-center justify-between py-2">
+                      <span className="font-medium text-brand-900">Total TVA</span>
+                      <span className="font-bold text-brand-800">{rapport.tva.totalTva} DA</span>
+                    </li>
+                  )}
+                </ul>
+                {rapport.tva.nonVentile > 0 && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    {rapport.tva.nonVentile} DA de ventes antérieures à la TVA ne sont pas ventilés.
+                  </p>
+                )}
+              </div>
+
+              <div className={carte}>
                 <h3 className="mb-2 font-semibold text-stone-900">Activité par serveur</h3>
                 <ul className="flex flex-col divide-y divide-stone-100">
                   {rapport.parServeur.map((s) => (

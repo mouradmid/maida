@@ -188,6 +188,11 @@ function toPublicProduit(
   };
 }
 
+// Taux de TVA : entier entre 0 et 100 (undefined = ne pas modifier / défaut).
+function tauxTvaValide(valeur: unknown): boolean {
+  return typeof valeur === 'number' && Number.isInteger(valeur) && valeur >= 0 && valeur <= 100;
+}
+
 // Coût de revient : nombre positif, ou vide/null pour « non renseigné ».
 function validerCoutRevient(valeur: unknown): { ok: true; valeur: number | null } | { ok: false } {
   if (valeur === undefined || valeur === null || valeur === '') {
@@ -231,7 +236,8 @@ function validerTempsPreparation(valeur: unknown): { ok: true; valeur: number | 
 }
 
 gerantRouter.post('/produits', async (req, res) => {
-  const { nom, description, prix, categorieId, tempsPreparationMinutes, coutRevient } = req.body ?? {};
+  const { nom, description, prix, categorieId, tempsPreparationMinutes, coutRevient, tauxTva } =
+    req.body ?? {};
 
   if (typeof nom !== 'string' || !nom.trim()) {
     res.status(400).json({ error: 'Le nom du produit est requis' });
@@ -255,6 +261,10 @@ gerantRouter.post('/produits', async (req, res) => {
     res.status(400).json({ error: 'Le coût de revient doit être un nombre positif ou nul' });
     return;
   }
+  if (tauxTva !== undefined && !tauxTvaValide(tauxTva)) {
+    res.status(400).json({ error: 'Le taux de TVA doit être un entier entre 0 et 100' });
+    return;
+  }
 
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
@@ -270,6 +280,7 @@ gerantRouter.post('/produits', async (req, res) => {
       description: typeof description === 'string' ? description : null,
       prix,
       coutRevient: cout.valeur,
+      tauxTva: tauxTva ?? undefined,
       categorieId,
       etablissementId,
       tempsPreparationMinutes: tempsPrepa.valeur,
@@ -280,7 +291,8 @@ gerantRouter.post('/produits', async (req, res) => {
 });
 
 gerantRouter.patch('/produits/:id', async (req, res) => {
-  const { nom, description, prix, categorieId, statut, tempsPreparationMinutes, coutRevient } = req.body ?? {};
+  const { nom, description, prix, categorieId, statut, tempsPreparationMinutes, coutRevient, tauxTva } =
+    req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const produit = await prisma.produit.findUnique({ where: { id: req.params.id } });
@@ -322,6 +334,10 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
     }
     nouveauCout = cout.valeur;
   }
+  if (tauxTva !== undefined && !tauxTvaValide(tauxTva)) {
+    res.status(400).json({ error: 'Le taux de TVA doit être un entier entre 0 et 100' });
+    return;
+  }
 
   const produitMaj = await prisma.produit.update({
     where: { id: produit.id },
@@ -333,6 +349,7 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
       statut: statut ?? undefined,
       tempsPreparationMinutes: nouveauTempsPrepa,
       coutRevient: nouveauCout,
+      tauxTva: tauxTva ?? undefined,
     },
   });
 
@@ -681,8 +698,10 @@ gerantRouter.get('/rapports', async (req, res) => {
             nomProduit: true,
             prixUnitaire: true,
             coutRevientUnitaire: true,
+            tauxTva: true,
             quantite: true,
             quantiteAnnulee: true,
+            quantiteOfferte: true,
             produit: { select: { categorie: { select: { nom: true, type: true } } } },
           },
         },
@@ -724,6 +743,9 @@ gerantRouter.get('/rapports', async (req, res) => {
     NOURRITURE: { ventes: 0, ventesCoutees: 0, cout: 0 },
     BOISSON: { ventes: 0, ventesCoutees: 0, cout: 0 },
   };
+  // TTC réellement facturable par taux de TVA (hors annulé et offert).
+  // null = lignes d'avant l'introduction de la TVA, non ventilables.
+  const ttcParTaux = new Map<number | null, number>();
   let caCommande = 0;
   let nbCommandes = 0;
 
@@ -761,6 +783,12 @@ gerantRouter.get('/rapports', async (req, res) => {
       if (cout !== null) {
         type.ventesCoutees += montant;
         type.cout += cout;
+      }
+
+      const quantiteFacturable = quantite - ligne.quantiteOfferte;
+      if (quantiteFacturable > 0) {
+        const ttc = Number(ligne.prixUnitaire) * quantiteFacturable;
+        ttcParTaux.set(ligne.tauxTva, (ttcParTaux.get(ligne.tauxTva) ?? 0) + ttc);
       }
     }
 
@@ -837,8 +865,38 @@ gerantRouter.get('/rapports', async (req, res) => {
           .reduce((s, r) => s + (r.quantite ?? 0), 0),
       },
     },
+    tva: calculerTva(
+      ttcParTaux,
+      remises.filter((r) => r.type === 'REMISE').reduce((s, r) => s + Number(r.montant), 0),
+    ),
   });
 });
+
+// TVA collectée par taux : prix TTC, donc HT = TTC / (1 + taux/100).
+// Les remises sur addition réduisent la base taxable : elles sont réparties
+// au prorata du TTC de chaque taux (approximation comptable classique).
+function calculerTva(ttcParTaux: Map<number | null, number>, remisesTotal: number) {
+  const totalVentile = [...ttcParTaux.entries()]
+    .filter(([taux]) => taux !== null)
+    .reduce((s, [, ttc]) => s + ttc, 0);
+
+  const parTaux = [...ttcParTaux.entries()]
+    .filter((entree): entree is [number, number] => entree[0] !== null)
+    .sort((a, b) => b[0] - a[0])
+    .map(([taux, ttcBrut]) => {
+      const remiseAllouee = totalVentile > 0 ? (remisesTotal * ttcBrut) / totalVentile : 0;
+      const ttc = Math.max(0, arrondi(ttcBrut - remiseAllouee));
+      const ht = arrondi(ttc / (1 + taux / 100));
+      return { taux, ttc, ht, tva: arrondi(ttc - ht) };
+    });
+
+  return {
+    parTaux,
+    totalTva: arrondi(parTaux.reduce((s, t) => s + t.tva, 0)),
+    // Lignes d'avant l'introduction de la TVA : TTC connu, taux inconnu.
+    nonVentile: arrondi(ttcParTaux.get(null) ?? 0),
+  };
+}
 
 // Résumé food/bev cost : % calculé sur la part des ventes dont le coût est
 // connu, avec le taux de couverture pour juger de la fiabilité du chiffre.

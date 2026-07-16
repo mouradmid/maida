@@ -192,6 +192,9 @@ model Produit {
   nom                     String
   description             String?
   prix                    Decimal       @db.Decimal(10, 2)
+  // Taux de TVA en % (prix TTC : la TVA est extraite du prix affiché).
+  // Algérie : 19 % taux normal, 9 % taux réduit.
+  tauxTva                 Int           @default(19)
   // Coût de production saisi par le gérant (matières premières). Sert au food cost.
   coutRevient             Decimal?      @db.Decimal(10, 2)
   tempsPreparationMinutes Int?
@@ -269,6 +272,8 @@ model LigneCommande {
   prixUnitaire    Decimal  @db.Decimal(10, 2)
   // Coût de revient du produit figé au moment de la commande (comme prixUnitaire).
   coutRevientUnitaire Decimal? @db.Decimal(10, 2)
+  // Taux de TVA figé au moment de la commande (null sur l'historique d'avant la TVA).
+  tauxTva         Int?
   quantite        Int
   quantitePayee   Int      @default(0)
   quantiteAnnulee Int      @default(0)

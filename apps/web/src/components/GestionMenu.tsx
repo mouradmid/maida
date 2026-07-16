@@ -14,6 +14,7 @@ export function GestionMenu() {
   const [nouveauProduitNom, setNouveauProduitNom] = useState('');
   const [nouveauProduitPrix, setNouveauProduitPrix] = useState('');
   const [nouveauProduitCout, setNouveauProduitCout] = useState('');
+  const [nouveauProduitTva, setNouveauProduitTva] = useState('19');
   const [nouveauProduitCategorieId, setNouveauProduitCategorieId] = useState('');
   const [nouveauProduitTempsPrepa, setNouveauProduitTempsPrepa] = useState('');
   // Édition d'un produit existant (formulaire inline)
@@ -23,6 +24,7 @@ export function GestionMenu() {
   const [editPrix, setEditPrix] = useState('');
   const [editPrepa, setEditPrepa] = useState('');
   const [editCout, setEditCout] = useState('');
+  const [editTva, setEditTva] = useState('19');
   const [editCategorieId, setEditCategorieId] = useState('');
 
   // Renommage d'une catégorie
@@ -79,6 +81,7 @@ export function GestionMenu() {
     setEditPrix(String(produit.prix));
     setEditPrepa(produit.tempsPreparationMinutes != null ? String(produit.tempsPreparationMinutes) : '');
     setEditCout(produit.coutRevient != null ? String(produit.coutRevient) : '');
+    setEditTva(String(produit.tauxTva));
     setEditCategorieId(produit.categorieId);
   }
 
@@ -97,6 +100,7 @@ export function GestionMenu() {
         categorieId: editCategorieId,
         tempsPreparationMinutes: editPrepa === '' ? null : Number(editPrepa),
         coutRevient: editCout === '' ? null : Number(editCout),
+        tauxTva: editTva === '' ? undefined : Number(editTva),
       });
       setProduitEnEdition(null);
       await chargerTout();
@@ -136,6 +140,7 @@ export function GestionMenu() {
         categorieId: nouveauProduitCategorieId,
         tempsPreparationMinutes: nouveauProduitTempsPrepa ? Number(nouveauProduitTempsPrepa) : undefined,
         coutRevient: nouveauProduitCout ? Number(nouveauProduitCout) : undefined,
+        tauxTva: nouveauProduitTva !== '' ? Number(nouveauProduitTva) : undefined,
       });
       setNouveauProduitNom('');
       setNouveauProduitPrix('');
@@ -244,6 +249,7 @@ export function GestionMenu() {
                               {Math.round(((produit.prix - produit.coutRevient) / produit.prix) * 100)} %
                             </span>
                           )}
+                          <span className={badgeNeutre}>TVA {produit.tauxTva} %</span>
                           {produit.tempsPreparationMinutes != null && (
                             <span className={badgeNeutre}>{produit.tempsPreparationMinutes} min</span>
                           )}
@@ -311,7 +317,7 @@ export function GestionMenu() {
                               className={`${champ} px-2 py-1`}
                             />
                           </label>
-                          <div className="grid gap-2 sm:grid-cols-3">
+                          <div className="grid gap-2 sm:grid-cols-4">
                             <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
                               Prix (DA)
                               <input
@@ -344,6 +350,21 @@ export function GestionMenu() {
                                 value={editCout}
                                 onChange={(e) => setEditCout(e.target.value)}
                                 placeholder="vide = non suivi"
+                                className={`${champ} px-2 py-1`}
+                              />
+                            </label>
+                            <label
+                              className="flex flex-col gap-1 text-xs font-medium text-stone-600"
+                              title="Prix TTC : la TVA est extraite du prix affiché. Algérie : 19 % normal, 9 % réduit."
+                            >
+                              TVA (%)
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={editTva}
+                                onChange={(e) => setEditTva(e.target.value)}
                                 className={`${champ} px-2 py-1`}
                               />
                             </label>
@@ -428,15 +449,33 @@ export function GestionMenu() {
                   className={champ}
                 />
               </div>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Coût de revient (DA, optionnel — pour le food cost)"
-                value={nouveauProduitCout}
-                onChange={(e) => setNouveauProduitCout(e.target.value)}
-                className={champ}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Coût de revient (DA, optionnel)"
+                  value={nouveauProduitCout}
+                  onChange={(e) => setNouveauProduitCout(e.target.value)}
+                  className={champ}
+                />
+                <label
+                  className="flex shrink-0 items-center gap-1.5 text-xs text-stone-500"
+                  title="Prix TTC : la TVA est extraite du prix affiché. Algérie : 19 % normal, 9 % réduit."
+                >
+                  TVA
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={nouveauProduitTva}
+                    onChange={(e) => setNouveauProduitTva(e.target.value)}
+                    className={`${champ} w-16 px-2`}
+                  />
+                  %
+                </label>
+              </div>
               <select
                 value={nouveauProduitCategorieId}
                 onChange={(e) => setNouveauProduitCategorieId(e.target.value)}

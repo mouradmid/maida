@@ -108,6 +108,28 @@ export function htmlTicketClient(
     )
     .join('');
 
+  // Récapitulatif TVA (prix TTC : la TVA est extraite, remises réparties au prorata).
+  const ttcParTaux = new Map<number, number>();
+  for (const l of detail.commandes.flatMap((c) => c.lignes)) {
+    const quantiteFacturable = l.quantite - l.quantiteAnnulee - l.quantiteOfferte;
+    if (quantiteFacturable > 0 && l.tauxTva !== null) {
+      ttcParTaux.set(l.tauxTva, (ttcParTaux.get(l.tauxTva) ?? 0) + l.prixUnitaire * quantiteFacturable);
+    }
+  }
+  const totalVentile = [...ttcParTaux.values()].reduce((s, v) => s + v, 0);
+  const arrondir = (n: number) => Math.round(n * 100) / 100;
+  const recapTva = [...ttcParTaux.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([taux, ttcBrut]) => {
+      const ttc = Math.max(
+        0,
+        arrondir(ttcBrut - (totalVentile > 0 ? (detail.montantRemises * ttcBrut) / totalVentile : 0)),
+      );
+      const ht = arrondir(ttc / (1 + taux / 100));
+      return `<div class="ligne petit"><span class="lib">TVA ${taux} % (HT ${ht})</span><span>${arrondir(ttc - ht)} DA</span></div>`;
+    })
+    .join('');
+
   const paiements = detail.paiements
     .map((p) => {
       const rendu =
@@ -130,6 +152,7 @@ export function htmlTicketClient(
     <div class="sep"></div>
     ${remisesAddition}
     <div class="ligne gras"><span>TOTAL</span><span>${detail.total} DA</span></div>
+    ${recapTva}
     ${paiements ? `<div class="ligne"><span>Payé</span><span>${detail.totalPaye} DA</span></div>${paiements}` : ''}
     ${detail.solde > 0 ? `<div class="ligne gras"><span>RESTE À PAYER</span><span>${detail.solde} DA</span></div>` : ''}
     <div class="sep"></div>

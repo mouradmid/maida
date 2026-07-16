@@ -226,7 +226,10 @@ async function main() {
   console.log('Anciennes données purgées.');
 
   // Menu
-  const produitsParNom = new Map<string, { id: string; prix: number; cout: number | null }>();
+  const produitsParNom = new Map<
+    string,
+    { id: string; prix: number; cout: number | null; tauxTva: number }
+  >();
   const optionsParProduit = new Map<string, Map<string, { groupeNom: string; valeurId: string }>>();
 
   for (const bloc of MENU) {
@@ -238,18 +241,22 @@ async function main() {
       },
     });
     for (const p of bloc.produits) {
+      // Démo : 19 % sur les boissons, 9 % (taux réduit restauration) sur le reste.
+      // À faire valider par un comptable pour chaque vrai client.
+      const tauxTva = bloc.categorie === 'Boissons' ? 19 : 9;
       const produit = await prisma.produit.create({
         data: {
           nom: p.nom,
           description: p.description,
           prix: p.prix,
           coutRevient: p.cout,
+          tauxTva,
           tempsPreparationMinutes: p.tempsPreparationMinutes,
           categorieId: categorie.id,
           etablissementId,
         },
       });
-      produitsParNom.set(p.nom, { id: produit.id, prix: p.prix, cout: p.cout ?? null });
+      produitsParNom.set(p.nom, { id: produit.id, prix: p.prix, cout: p.cout ?? null, tauxTva });
       if (p.options) {
         const valeursMap = new Map<string, { groupeNom: string; valeurId: string }>();
         for (const groupe of p.options) {
@@ -311,6 +318,7 @@ async function main() {
           nomProduit: l.produit,
           prixUnitaire: produit.prix,
           coutRevientUnitaire: produit.cout,
+          tauxTva: produit.tauxTva,
           quantite: l.quantite,
         },
       });

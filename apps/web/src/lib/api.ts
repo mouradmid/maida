@@ -40,6 +40,7 @@ export interface Produit {
   nom: string;
   description: string | null;
   prix: number;
+  tauxTva: number;
   coutRevient: number | null;
   tempsPreparationMinutes: number | null;
   statut: 'ACTIF' | 'INACTIF';
@@ -68,6 +69,7 @@ export interface LigneCommande {
   id: string;
   nomProduit: string;
   prixUnitaire: number;
+  tauxTva: number | null;
   quantite: number;
   quantitePayee: number;
   quantiteAnnulee: number;
@@ -222,6 +224,11 @@ export interface RapportVentes {
     nombre: number;
     offerts: { montant: number; quantite: number };
   };
+  tva: {
+    parTaux: Array<{ taux: number; ttc: number; ht: number; tva: number }>;
+    totalTva: number;
+    nonVentile: number;
+  };
 }
 
 export interface ResumeCout {
@@ -321,6 +328,7 @@ export const api = {
     description?: string;
     tempsPreparationMinutes?: number;
     coutRevient?: number;
+    tauxTva?: number;
   }) => apiFetch<Produit>('/gerant/produits', { method: 'POST', body: JSON.stringify(data) }),
 
   updateProduit: (
@@ -333,6 +341,7 @@ export const api = {
       statut: 'ACTIF' | 'INACTIF';
       tempsPreparationMinutes: number | null;
       coutRevient: number | null;
+      tauxTva: number;
     }>,
   ) => apiFetch<Produit>(`/gerant/produits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
