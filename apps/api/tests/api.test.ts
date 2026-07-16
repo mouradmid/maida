@@ -557,6 +557,55 @@ describe('Idempotence des commandes hors ligne', () => {
 
 const identifiantsAdmin = process.env.SEED_SUPER_ADMIN_EMAIL && process.env.SEED_SUPER_ADMIN_PASSWORD;
 
+describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
+  const admin = request.agent(app);
+
+  it('par défaut : module accordé et suivi actif', async () => {
+    const res = await gerant.get('/api/gerant/parametres');
+    expect(res.status).toBe(200);
+    expect(res.body.moduleFoodCost).toBe(true);
+    expect(res.body.suiviCoutsActive).toBe(true);
+  });
+
+  it('le gérant peut masquer puis réafficher le suivi des coûts', async () => {
+    const masque = await gerant.patch('/api/gerant/parametres').send({ suiviCoutsActive: false });
+    expect(masque.body.suiviCoutsActive).toBe(false);
+    const reaffiche = await gerant.patch('/api/gerant/parametres').send({ suiviCoutsActive: true });
+    expect(reaffiche.body.suiviCoutsActive).toBe(true);
+  });
+
+  it('module retiré par le super-admin : le food cost disparaît des rapports', async () => {
+    await admin.post('/api/auth/login').send({
+      email: process.env.SEED_SUPER_ADMIN_EMAIL,
+      password: process.env.SEED_SUPER_ADMIN_PASSWORD,
+    });
+    const retrait = await admin
+      .patch(`/api/admin/comptes-clients/${compteClientId}`)
+      .send({ modules: [] });
+    expect(retrait.status).toBe(200);
+    expect(retrait.body.modules).toHaveLength(0);
+
+    const parametres = await gerant.get('/api/gerant/parametres');
+    expect(parametres.body.moduleFoodCost).toBe(false);
+
+    const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fin = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const rapport = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
+    expect(rapport.body.foodCost).toBeNull();
+    expect(rapport.body.parProduit[0].cout).toBeNull();
+    expect(rapport.body.parProduit[0].marge).toBeNull();
+  });
+
+  it('module réaccordé : le food cost revient', async () => {
+    await admin.patch(`/api/admin/comptes-clients/${compteClientId}`).send({ modules: ['FOOD_COST'] });
+    const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fin = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const rapport = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
+    expect(rapport.body.foodCost).not.toBeNull();
+    expect(rapport.body.foodCost.nourriture.pct).toBe(30);
+  });
+});
+
 describe.skipIf(!identifiantsAdmin)('Suspension par le super-admin', () => {
   const admin = request.agent(app);
 

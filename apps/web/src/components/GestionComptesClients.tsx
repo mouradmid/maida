@@ -92,11 +92,30 @@ export function GestionComptesClients() {
       return;
     }
     try {
-      await api.updateStatutCompteClient(compte.id, suspendre ? 'SUSPENDU' : 'ACTIF');
+      await api.updateCompteClient(compte.id, { statut: suspendre ? 'SUSPENDU' : 'ACTIF' });
       setMessage(
         suspendre
           ? `« ${compte.nomEnseigne} » est suspendu : plus aucun accès jusqu'à réactivation.`
           : `« ${compte.nomEnseigne} » est réactivé.`,
+      );
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleToggleModuleFoodCost(compte: CompteClient) {
+    setErreur(null);
+    setMessage(null);
+    const actif = compte.modules.includes('FOOD_COST');
+    try {
+      await api.updateCompteClient(compte.id, {
+        modules: actif ? compte.modules.filter((m) => m !== 'FOOD_COST') : [...compte.modules, 'FOOD_COST'],
+      });
+      setMessage(
+        actif
+          ? `Module food cost retiré pour « ${compte.nomEnseigne} » : les coûts et marges disparaissent de son espace.`
+          : `Module food cost accordé à « ${compte.nomEnseigne} ».`,
       );
       await charger();
     } catch (err) {
@@ -150,17 +169,31 @@ export function GestionComptesClients() {
                     {compte.derniereCommande && ` · dernière activité ${depuis(compte.derniereCommande)}`}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleToggleStatut(compte)}
-                  className={
-                    compte.statut === 'ACTIF'
-                      ? 'rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50'
-                      : boutonPrimaire
-                  }
-                >
-                  {compte.statut === 'ACTIF' ? 'Suspendre' : 'Réactiver'}
-                </button>
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleModuleFoodCost(compte)}
+                    title="Module optionnel : suivi des coûts de revient, marges et food cost dans l'espace gérant"
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                      compte.modules.includes('FOOD_COST')
+                        ? 'bg-brand-600 text-white'
+                        : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                    }`}
+                  >
+                    {compte.modules.includes('FOOD_COST') ? '✓ Food cost' : 'Food cost désactivé'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleStatut(compte)}
+                    className={
+                      compte.statut === 'ACTIF'
+                        ? 'rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50'
+                        : boutonPrimaire
+                    }
+                  >
+                    {compte.statut === 'ACTIF' ? 'Suspendre' : 'Réactiver'}
+                  </button>
+                </span>
               </div>
 
               <div className="flex flex-col gap-1 text-sm text-stone-600">

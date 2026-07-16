@@ -15,6 +15,7 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
       id: true,
       nomEnseigne: true,
       statut: true,
+      modules: true,
       creeLe: true,
       etablissements: { select: { id: true, nom: true, ville: true } },
       utilisateurs: {
@@ -61,11 +62,26 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
   );
 });
 
-adminRouter.patch('/comptes-clients/:id', async (req, res) => {
-  const { statut } = req.body ?? {};
+const MODULES_VALIDES = ['FOOD_COST'] as const;
 
-  if (statut !== 'ACTIF' && statut !== 'SUSPENDU') {
+adminRouter.patch('/comptes-clients/:id', async (req, res) => {
+  const { statut, modules } = req.body ?? {};
+
+  if (statut !== undefined && statut !== 'ACTIF' && statut !== 'SUSPENDU') {
     res.status(400).json({ error: 'Statut invalide (ACTIF ou SUSPENDU)' });
+    return;
+  }
+  if (
+    modules !== undefined &&
+    (!Array.isArray(modules) ||
+      modules.some((m) => !MODULES_VALIDES.includes(m as (typeof MODULES_VALIDES)[number])) ||
+      new Set(modules).size !== modules.length)
+  ) {
+    res.status(400).json({ error: 'Modules invalides' });
+    return;
+  }
+  if (statut === undefined && modules === undefined) {
+    res.status(400).json({ error: 'Rien à modifier' });
     return;
   }
 
@@ -77,8 +93,11 @@ adminRouter.patch('/comptes-clients/:id', async (req, res) => {
 
   const compteMaj = await prisma.compteClient.update({
     where: { id: compte.id },
-    data: { statut },
-    select: { id: true, nomEnseigne: true, statut: true },
+    data: {
+      statut: statut ?? undefined,
+      modules: modules !== undefined ? (modules as (typeof MODULES_VALIDES)[number][]) : undefined,
+    },
+    select: { id: true, nomEnseigne: true, statut: true, modules: true },
   });
 
   res.json(compteMaj);

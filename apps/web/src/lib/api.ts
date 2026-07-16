@@ -218,7 +218,7 @@ export interface RapportVentes {
   foodCost: {
     nourriture: ResumeCout;
     boissons: ResumeCout;
-  };
+  } | null;
   remises: {
     montant: number;
     nombre: number;
@@ -249,10 +249,18 @@ export interface ResultatPaiement {
   additionCloturee: boolean;
 }
 
+export type ModuleCompte = 'FOOD_COST';
+
+export interface ParametresGerant {
+  moduleFoodCost: boolean;
+  suiviCoutsActive: boolean;
+}
+
 export interface CompteClient {
   id: string;
   nomEnseigne: string;
   statut: 'ACTIF' | 'SUSPENDU';
+  modules: ModuleCompte[];
   creeLe: string;
   etablissements: Array<{ id: string; nom: string; ville: string | null }>;
   gerants: Array<{ id: string; nom: string; prenom: string; email: string | null }>;
@@ -566,10 +574,21 @@ export const api = {
     gerant: { nom: string; prenom: string; email: string; motDePasse: string };
   }) => apiFetch('/admin/comptes-clients', { method: 'POST', body: JSON.stringify(data) }),
 
-  updateStatutCompteClient: (id: string, statut: 'ACTIF' | 'SUSPENDU') =>
-    apiFetch<{ id: string; statut: string }>(`/admin/comptes-clients/${id}`, {
+  updateCompteClient: (
+    id: string,
+    data: { statut?: 'ACTIF' | 'SUSPENDU'; modules?: ModuleCompte[] },
+  ) =>
+    apiFetch<{ id: string; statut: string; modules: ModuleCompte[] }>(`/admin/comptes-clients/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ statut }),
+      body: JSON.stringify(data),
+    }),
+
+  getParametres: () => apiFetch<ParametresGerant>('/gerant/parametres'),
+
+  updateParametres: (data: { suiviCoutsActive: boolean }) =>
+    apiFetch<ParametresGerant>('/gerant/parametres', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 
   resetMotDePasseGerant: (gerantId: string, motDePasse: string) =>

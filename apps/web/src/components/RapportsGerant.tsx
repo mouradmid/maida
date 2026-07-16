@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type ModePaiement, type RapportVentes, type ResumeCout } from '../lib/api';
+import { api, type ModePaiement, type ParametresGerant, type RapportVentes, type ResumeCout } from '../lib/api';
 import { carte, champ, messageErreur } from '../lib/ui';
 
 const LIBELLES_MOYEN: Record<ModePaiement, string> = {
@@ -136,8 +136,22 @@ export function RapportsGerant() {
   const [persoDebut, setPersoDebut] = useState('');
   const [persoFin, setPersoFin] = useState('');
   const [rapport, setRapport] = useState<RapportVentes | null>(null);
+  const [parametres, setParametres] = useState<ParametresGerant | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getParametres().then(setParametres).catch(() => setParametres(null));
+  }, []);
+
+  async function handleToggleSuiviCouts() {
+    if (!parametres) return;
+    try {
+      setParametres(await api.updateParametres({ suiviCoutsActive: !parametres.suiviCoutsActive }));
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
 
   useEffect(() => {
     const plage = bornes(periode, persoDebut, persoFin);
@@ -161,6 +175,7 @@ export function RapportsGerant() {
     };
   }, [periode, persoDebut, persoFin]);
 
+  const voirCouts = (parametres?.moduleFoodCost ?? false) && (parametres?.suiviCoutsActive ?? true);
   const maxProduit = rapport?.parProduit[0]?.montant ?? 0;
   const maxCategorie = rapport?.parCategorie[0]?.montant ?? 0;
   const maxServeur = rapport?.parServeur[0]?.montant ?? 0;
@@ -198,6 +213,20 @@ export function RapportsGerant() {
               className={`${champ} w-auto`}
             />
           </span>
+        )}
+        {parametres?.moduleFoodCost && (
+          <button
+            type="button"
+            onClick={handleToggleSuiviCouts}
+            title="Affiche ou masque les coûts de revient, marges et food cost dans tout l'espace gérant"
+            className={`ml-auto rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              parametres.suiviCoutsActive
+                ? 'bg-brand-600 text-white'
+                : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+            }`}
+          >
+            {parametres.suiviCoutsActive ? '✓ Coûts & marges affichés' : 'Coûts & marges masqués'}
+          </button>
         )}
       </div>
 
@@ -239,10 +268,12 @@ export function RapportsGerant() {
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <CarteCout titre="Food cost — nourriture" resume={rapport.foodCost.nourriture} />
-            <CarteCout titre="Beverage cost — boissons" resume={rapport.foodCost.boissons} />
-          </div>
+          {voirCouts && rapport.foodCost && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <CarteCout titre="Food cost — nourriture" resume={rapport.foodCost.nourriture} />
+              <CarteCout titre="Beverage cost — boissons" resume={rapport.foodCost.boissons} />
+            </div>
+          )}
 
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <div className={carte}>
@@ -254,7 +285,7 @@ export function RapportsGerant() {
                     libelle={p.nom}
                     sousLibelle={p.categorie}
                     quantite={`${p.quantite} vendu${p.quantite > 1 ? 's' : ''}${
-                      p.marge !== null ? ` · marge ${p.marge} DA (FC ${p.foodCostPct} %)` : ''
+                      voirCouts && p.marge !== null ? ` · marge ${p.marge} DA (FC ${p.foodCostPct} %)` : ''
                     }`}
                     montant={p.montant}
                     max={maxProduit}

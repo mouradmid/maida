@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Categorie, type Produit } from '../lib/api';
+import { api, type Categorie, type ParametresGerant, type Produit } from '../lib/api';
 import { badgeNeutre, boutonDiscret, boutonPrimaire, carte, champ, messageErreur } from '../lib/ui';
 import { OptionsProduit } from './OptionsProduit';
 
@@ -80,12 +80,20 @@ export function GestionMenu() {
   const [categorieEnEdition, setCategorieEnEdition] = useState<string | null>(null);
   const [nouveauNomCategorie, setNouveauNomCategorie] = useState('');
 
+  const [parametres, setParametres] = useState<ParametresGerant | null>(null);
+  const voirCouts = (parametres?.moduleFoodCost ?? false) && (parametres?.suiviCoutsActive ?? true);
+
   async function chargerTout() {
     setChargement(true);
     try {
-      const [cats, prods] = await Promise.all([api.listCategories(), api.listProduits()]);
+      const [cats, prods, params] = await Promise.all([
+        api.listCategories(),
+        api.listProduits(),
+        api.getParametres(),
+      ]);
       setCategories(cats);
       setProduits(prods);
+      setParametres(params);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -292,7 +300,7 @@ export function GestionMenu() {
                         >
                           <span className="font-medium">{produit.nom}</span>
                           <span className="font-semibold text-brand-700">{produit.prix} DA</span>
-                          {produit.coutRevient != null && (
+                          {voirCouts && produit.coutRevient != null && (
                             <span className={badgeNeutre}>
                               coût {produit.coutRevient} DA · marge{' '}
                               {Math.round(((produit.prix - produit.coutRevient) / produit.prix) * 100)} %
@@ -390,18 +398,20 @@ export function GestionMenu() {
                                 className={`${champ} px-2 py-1`}
                               />
                             </label>
-                            <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
-                              Coût de revient (DA)
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={editCout}
-                                onChange={(e) => setEditCout(e.target.value)}
-                                placeholder="vide = non suivi"
-                                className={`${champ} px-2 py-1`}
-                              />
-                            </label>
+                            {voirCouts && (
+                              <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                                Coût de revient (DA)
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={editCout}
+                                  onChange={(e) => setEditCout(e.target.value)}
+                                  placeholder="vide = non suivi"
+                                  className={`${champ} px-2 py-1`}
+                                />
+                              </label>
+                            )}
                             <label
                               className="flex flex-col gap-1 text-xs font-medium text-stone-600"
                               title="Prix TTC : la TVA est extraite du prix affiché."
@@ -491,15 +501,17 @@ export function GestionMenu() {
                 />
               </div>
               <div className="flex gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Coût de revient (DA, optionnel)"
-                  value={nouveauProduitCout}
-                  onChange={(e) => setNouveauProduitCout(e.target.value)}
-                  className={champ}
-                />
+                {voirCouts && (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Coût de revient (DA, optionnel)"
+                    value={nouveauProduitCout}
+                    onChange={(e) => setNouveauProduitCout(e.target.value)}
+                    className={champ}
+                  />
+                )}
                 <label
                   className="flex shrink-0 items-center gap-1.5 text-xs text-stone-500"
                   title="Prix TTC : la TVA est extraite du prix affiché."

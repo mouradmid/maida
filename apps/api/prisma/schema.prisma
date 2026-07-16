@@ -20,6 +20,12 @@ enum StatutCompteClient {
   SUSPENDU
 }
 
+// Modules optionnels accordés par l'éditeur à un compte client
+// (base des futures offres commerciales — extensible).
+enum ModuleCompte {
+  FOOD_COST
+}
+
 enum StatutEtablissement {
   ACTIF
   INACTIF
@@ -108,6 +114,7 @@ model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
   statut      StatutCompteClient @default(ACTIF)
+  modules     ModuleCompte[]     @default([FOOD_COST])
   creeLe      DateTime           @default(now())
 
   etablissements Etablissement[]
@@ -123,6 +130,9 @@ model Etablissement {
   ville                String?
   statut               StatutEtablissement @default(ACTIF)
   moyensPaiementActifs ModePaiement[]      @default([ESPECES, CARTE, CHEQUE, AUTRE])
+  // Préférence du gérant : masquer le suivi des coûts même si le module
+  // FOOD_COST est accordé au compte.
+  suiviCoutsActive     Boolean             @default(true)
   creeLe               DateTime            @default(now())
 
   compteClientId String

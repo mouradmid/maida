@@ -627,6 +627,50 @@ gerantRouter.get('/annulations', async (req, res) => {
   );
 });
 
+// --- Paramètres de l'établissement ---
+
+gerantRouter.get('/parametres', async (req, res) => {
+  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
+
+  const [compte, etablissement] = await Promise.all([
+    prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
+    prisma.etablissement.findUnique({
+      where: { id: etablissementId },
+      select: { suiviCoutsActive: true },
+    }),
+  ]);
+
+  res.json({
+    moduleFoodCost: compte?.modules.includes('FOOD_COST') ?? false,
+    suiviCoutsActive: etablissement?.suiviCoutsActive ?? true,
+  });
+});
+
+gerantRouter.patch('/parametres', async (req, res) => {
+  const { suiviCoutsActive } = req.body ?? {};
+
+  if (typeof suiviCoutsActive !== 'boolean') {
+    res.status(400).json({ error: 'Paramètre invalide' });
+    return;
+  }
+
+  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
+
+  const [compte, etablissement] = await Promise.all([
+    prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
+    prisma.etablissement.update({
+      where: { id: etablissementId },
+      data: { suiviCoutsActive },
+      select: { suiviCoutsActive: true },
+    }),
+  ]);
+
+  res.json({
+    moduleFoodCost: compte?.modules.includes('FOOD_COST') ?? false,
+    suiviCoutsActive: etablissement.suiviCoutsActive,
+  });
+});
+
 // --- Historique des remises et offerts ---
 
 gerantRouter.get('/remises', async (req, res) => {
@@ -680,8 +724,15 @@ gerantRouter.get('/rapports', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
   const periode = { gte: dateDebut, lte: dateFin };
+
+  // Le food cost n'est renvoyé que si le module est accordé au compte client.
+  const compte = await prisma.compteClient.findUnique({
+    where: { id: compteClientId },
+    select: { modules: true },
+  });
+  const moduleFoodCost = compte?.modules.includes('FOOD_COST') ?? false;
 
   const [paiements, commandes, annulations, remises] = await Promise.all([
     prisma.paiement.findMany({
@@ -830,9 +881,10 @@ gerantRouter.get('/rapports', async (req, res) => {
         quantite: v.quantite,
         montant: arrondi(v.montant),
         // Marge et food cost % calculés sur la part des ventes dont le coût est connu.
-        cout: v.montantCoute > 0 ? arrondi(v.cout) : null,
-        marge: v.montantCoute > 0 ? arrondi(v.montantCoute - v.cout) : null,
-        foodCostPct: v.montantCoute > 0 ? arrondi((v.cout / v.montantCoute) * 100) : null,
+        cout: moduleFoodCost && v.montantCoute > 0 ? arrondi(v.cout) : null,
+        marge: moduleFoodCost && v.montantCoute > 0 ? arrondi(v.montantCoute - v.cout) : null,
+        foodCostPct:
+          moduleFoodCost && v.montantCoute > 0 ? arrondi((v.cout / v.montantCoute) * 100) : null,
       }))
       .sort((a, b) => b.montant - a.montant),
     parCategorie: [...parCategorieMap.entries()]
@@ -849,10 +901,12 @@ gerantRouter.get('/rapports', async (req, res) => {
         quantite: pertes.apresPreparation.quantite,
       },
     },
-    foodCost: {
-      nourriture: resumeCout(parType.NOURRITURE),
-      boissons: resumeCout(parType.BOISSON),
-    },
+    foodCost: moduleFoodCost
+      ? {
+          nourriture: resumeCout(parType.NOURRITURE),
+          boissons: resumeCout(parType.BOISSON),
+        }
+      : null,
     remises: {
       montant: arrondi(remises.reduce((s, r) => s + Number(r.montant), 0)),
       nombre: remises.length,
