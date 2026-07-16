@@ -10,9 +10,10 @@ export const authRouter = Router();
 
 // Freine le brute-force en ligne (mots de passe, et surtout PIN à 4 chiffres).
 // Seules les tentatives ÉCHOUÉES comptent : l'usage normal n'est jamais bloqué.
+// Désactivé pendant les tests automatisés (qui enchaînent volontairement les échecs).
 const limiteConnexion = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: process.env.NODE_ENV === 'test' ? 10_000 : 10,
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
