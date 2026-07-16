@@ -449,6 +449,9 @@ export const api = {
 
   caisseMoyensPaiement: () => apiFetch<{ actifs: ModePaiement[] }>('/caisse/moyens-paiement'),
 
+  caisseEtablissement: () =>
+    apiFetch<{ nom: string; adresse: string | null; ville: string | null }>('/caisse/etablissement'),
+
   getJournee: () => apiFetch<EtatJournee>('/caisse/journee'),
 
   ouvrirJournee: (fondDeCaisse: number) =>

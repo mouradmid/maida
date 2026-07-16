@@ -361,7 +361,7 @@ async function main() {
       fermeeLe: ilYA(1200),
     },
   });
-  await creerCommande(
+  const commandeHier = await creerCommande(
     addHier.id,
     serveurs[1].id,
     [
@@ -372,6 +372,11 @@ async function main() {
     undefined,
     ilYA(1315),
   );
+  // Servie hier soir : ne doit pas rester « en préparation » sur l'écran cuisine.
+  await prisma.commande.update({
+    where: { id: commandeHier.id },
+    data: { statut: 'PRETE', preteLe: ilYA(1290) },
+  });
   await prisma.paiement.create({
     data: {
       additionId: addHier.id,

@@ -62,6 +62,18 @@ async function resoudreResponsable(options: {
   return { ok: false, status: 403, body: { error: 'Code gérant invalide', codeGerantRequis: true } };
 }
 
+// Infos affichées sur le ticket client.
+caisseRouter.get('/etablissement', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const etablissement = await prisma.etablissement.findUnique({
+    where: { id: etablissementId },
+    select: { nom: true, adresse: true, ville: true },
+  });
+
+  res.json(etablissement);
+});
+
 caisseRouter.get('/moyens-paiement', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Commande } from '../lib/api';
+import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
 import { badgeBrand, messageErreur } from '../lib/ui';
 
 const RAFRAICHISSEMENT_MS = 10_000;
@@ -159,14 +160,24 @@ export function EcranCuisine() {
                 <span className="text-xs text-stone-400">
                   {commande.serveur.prenom} {commande.serveur.nom}
                 </span>
-                <button
-                  type="button"
-                  disabled={enCours}
-                  onClick={() => handlePrete(commande)}
-                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:opacity-50"
-                >
-                  {enCours ? '...' : 'Prête ✓'}
-                </button>
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => imprimerHtml(htmlTicketCuisine(commande))}
+                    title="Réimprimer le ticket cuisine"
+                    className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-600 transition-colors hover:bg-stone-50"
+                  >
+                    🖨
+                  </button>
+                  <button
+                    type="button"
+                    disabled={enCours}
+                    onClick={() => handlePrete(commande)}
+                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 active:bg-green-800 disabled:opacity-50"
+                  >
+                    {enCours ? '...' : 'Prête ✓'}
+                  </button>
+                </span>
               </div>
             </div>
           );

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type AdditionDetail, type AdditionResume, type ModePaiement } from '../lib/api';
+import { htmlTicketClient, imprimerHtml } from '../lib/impression';
 import {
   badgeVert,
   boutonDiscret,
@@ -30,6 +31,11 @@ export function Encaissement() {
   const [additions, setAdditions] = useState<AdditionResume[]>([]);
   const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>([]);
   const [journeeOuverte, setJourneeOuverte] = useState(true);
+  const [etablissement, setEtablissement] = useState<{
+    nom: string;
+    adresse: string | null;
+    ville: string | null;
+  } | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [additionId, setAdditionId] = useState<string | null>(null);
@@ -46,14 +52,16 @@ export function Encaissement() {
   async function chargerListe() {
     setChargement(true);
     try {
-      const [additionsOuvertes, moyens, etatJournee] = await Promise.all([
+      const [additionsOuvertes, moyens, etatJournee, infosEtab] = await Promise.all([
         api.listAdditionsOuvertes(),
         api.caisseMoyensPaiement(),
         api.getJournee(),
+        api.caisseEtablissement(),
       ]);
       setAdditions(additionsOuvertes);
       setMoyensActifs(moyens.actifs);
       setJourneeOuverte(etatJournee.journee !== null);
+      setEtablissement(infosEtab);
       if (moyens.actifs.length > 0 && !moyens.actifs.includes(moyenPaiement)) {
         setMoyenPaiement(moyens.actifs[0]);
       }
@@ -215,9 +223,22 @@ export function Encaissement() {
         <h2 className="text-xl font-semibold text-stone-900">
           {detail.table ? `Table ${detail.table.numero}` : 'À emporter'}
         </h2>
-        <button type="button" onClick={retourListe} className={boutonDiscret}>
-          ← Retour aux additions
-        </button>
+        <span className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() =>
+              imprimerHtml(
+                htmlTicketClient(detail, etablissement ?? { nom: 'Maïda', adresse: null, ville: null }),
+              )
+            }
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50"
+          >
+            🖨 Imprimer le ticket
+          </button>
+          <button type="button" onClick={retourListe} className={boutonDiscret}>
+            ← Retour aux additions
+          </button>
+        </span>
       </div>
 
       {bandeauJourneeFermee}

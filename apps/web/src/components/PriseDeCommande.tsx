@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
 import { badgeBrand, badgeNeutre, badgeVert, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
+import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
 
@@ -44,6 +45,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [choixEnCours, setChoixEnCours] = useState<Record<string, string>>({});
   const [erreurOptions, setErreurOptions] = useState<string | null>(null);
   const [commandeAAnnuler, setCommandeAAnnuler] = useState<Commande | null>(null);
+  const [derniereCommande, setDerniereCommande] = useState<Commande | null>(null);
 
   async function chargerTout() {
     setChargement(true);
@@ -145,6 +147,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
         })),
       });
       setConfirmation(`Commande envoyée — total ${commande.total} DA`);
+      setDerniereCommande(commande);
       setPanier({});
       setTableId('');
       setNoteCuisine('');
@@ -159,7 +162,20 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   return (
     <div className="flex w-full flex-col gap-6">
       {erreur && <p className={messageErreur}>{erreur}</p>}
-      {confirmation && <p className={messageSucces}>{confirmation}</p>}
+      {confirmation && (
+        <div className={`${messageSucces} flex items-center justify-between gap-3`}>
+          <span>{confirmation}</span>
+          {derniereCommande && (
+            <button
+              type="button"
+              onClick={() => imprimerHtml(htmlTicketCuisine(derniereCommande))}
+              className="shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition-colors hover:bg-green-100"
+            >
+              🖨 Ticket cuisine
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_340px]">
         {/* Colonne menu */}
