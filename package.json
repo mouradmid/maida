@@ -1,0 +1,11 @@
+{
+  "name": "maida",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm ci --include=dev --prefix apps/web && npm run build --prefix apps/web && npm ci --include=dev --prefix apps/api && npm run build --prefix apps/api",
+    "start": "npm run start:prod --prefix apps/api"
+  }
+}

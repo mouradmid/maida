@@ -4,8 +4,11 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  // L'API est compilée en CommonJS : le client doit l'être aussi
+  // (en dev, tsx accepte les deux ; en prod, node est strict).
+  moduleFormat = "cjs"
 }
 
 datasource db {

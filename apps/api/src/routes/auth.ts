@@ -1,11 +1,23 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import type { Utilisateur } from '../generated/prisma/client';
 import { AUTH_COOKIE_NAME, signToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 
 export const authRouter = Router();
+
+// Freine le brute-force en ligne (mots de passe, et surtout PIN à 4 chiffres).
+// Seules les tentatives ÉCHOUÉES comptent : l'usage normal n'est jamais bloqué.
+const limiteConnexion = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
+});
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -27,7 +39,7 @@ function toPublicUser(utilisateur: Utilisateur) {
   };
 }
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', limiteConnexion, async (req, res) => {
   const { email, password } = req.body ?? {};
 
   if (typeof email !== 'string' || typeof password !== 'string') {
@@ -61,7 +73,7 @@ authRouter.post('/login', async (req, res) => {
   res.json(toPublicUser(utilisateur));
 });
 
-authRouter.post('/login-pin', async (req, res) => {
+authRouter.post('/login-pin', limiteConnexion, async (req, res) => {
   const { etablissementId, codePin } = req.body ?? {};
 
   if (typeof etablissementId !== 'string' || typeof codePin !== 'string') {
