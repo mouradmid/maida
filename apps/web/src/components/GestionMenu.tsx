@@ -16,8 +16,18 @@ export function GestionMenu() {
   const [nouveauProduitCout, setNouveauProduitCout] = useState('');
   const [nouveauProduitCategorieId, setNouveauProduitCategorieId] = useState('');
   const [nouveauProduitTempsPrepa, setNouveauProduitTempsPrepa] = useState('');
-  const [coutEnEdition, setCoutEnEdition] = useState<string | null>(null);
-  const [coutSaisi, setCoutSaisi] = useState('');
+  // Édition d'un produit existant (formulaire inline)
+  const [produitEnEdition, setProduitEnEdition] = useState<string | null>(null);
+  const [editNom, setEditNom] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPrix, setEditPrix] = useState('');
+  const [editPrepa, setEditPrepa] = useState('');
+  const [editCout, setEditCout] = useState('');
+  const [editCategorieId, setEditCategorieId] = useState('');
+
+  // Renommage d'une catégorie
+  const [categorieEnEdition, setCategorieEnEdition] = useState<string | null>(null);
+  const [nouveauNomCategorie, setNouveauNomCategorie] = useState('');
 
   async function chargerTout() {
     setChargement(true);
@@ -62,14 +72,49 @@ export function GestionMenu() {
     await chargerTout();
   }
 
-  async function handleEnregistrerCout(produit: Produit) {
+  function ouvrirEditionProduit(produit: Produit) {
+    setProduitEnEdition(produit.id);
+    setEditNom(produit.nom);
+    setEditDescription(produit.description ?? '');
+    setEditPrix(String(produit.prix));
+    setEditPrepa(produit.tempsPreparationMinutes != null ? String(produit.tempsPreparationMinutes) : '');
+    setEditCout(produit.coutRevient != null ? String(produit.coutRevient) : '');
+    setEditCategorieId(produit.categorieId);
+  }
+
+  async function handleEnregistrerProduit(produit: Produit) {
     setErreur(null);
+    const prix = Number(editPrix);
+    if (!editNom.trim() || !Number.isFinite(prix) || prix <= 0) {
+      setErreur('Nom et prix (positif) sont requis');
+      return;
+    }
     try {
       await api.updateProduit(produit.id, {
-        coutRevient: coutSaisi === '' ? null : Number(coutSaisi),
+        nom: editNom,
+        description: editDescription,
+        prix,
+        categorieId: editCategorieId,
+        tempsPreparationMinutes: editPrepa === '' ? null : Number(editPrepa),
+        coutRevient: editCout === '' ? null : Number(editCout),
       });
-      setCoutEnEdition(null);
-      setCoutSaisi('');
+      setProduitEnEdition(null);
+      await chargerTout();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleRenommerCategorie(categorieId: string) {
+    setErreur(null);
+    if (!nouveauNomCategorie.trim()) {
+      setErreur('Le nom de la catégorie ne peut pas être vide');
+      return;
+    }
+    try {
+      await api.updateCategorie(categorieId, { nom: nouveauNomCategorie });
+      setCategorieEnEdition(null);
+      setNouveauNomCategorie('');
       await chargerTout();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -131,11 +176,39 @@ export function GestionMenu() {
                       categorie.statut === 'INACTIF' ? 'text-stone-400' : 'text-stone-900'
                     }`}
                   >
-                    {categorie.nom}
+                    {categorieEnEdition === categorie.id ? (
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={nouveauNomCategorie}
+                          onChange={(e) => setNouveauNomCategorie(e.target.value)}
+                          className={`${champ} w-44 px-2 py-1`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRenommerCategorie(categorie.id)}
+                          className={`${boutonPrimaire} px-3 py-1 text-xs`}
+                        >
+                          OK
+                        </button>
+                      </span>
+                    ) : (
+                      categorie.nom
+                    )}
                     <span className={badgeNeutre}>{produitsCategorie.length}</span>
                     {categorie.statut === 'INACTIF' && <span className={badgeNeutre}>désactivée</span>}
                   </h3>
                   <span className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategorieEnEdition(categorieEnEdition === categorie.id ? null : categorie.id);
+                        setNouveauNomCategorie(categorie.nom);
+                      }}
+                      className={boutonDiscret}
+                    >
+                      Renommer
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleToggleTypeCategorie(categorie)}
@@ -179,13 +252,14 @@ export function GestionMenu() {
                         <span className="flex shrink-0 items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => {
-                              setCoutEnEdition(coutEnEdition === produit.id ? null : produit.id);
-                              setCoutSaisi(produit.coutRevient != null ? String(produit.coutRevient) : '');
-                            }}
+                            onClick={() =>
+                              produitEnEdition === produit.id
+                                ? setProduitEnEdition(null)
+                                : ouvrirEditionProduit(produit)
+                            }
                             className={boutonDiscret}
                           >
-                            Coût
+                            Modifier
                           </button>
                           <button
                             type="button"
@@ -201,28 +275,95 @@ export function GestionMenu() {
                           </button>
                         </span>
                       </div>
-                      {coutEnEdition === produit.id && (
-                        <div className="flex items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
-                          <label className="text-xs font-medium text-stone-600" htmlFor={`cout-${produit.id}`}>
-                            Coût de revient (DA)
+                      {produitEnEdition === produit.id && (
+                        <div className="flex flex-col gap-2 rounded-lg bg-stone-50 px-3 py-3">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                              Nom
+                              <input
+                                type="text"
+                                value={editNom}
+                                onChange={(e) => setEditNom(e.target.value)}
+                                className={`${champ} px-2 py-1`}
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                              Catégorie
+                              <select
+                                value={editCategorieId}
+                                onChange={(e) => setEditCategorieId(e.target.value)}
+                                className={`${champ} px-2 py-1.5`}
+                              >
+                                {categories.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.nom}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                            Description
+                            <input
+                              type="text"
+                              value={editDescription}
+                              onChange={(e) => setEditDescription(e.target.value)}
+                              className={`${champ} px-2 py-1`}
+                            />
                           </label>
-                          <input
-                            id={`cout-${produit.id}`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={coutSaisi}
-                            onChange={(e) => setCoutSaisi(e.target.value)}
-                            placeholder="vide = non suivi"
-                            className={`${champ} w-36 px-2 py-1`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleEnregistrerCout(produit)}
-                            className={`${boutonPrimaire} px-3 py-1 text-xs`}
-                          >
-                            Enregistrer
-                          </button>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                              Prix (DA)
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={editPrix}
+                                onChange={(e) => setEditPrix(e.target.value)}
+                                className={`${champ} px-2 py-1`}
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                              Préparation (min)
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editPrepa}
+                                onChange={(e) => setEditPrepa(e.target.value)}
+                                placeholder="vide = sans suivi"
+                                className={`${champ} px-2 py-1`}
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
+                              Coût de revient (DA)
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={editCout}
+                                onChange={(e) => setEditCout(e.target.value)}
+                                placeholder="vide = non suivi"
+                                className={`${champ} px-2 py-1`}
+                              />
+                            </label>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEnregistrerProduit(produit)}
+                              className={`${boutonPrimaire} px-4 py-1.5 text-xs`}
+                            >
+                              Enregistrer les modifications
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setProduitEnEdition(null)}
+                              className={boutonDiscret}
+                            >
+                              Annuler
+                            </button>
+                          </div>
                         </div>
                       )}
                       {produitOptionsOuvert === produit.id && (
