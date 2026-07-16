@@ -3,11 +3,12 @@ import { Router } from 'express';
 import { Prisma, type FormeTable } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
+import { requireCompteActif } from '../middleware/requireCompteActif';
 import { requireRole } from '../middleware/requireRole';
 
 export const gerantRouter = Router();
 
-gerantRouter.use(requireAuth, requireRole('GERANT'));
+gerantRouter.use(requireAuth, requireRole('GERANT'), requireCompteActif);
 
 async function getContexteGerant(gerantId: string) {
   const gerant = await prisma.utilisateur.findUnique({ where: { id: gerantId } });

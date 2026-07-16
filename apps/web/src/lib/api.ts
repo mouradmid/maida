@@ -224,6 +224,17 @@ export interface ResultatPaiement {
   additionCloturee: boolean;
 }
 
+export interface CompteClient {
+  id: string;
+  nomEnseigne: string;
+  statut: 'ACTIF' | 'SUSPENDU';
+  creeLe: string;
+  etablissements: Array<{ id: string; nom: string; ville: string | null }>;
+  gerants: Array<{ id: string; nom: string; prenom: string; email: string | null }>;
+  commandes7Jours: number;
+  derniereCommande: string | null;
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -453,6 +464,26 @@ export const api = {
     }),
 
   listJournees: () => apiFetch<JourneeGerant[]>('/gerant/journees'),
+
+  listComptesClients: () => apiFetch<CompteClient[]>('/admin/comptes-clients'),
+
+  createCompteClient: (data: {
+    nomEnseigne: string;
+    etablissement: { nom: string; ville?: string; adresse?: string };
+    gerant: { nom: string; prenom: string; email: string; motDePasse: string };
+  }) => apiFetch('/admin/comptes-clients', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateStatutCompteClient: (id: string, statut: 'ACTIF' | 'SUSPENDU') =>
+    apiFetch<{ id: string; statut: string }>(`/admin/comptes-clients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ statut }),
+    }),
+
+  resetMotDePasseGerant: (gerantId: string, motDePasse: string) =>
+    apiFetch<void>(`/admin/gerants/${gerantId}/mot-de-passe`, {
+      method: 'POST',
+      body: JSON.stringify({ motDePasse }),
+    }),
 
   getRapports: (debut: Date, fin: Date) =>
     apiFetch<RapportVentes>(

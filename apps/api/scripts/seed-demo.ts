@@ -177,6 +177,37 @@ async function main() {
   console.log(`Gérant : ${gerant.email} / demo1234 — PIN validation 9999`);
   console.log(`Serveur ${serveurs[0].prenom} : PIN 1234 (droit annuler) — Serveur ${serveurs[1].prenom} : PIN 5678`);
 
+  // Le compte de démo est toujours remis actif (au cas où il a été suspendu en test).
+  await prisma.compteClient.update({
+    where: { id: etablissement.compteClientId },
+    data: { statut: 'ACTIF' },
+  });
+
+  // Deuxième compte client, suspendu : donne de la matière à l'espace super-admin.
+  let palmeraie = await prisma.compteClient.findFirst({ where: { nomEnseigne: 'La Palmeraie' } });
+  if (!palmeraie) {
+    palmeraie = await prisma.compteClient.create({
+      data: { nomEnseigne: 'La Palmeraie', statut: 'SUSPENDU' },
+    });
+    const etabPalmeraie = await prisma.etablissement.create({
+      data: { nom: 'La Palmeraie - Front de mer', ville: 'Oran', compteClientId: palmeraie.id },
+    });
+    await prisma.utilisateur.create({
+      data: {
+        role: 'GERANT',
+        nom: 'Mansouri',
+        prenom: 'Leïla',
+        email: 'leila@lapalmeraie.dz',
+        motDePasseHash: await bcrypt.hash('demo1234', 12),
+        compteClientId: palmeraie.id,
+        etablissementId: etabPalmeraie.id,
+      },
+    });
+  } else {
+    await prisma.compteClient.update({ where: { id: palmeraie.id }, data: { statut: 'SUSPENDU' } });
+  }
+  console.log('Compte « La Palmeraie » (Oran) présent et suspendu — démo super-admin.');
+
   // Purge des données transactionnelles et du menu existant
   await prisma.paiementLigne.deleteMany({});
   await prisma.paiement.deleteMany({});

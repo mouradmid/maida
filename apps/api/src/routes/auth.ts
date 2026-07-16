@@ -35,7 +35,10 @@ authRouter.post('/login', async (req, res) => {
     return;
   }
 
-  const utilisateur = await prisma.utilisateur.findUnique({ where: { email } });
+  const utilisateur = await prisma.utilisateur.findUnique({
+    where: { email },
+    include: { compteClient: { select: { statut: true } } },
+  });
 
   if (!utilisateur || !utilisateur.motDePasseHash || utilisateur.statut !== 'ACTIF') {
     res.status(401).json({ error: 'Email ou mot de passe incorrect' });
@@ -45,6 +48,11 @@ authRouter.post('/login', async (req, res) => {
   const motDePasseValide = await bcrypt.compare(password, utilisateur.motDePasseHash);
   if (!motDePasseValide) {
     res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+    return;
+  }
+
+  if (utilisateur.compteClient?.statut === 'SUSPENDU') {
+    res.status(403).json({ error: 'Ce compte est suspendu. Contactez Maïda pour le réactiver.' });
     return;
   }
 
@@ -62,7 +70,13 @@ authRouter.post('/login-pin', async (req, res) => {
   }
 
   const serveurs = await prisma.utilisateur.findMany({
-    where: { etablissementId, role: 'SERVEUR', statut: 'ACTIF', codePinHash: { not: null } },
+    where: {
+      etablissementId,
+      role: 'SERVEUR',
+      statut: 'ACTIF',
+      codePinHash: { not: null },
+      compteClient: { statut: 'ACTIF' },
+    },
   });
 
   let serveurTrouve: Utilisateur | null = null;
@@ -87,7 +101,7 @@ authRouter.post('/login-pin', async (req, res) => {
 // Plus tard, chaque terminal sera associé à son établissement automatiquement.
 authRouter.get('/etablissements', async (_req, res) => {
   const etablissements = await prisma.etablissement.findMany({
-    where: { statut: 'ACTIF' },
+    where: { statut: 'ACTIF', compteClient: { statut: 'ACTIF' } },
     select: { id: true, nom: true, ville: true },
     orderBy: { nom: 'asc' },
   });
@@ -95,10 +109,18 @@ authRouter.get('/etablissements', async (_req, res) => {
 });
 
 authRouter.get('/me', requireAuth, async (req, res) => {
-  const utilisateur = await prisma.utilisateur.findUnique({ where: { id: req.user!.id } });
+  const utilisateur = await prisma.utilisateur.findUnique({
+    where: { id: req.user!.id },
+    include: { compteClient: { select: { statut: true } } },
+  });
 
   if (!utilisateur || utilisateur.statut !== 'ACTIF') {
     res.status(401).json({ error: 'Non authentifié' });
+    return;
+  }
+
+  if (utilisateur.compteClient?.statut === 'SUSPENDU') {
+    res.status(403).json({ error: 'Ce compte est suspendu. Contactez Maïda pour le réactiver.' });
     return;
   }
 

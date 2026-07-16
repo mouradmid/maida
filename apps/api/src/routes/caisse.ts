@@ -3,11 +3,12 @@ import { Router } from 'express';
 import type { DroitUtilisateur, ModePaiement, Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
+import { requireCompteActif } from '../middleware/requireCompteActif';
 import { requireRole } from '../middleware/requireRole';
 
 export const caisseRouter = Router();
 
-caisseRouter.use(requireAuth, requireRole('SERVEUR'));
+caisseRouter.use(requireAuth, requireRole('SERVEUR'), requireCompteActif);
 
 const arrondi = (n: number) => Math.round(n * 100) / 100;
 
