@@ -8,9 +8,11 @@ import { PlanDeSalle } from '../components/PlanDeSalle';
 import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
 import { HistoriqueAnnulations } from '../components/HistoriqueAnnulations';
 import { HistoriqueJournees } from '../components/HistoriqueJournees';
+import { RapportsGerant } from '../components/RapportsGerant';
 import { useMe } from '../hooks/useMe';
 
 const ONGLETS = [
+  { id: 'rapports', libelle: 'Rapports' },
   { id: 'salle', libelle: 'Plan de salle' },
   { id: 'menu', libelle: 'Menu' },
   { id: 'equipe', libelle: 'Équipe' },
@@ -23,7 +25,7 @@ type Onglet = (typeof ONGLETS)[number]['id'];
 
 export function EspaceGerant() {
   const { user, loading, refresh } = useMe();
-  const [onglet, setOnglet] = useState<Onglet>('salle');
+  const [onglet, setOnglet] = useState<Onglet>('rapports');
 
   if (loading) {
     return <p className="p-8 text-center text-stone-500">Chargement...</p>;
@@ -51,6 +53,7 @@ export function EspaceGerant() {
             ))}
           </nav>
 
+          {onglet === 'rapports' && <RapportsGerant />}
           {onglet === 'salle' && <PlanDeSalle />}
           {onglet === 'menu' && <GestionMenu />}
           {onglet === 'equipe' && <GestionServeurs />}

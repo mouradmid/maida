@@ -567,6 +567,148 @@ gerantRouter.get('/annulations', async (req, res) => {
   );
 });
 
+// --- Rapports de ventes ---
+
+const arrondi = (n: number) => Math.round(n * 100) / 100;
+
+gerantRouter.get('/rapports', async (req, res) => {
+  const { debut, fin } = req.query;
+
+  if (typeof debut !== 'string' || typeof fin !== 'string') {
+    res.status(400).json({ error: 'Période requise (debut et fin)' });
+    return;
+  }
+  const dateDebut = new Date(debut);
+  const dateFin = new Date(fin);
+  if (Number.isNaN(dateDebut.getTime()) || Number.isNaN(dateFin.getTime()) || dateDebut > dateFin) {
+    res.status(400).json({ error: 'Période invalide' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const periode = { gte: dateDebut, lte: dateFin };
+
+  const [paiements, commandes, annulations] = await Promise.all([
+    prisma.paiement.findMany({
+      where: { addition: { etablissementId }, creeLe: periode },
+      select: { montant: true, moyenPaiement: true },
+    }),
+    prisma.commande.findMany({
+      where: { etablissementId, creeLe: periode },
+      select: {
+        statut: true,
+        serveur: { select: { id: true, nom: true, prenom: true } },
+        lignes: {
+          select: {
+            nomProduit: true,
+            prixUnitaire: true,
+            quantite: true,
+            quantiteAnnulee: true,
+            produit: { select: { categorie: { select: { nom: true } } } },
+          },
+        },
+      },
+    }),
+    prisma.annulation.findMany({
+      where: { etablissementId, creeLe: periode },
+      select: { montant: true, quantite: true, apresPreparation: true },
+    }),
+  ]);
+
+  // Encaissements par moyen de paiement
+  const parMoyenMap = new Map<string, { montant: number; nombre: number }>();
+  for (const p of paiements) {
+    const entree = parMoyenMap.get(p.moyenPaiement) ?? { montant: 0, nombre: 0 };
+    entree.montant += Number(p.montant);
+    entree.nombre += 1;
+    parMoyenMap.set(p.moyenPaiement, entree);
+  }
+  const parMoyen = [...parMoyenMap.entries()]
+    .map(([moyenPaiement, v]) => ({ moyenPaiement, montant: arrondi(v.montant), nombre: v.nombre }))
+    .sort((a, b) => b.montant - a.montant);
+  const caEncaisse = arrondi(parMoyen.reduce((s, m) => s + m.montant, 0));
+
+  // Ventes par produit / catégorie / serveur (quantités annulées exclues)
+  const parProduitMap = new Map<string, { categorie: string; quantite: number; montant: number }>();
+  const parCategorieMap = new Map<string, { quantite: number; montant: number }>();
+  const parServeurMap = new Map<string, { nom: string; prenom: string; nbCommandes: number; montant: number }>();
+  let caCommande = 0;
+  let nbCommandes = 0;
+
+  for (const commande of commandes) {
+    if (commande.statut === 'ANNULEE') continue;
+    nbCommandes += 1;
+    let montantCommande = 0;
+
+    for (const ligne of commande.lignes) {
+      const quantite = ligne.quantite - ligne.quantiteAnnulee;
+      if (quantite <= 0) continue;
+      const montant = Number(ligne.prixUnitaire) * quantite;
+      const categorie = ligne.produit.categorie.nom;
+      montantCommande += montant;
+
+      const prod = parProduitMap.get(ligne.nomProduit) ?? { categorie, quantite: 0, montant: 0 };
+      prod.quantite += quantite;
+      prod.montant += montant;
+      parProduitMap.set(ligne.nomProduit, prod);
+
+      const cat = parCategorieMap.get(categorie) ?? { quantite: 0, montant: 0 };
+      cat.quantite += quantite;
+      cat.montant += montant;
+      parCategorieMap.set(categorie, cat);
+    }
+
+    caCommande += montantCommande;
+    const serveur = parServeurMap.get(commande.serveur.id) ?? {
+      nom: commande.serveur.nom,
+      prenom: commande.serveur.prenom,
+      nbCommandes: 0,
+      montant: 0,
+    };
+    serveur.nbCommandes += 1;
+    serveur.montant += montantCommande;
+    parServeurMap.set(commande.serveur.id, serveur);
+  }
+
+  // Pertes : annulations de la période (perte sèche = après préparation)
+  const pertes = { montant: 0, quantite: 0, apresPreparation: { montant: 0, quantite: 0 } };
+  for (const a of annulations) {
+    pertes.montant += Number(a.montant);
+    pertes.quantite += a.quantite;
+    if (a.apresPreparation) {
+      pertes.apresPreparation.montant += Number(a.montant);
+      pertes.apresPreparation.quantite += a.quantite;
+    }
+  }
+
+  res.json({
+    periode: { debut: dateDebut, fin: dateFin },
+    caEncaisse,
+    nbPaiements: paiements.length,
+    parMoyen,
+    caCommande: arrondi(caCommande),
+    nbCommandes,
+    ticketMoyen: nbCommandes > 0 ? arrondi(caCommande / nbCommandes) : 0,
+    parProduit: [...parProduitMap.entries()]
+      .map(([nom, v]) => ({ nom, categorie: v.categorie, quantite: v.quantite, montant: arrondi(v.montant) }))
+      .sort((a, b) => b.montant - a.montant),
+    parCategorie: [...parCategorieMap.entries()]
+      .map(([nom, v]) => ({ nom, quantite: v.quantite, montant: arrondi(v.montant) }))
+      .sort((a, b) => b.montant - a.montant),
+    parServeur: [...parServeurMap.values()]
+      .map((s) => ({ ...s, montant: arrondi(s.montant) }))
+      .sort((a, b) => b.montant - a.montant),
+    pertes: {
+      montant: arrondi(pertes.montant),
+      quantite: pertes.quantite,
+      apresPreparation: {
+        montant: arrondi(pertes.apresPreparation.montant),
+        quantite: pertes.apresPreparation.quantite,
+      },
+    },
+  });
+});
+
 // --- Journées de caisse ---
 
 gerantRouter.get('/journees', async (req, res) => {

@@ -172,6 +172,24 @@ export interface JourneeGerant extends JourneeCaisse {
   totaux: TotauxJournee;
 }
 
+export interface RapportVentes {
+  periode: { debut: string; fin: string };
+  caEncaisse: number;
+  nbPaiements: number;
+  parMoyen: Array<{ moyenPaiement: ModePaiement; montant: number; nombre: number }>;
+  caCommande: number;
+  nbCommandes: number;
+  ticketMoyen: number;
+  parProduit: Array<{ nom: string; categorie: string; quantite: number; montant: number }>;
+  parCategorie: Array<{ nom: string; quantite: number; montant: number }>;
+  parServeur: Array<{ nom: string; prenom: string; nbCommandes: number; montant: number }>;
+  pertes: {
+    montant: number;
+    quantite: number;
+    apresPreparation: { montant: number; quantite: number };
+  };
+}
+
 export interface ResultatPaiement {
   id: string;
   montant: number;
@@ -409,4 +427,9 @@ export const api = {
     }),
 
   listJournees: () => apiFetch<JourneeGerant[]>('/gerant/journees'),
+
+  getRapports: (debut: Date, fin: Date) =>
+    apiFetch<RapportVentes>(
+      `/gerant/rapports?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`,
+    ),
 };
