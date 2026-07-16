@@ -60,6 +60,12 @@ export function GestionServeurs() {
       inactif: 'Ne peut pas clôturer',
       titre: 'Autoriser ce serveur à clôturer la journée de caisse sans validation du gérant',
     },
+    {
+      droit: 'REMISER',
+      actif: '✓ Peut remiser',
+      inactif: 'Ne peut pas remiser',
+      titre: 'Autoriser ce serveur à accorder remises et offerts sans validation du gérant',
+    },
   ];
 
   async function handleAjouter(e: React.FormEvent) {

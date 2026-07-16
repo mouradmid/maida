@@ -8,6 +8,7 @@ import { PlanDeSalle } from '../components/PlanDeSalle';
 import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
 import { HistoriqueAnnulations } from '../components/HistoriqueAnnulations';
 import { HistoriqueJournees } from '../components/HistoriqueJournees';
+import { HistoriqueRemises } from '../components/HistoriqueRemises';
 import { RapportsGerant } from '../components/RapportsGerant';
 import { useMe } from '../hooks/useMe';
 
@@ -17,7 +18,7 @@ const ONGLETS = [
   { id: 'menu', libelle: 'Menu' },
   { id: 'equipe', libelle: 'Équipe' },
   { id: 'paiements', libelle: 'Paiements' },
-  { id: 'annulations', libelle: 'Annulations' },
+  { id: 'annulations', libelle: 'Annulations & remises' },
   { id: 'journees', libelle: 'Journées de caisse' },
 ] as const;
 
@@ -58,7 +59,12 @@ export function EspaceGerant() {
           {onglet === 'menu' && <GestionMenu />}
           {onglet === 'equipe' && <GestionServeurs />}
           {onglet === 'paiements' && <ConfigMoyensPaiement />}
-          {onglet === 'annulations' && <HistoriqueAnnulations />}
+          {onglet === 'annulations' && (
+            <div className="flex flex-col gap-4">
+              <HistoriqueRemises />
+              <HistoriqueAnnulations />
+            </div>
+          )}
           {onglet === 'journees' && <HistoriqueJournees />}
         </main>
       </div>

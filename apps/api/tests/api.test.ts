@@ -37,6 +37,7 @@ async function purgerCompteTest() {
   await prisma.paiementLigne.deleteMany({ where: { paiement: { addition: filtreEtab } } });
   await prisma.paiement.deleteMany({ where: { addition: filtreEtab } });
   await prisma.annulation.deleteMany({ where: filtreEtab });
+  await prisma.remise.deleteMany({ where: filtreEtab });
   await prisma.ligneCommandeOption.deleteMany({ where: { ligneCommande: { commande: filtreEtab } } });
   await prisma.ligneCommande.deleteMany({ where: { commande: filtreEtab } });
   await prisma.commande.deleteMany({ where: filtreEtab });
@@ -80,7 +81,7 @@ beforeAll(async () => {
       nom: 'Test',
       prenom: 'AvecDroits',
       codePinHash: await bcrypt.hash(PIN_SERVEUR_DROITS, 12),
-      droits: ['ANNULER', 'CLOTURER'],
+      droits: ['ANNULER', 'CLOTURER', 'REMISER'],
       compteClientId: compte.id,
       etablissementId: etab.id,
     },
@@ -158,6 +159,7 @@ describe('Authentification', () => {
     const res1 = await serveur.post('/api/auth/login-pin').send({ etablissementId, codePin: PIN_SERVEUR_DROITS });
     expect(res1.status).toBe(200);
     expect(res1.body.droits).toContain('CLOTURER');
+    expect(res1.body.droits).toContain('REMISER');
     const res2 = await serveurSans
       .post('/api/auth/login-pin')
       .send({ etablissementId, codePin: PIN_SERVEUR_SANS });
@@ -383,6 +385,100 @@ describe('Options de produit', () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.lignes[0].options[0].valeur).toBe('A');
+  });
+});
+
+describe('Remises et offerts', () => {
+  let additionId = '';
+  let lignePlatId = '';
+
+  it('prépare une addition à emporter', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitPlatId, quantite: 3 }],
+    });
+    expect(res.status).toBe(201);
+    additionId = res.body.additionId;
+    lignePlatId = res.body.lignes[0].id;
+  });
+
+  it('refuse un offert sans droit et sans code gérant', async () => {
+    const res = await serveurSans.post(`/api/caisse/additions/${additionId}/offert`).send({
+      lignes: [{ ligneCommandeId: lignePlatId, quantite: 1 }],
+      motif: 'Client fidèle',
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.codeGerantRequis).toBe(true);
+  });
+
+  it('offre un article avec validation gérant : le solde baisse', async () => {
+    const res = await serveurSans.post(`/api/caisse/additions/${additionId}/offert`).send({
+      lignes: [{ ligneCommandeId: lignePlatId, quantite: 1 }],
+      motif: 'Client fidèle',
+      codeGerant: PIN_GERANT,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.soldeRestant).toBe(2000); // 3 × 1000 − 1 offert
+    expect(res.body.additionCloturee).toBe(false);
+  });
+
+  it("refuse d'offrir plus que le disponible", async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/offert`).send({
+      lignes: [{ ligneCommandeId: lignePlatId, quantite: 5 }],
+      motif: 'Client fidèle',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('applique une remise de 10 % avec le droit REMISER', async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/remise`).send({
+      mode: 'POURCENTAGE',
+      valeur: 10,
+      motif: 'Geste commercial',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.montant).toBe(200); // 10 % de 2000
+    expect(res.body.soldeRestant).toBe(1800);
+  });
+
+  it('refuse une remise supérieure au solde', async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/remise`).send({
+      mode: 'MONTANT',
+      valeur: 99999,
+      motif: 'Geste commercial',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("une remise qui couvre tout le solde clôt l'addition sans paiement", async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/remise`).send({
+      mode: 'MONTANT',
+      valeur: 1800,
+      motif: 'Geste commercial',
+      commentaire: 'Test remise totale',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.additionCloturee).toBe(true);
+
+    const detail = await serveur.get(`/api/caisse/additions/${additionId}`);
+    expect(detail.body.statut).toBe('PAYEE');
+    expect(detail.body.total).toBe(0); // 2000 facturables − 2000 de remises
+    expect(detail.body.montantRemises).toBe(2000);
+  });
+
+  it("trace tout dans l'historique gérant et les rapports", async () => {
+    const remises = await gerant.get('/api/gerant/remises');
+    expect(remises.status).toBe(200);
+    expect(remises.body).toHaveLength(3); // 1 offert + 2 remises
+    const offert = remises.body.find((r: { type: string }) => r.type === 'OFFERT');
+    expect(offert.montant).toBe(1000);
+    expect(offert.demandeePar?.prenom).toBe('SansDroit');
+
+    const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fin = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const rapport = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
+    expect(rapport.body.remises.montant).toBe(3000); // 1000 offert + 200 + 1800
+    expect(rapport.body.remises.offerts.quantite).toBe(1);
   });
 });
 

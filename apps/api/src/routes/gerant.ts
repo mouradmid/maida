@@ -30,7 +30,7 @@ gerantRouter.get('/serveurs', async (req, res) => {
   res.json(serveurs);
 });
 
-const DROITS_VALIDES = ['ANNULER', 'CLOTURER'] as const;
+const DROITS_VALIDES = ['ANNULER', 'CLOTURER', 'REMISER'] as const;
 
 gerantRouter.patch('/serveurs/:id/droits', async (req, res) => {
   const { droits } = req.body ?? {};
@@ -610,6 +610,41 @@ gerantRouter.get('/annulations', async (req, res) => {
   );
 });
 
+// --- Historique des remises et offerts ---
+
+gerantRouter.get('/remises', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const remises = await prisma.remise.findMany({
+    where: { etablissementId },
+    include: {
+      addition: { select: { table: { select: { numero: true } } } },
+      ligneCommande: { select: { nomProduit: true } },
+      accordeePar: { select: { nom: true, prenom: true, role: true } },
+      demandeePar: { select: { nom: true, prenom: true } },
+    },
+    orderBy: { creeLe: 'desc' },
+    take: 200,
+  });
+
+  res.json(
+    remises.map((r) => ({
+      id: r.id,
+      type: r.type,
+      montant: Number(r.montant),
+      pourcentage: r.pourcentage,
+      quantite: r.quantite,
+      motif: r.motif,
+      commentaire: r.commentaire,
+      creeLe: r.creeLe,
+      table: r.addition.table,
+      produit: r.ligneCommande?.nomProduit ?? null,
+      accordeePar: r.accordeePar,
+      demandeePar: r.demandeePar,
+    })),
+  );
+});
+
 // --- Rapports de ventes ---
 
 const arrondi = (n: number) => Math.round(n * 100) / 100;
@@ -631,7 +666,7 @@ gerantRouter.get('/rapports', async (req, res) => {
   const { etablissementId } = await getContexteGerant(req.user!.id);
   const periode = { gte: dateDebut, lte: dateFin };
 
-  const [paiements, commandes, annulations] = await Promise.all([
+  const [paiements, commandes, annulations, remises] = await Promise.all([
     prisma.paiement.findMany({
       where: { addition: { etablissementId }, creeLe: periode },
       select: { montant: true, moyenPaiement: true },
@@ -656,6 +691,10 @@ gerantRouter.get('/rapports', async (req, res) => {
     prisma.annulation.findMany({
       where: { etablissementId, creeLe: periode },
       select: { montant: true, quantite: true, apresPreparation: true },
+    }),
+    prisma.remise.findMany({
+      where: { etablissementId, creeLe: periode },
+      select: { type: true, montant: true, quantite: true },
     }),
   ]);
 
@@ -785,6 +824,18 @@ gerantRouter.get('/rapports', async (req, res) => {
     foodCost: {
       nourriture: resumeCout(parType.NOURRITURE),
       boissons: resumeCout(parType.BOISSON),
+    },
+    remises: {
+      montant: arrondi(remises.reduce((s, r) => s + Number(r.montant), 0)),
+      nombre: remises.length,
+      offerts: {
+        montant: arrondi(
+          remises.filter((r) => r.type === 'OFFERT').reduce((s, r) => s + Number(r.montant), 0),
+        ),
+        quantite: remises
+          .filter((r) => r.type === 'OFFERT')
+          .reduce((s, r) => s + (r.quantite ?? 0), 0),
+      },
     },
   });
 });

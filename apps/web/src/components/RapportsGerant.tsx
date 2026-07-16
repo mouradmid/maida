@@ -228,6 +228,15 @@ export function RapportsGerant() {
               }
               accent={rapport.pertes.montant > 0 ? 'perte' : undefined}
             />
+            <Tuile
+              libelle="Remises & offerts"
+              valeur={`${rapport.remises.montant} DA`}
+              detail={
+                rapport.remises.offerts.quantite > 0
+                  ? `${rapport.remises.nombre} geste${rapport.remises.nombre > 1 ? 's' : ''}, dont ${rapport.remises.offerts.quantite} article${rapport.remises.offerts.quantite > 1 ? 's' : ''} offert${rapport.remises.offerts.quantite > 1 ? 's' : ''}`
+                  : `${rapport.remises.nombre} geste${rapport.remises.nombre > 1 ? 's' : ''} commercial${rapport.remises.nombre > 1 ? 'aux' : ''}`
+              }
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

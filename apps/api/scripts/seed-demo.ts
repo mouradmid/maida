@@ -168,7 +168,7 @@ async function main() {
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[0].id },
-    data: { codePinHash: await bcrypt.hash('1234', 12), droits: ['ANNULER', 'CLOTURER'] },
+    data: { codePinHash: await bcrypt.hash('1234', 12), droits: ['ANNULER', 'CLOTURER', 'REMISER'] },
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[1].id },
@@ -213,6 +213,7 @@ async function main() {
   await prisma.paiement.deleteMany({});
   await prisma.journeeCaisse.deleteMany({});
   await prisma.annulation.deleteMany({});
+  await prisma.remise.deleteMany({});
   await prisma.ligneCommandeOption.deleteMany({});
   await prisma.ligneCommande.deleteMany({});
   await prisma.commande.deleteMany({});

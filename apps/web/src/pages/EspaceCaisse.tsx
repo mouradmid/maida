@@ -48,7 +48,7 @@ export function EspaceCaisse() {
           </nav>
 
           {onglet === 'commande' && <PriseDeCommande droitAnnuler={user.droits.includes('ANNULER')} />}
-          {onglet === 'encaissement' && <Encaissement />}
+          {onglet === 'encaissement' && <Encaissement droitRemiser={user.droits.includes('REMISER')} />}
           {onglet === 'cuisine' && <EcranCuisine />}
           {onglet === 'journee' && <JourneeCaisse droitCloturer={user.droits.includes('CLOTURER')} />}
         </main>

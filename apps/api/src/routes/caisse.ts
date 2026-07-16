@@ -172,6 +172,7 @@ function toPublicCommande(commande: {
     quantite: number;
     quantitePayee: number;
     quantiteAnnulee: number;
+    quantiteOfferte: number;
     options: Array<{ id: string; nomGroupe: string; valeur: string }>;
   }>;
 }) {
@@ -182,10 +183,14 @@ function toPublicCommande(commande: {
     quantite: l.quantite,
     quantitePayee: l.quantitePayee,
     quantiteAnnulee: l.quantiteAnnulee,
+    quantiteOfferte: l.quantiteOfferte,
     options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
   }));
-  // Les quantités annulées ne comptent pas dans le total.
-  const total = lignes.reduce((somme, l) => somme + l.prixUnitaire * (l.quantite - l.quantiteAnnulee), 0);
+  // Les quantités annulées et offertes ne comptent pas dans le total facturable.
+  const total = lignes.reduce(
+    (somme, l) => somme + l.prixUnitaire * (l.quantite - l.quantiteAnnulee - l.quantiteOfferte),
+    0,
+  );
 
   return {
     id: commande.id,
@@ -325,9 +330,12 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
     return;
   }
 
-  // Quantité annulable = commandée − déjà payée − déjà annulée.
+  // Quantité annulable = commandée − déjà payée − déjà annulée − déjà offerte.
   const annulablesParId = new Map(
-    commande.lignes.map((l) => [l.id, l.quantite - l.quantitePayee - l.quantiteAnnulee]),
+    commande.lignes.map((l) => [
+      l.id,
+      l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte,
+    ]),
   );
 
   let cibles: Array<{ ligneCommandeId: string; quantite: number }>;
@@ -425,7 +433,7 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
     if (addition && addition.statut === 'OUVERTE') {
       const lignesAddition = addition.commandes.flatMap((c) => c.lignes);
       const resteAPayer = lignesAddition.some(
-        (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0,
+        (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte > 0,
       );
       if (!resteAPayer) {
         await tx.addition.update({
@@ -790,18 +798,32 @@ const INCLUDE_ADDITION = {
   table: { select: { numero: true } },
   commandes: { include: { lignes: true } },
   paiements: true,
+  remises: true,
 } satisfies Prisma.AdditionInclude;
 
 type AdditionAvecTotaux = Prisma.AdditionGetPayload<{ include: typeof INCLUDE_ADDITION }>;
 
 function calculerTotaux(addition: AdditionAvecTotaux) {
-  // Les quantités annulées ne comptent pas dans le total.
-  const total = addition.commandes
+  // Les quantités annulées et offertes ne comptent pas dans le facturable,
+  // et les remises sur l'addition se déduisent ensuite du total.
+  const totalBrut = addition.commandes
     .flatMap((c) => c.lignes)
-    .reduce((s, l) => s + Number(l.prixUnitaire) * (l.quantite - l.quantiteAnnulee), 0);
+    .reduce(
+      (s, l) => s + Number(l.prixUnitaire) * (l.quantite - l.quantiteAnnulee - l.quantiteOfferte),
+      0,
+    );
+  const montantRemises = addition.remises
+    .filter((r) => r.type === 'REMISE')
+    .reduce((s, r) => s + Number(r.montant), 0);
+  const total = Math.max(0, arrondi(totalBrut - montantRemises));
   const totalPaye = addition.paiements.reduce((s, p) => s + Number(p.montant), 0);
-  const solde = Math.max(0, Math.round((total - totalPaye) * 100) / 100);
-  return { total: Math.round(total * 100) / 100, totalPaye: Math.round(totalPaye * 100) / 100, solde };
+  const solde = Math.max(0, arrondi(total - totalPaye));
+  return {
+    total,
+    totalPaye: arrondi(totalPaye),
+    solde,
+    montantRemises: arrondi(montantRemises),
+  };
 }
 
 caisseRouter.get('/additions', async (req, res) => {
@@ -833,6 +855,7 @@ caisseRouter.get('/additions/:id', async (req, res) => {
       table: { select: { numero: true } },
       commandes: { include: { lignes: { include: { options: true } } }, orderBy: { creeLe: 'asc' } },
       paiements: { include: { lignes: true }, orderBy: { creeLe: 'asc' } },
+      remises: { orderBy: { creeLe: 'asc' } },
     },
   });
 
@@ -859,6 +882,7 @@ caisseRouter.get('/additions/:id', async (req, res) => {
         quantite: l.quantite,
         quantitePayee: l.quantitePayee,
         quantiteAnnulee: l.quantiteAnnulee,
+        quantiteOfferte: l.quantiteOfferte,
         options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
       })),
     })),
@@ -869,6 +893,223 @@ caisseRouter.get('/additions/:id', async (req, res) => {
       montantRecu: p.montantRecu !== null ? Number(p.montantRecu) : null,
       creeLe: p.creeLe,
     })),
+    remises: addition.remises.map((r) => ({
+      id: r.id,
+      type: r.type,
+      montant: Number(r.montant),
+      pourcentage: r.pourcentage,
+      quantite: r.quantite,
+      motif: r.motif,
+      creeLe: r.creeLe,
+    })),
+  });
+});
+
+// --- Remises et offerts ---
+
+caisseRouter.post('/additions/:id/remise', async (req, res) => {
+  const { mode, valeur, motif, commentaire, codeGerant } = req.body ?? {};
+
+  if (mode !== 'POURCENTAGE' && mode !== 'MONTANT') {
+    res.status(400).json({ error: 'Mode de remise invalide (POURCENTAGE ou MONTANT)' });
+    return;
+  }
+  if (typeof valeur !== 'number' || !Number.isFinite(valeur) || valeur <= 0) {
+    res.status(400).json({ error: 'Valeur de remise invalide' });
+    return;
+  }
+  if (mode === 'POURCENTAGE' && (!Number.isInteger(valeur) || valeur > 100)) {
+    res.status(400).json({ error: 'Le pourcentage doit être un entier entre 1 et 100' });
+    return;
+  }
+  if (typeof motif !== 'string' || !motif.trim() || motif.length > 100) {
+    res.status(400).json({ error: 'Le motif de la remise est obligatoire' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const addition = await prisma.addition.findUnique({
+    where: { id: req.params.id },
+    include: INCLUDE_ADDITION,
+  });
+  if (!addition || addition.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Addition introuvable' });
+    return;
+  }
+  if (addition.statut !== 'OUVERTE') {
+    res.status(400).json({ error: 'Cette addition est déjà soldée' });
+    return;
+  }
+
+  const resolution = await resoudreResponsable({
+    serveurId: req.user!.id,
+    etablissementId,
+    droit: 'REMISER',
+    codeGerant,
+    messageDroitManquant:
+      "Vous n'avez pas le droit d'accorder une remise. Un gérant doit valider avec son code.",
+  });
+  if (!resolution.ok) {
+    res.status(resolution.status).json(resolution.body);
+    return;
+  }
+
+  const { solde } = calculerTotaux(addition);
+  const montantRemise = mode === 'POURCENTAGE' ? arrondi((solde * valeur) / 100) : arrondi(valeur);
+  if (montantRemise <= 0) {
+    res.status(400).json({ error: 'Le montant de la remise est nul' });
+    return;
+  }
+  if (montantRemise > solde + 0.01) {
+    res.status(400).json({ error: `La remise dépasse le solde restant (${solde} DA)` });
+    return;
+  }
+
+  const resultat = await prisma.$transaction(async (tx) => {
+    await tx.remise.create({
+      data: {
+        type: 'REMISE',
+        montant: montantRemise,
+        pourcentage: mode === 'POURCENTAGE' ? valeur : null,
+        motif: motif.trim(),
+        commentaire: typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null,
+        etablissementId,
+        additionId: addition.id,
+        accordeeParId: resolution.responsableId,
+        demandeeParId: resolution.demandeeParId,
+      },
+    });
+
+    const soldeRestant = Math.max(0, arrondi(solde - montantRemise));
+    if (soldeRestant <= 0.01) {
+      await tx.addition.update({
+        where: { id: addition.id },
+        data: { statut: 'PAYEE', fermeeLe: new Date() },
+      });
+    }
+    return { soldeRestant, cloturee: soldeRestant <= 0.01 };
+  });
+
+  res.status(201).json({
+    montant: montantRemise,
+    soldeRestant: resultat.soldeRestant,
+    additionCloturee: resultat.cloturee,
+  });
+});
+
+interface LigneAOffrir {
+  ligneCommandeId: string;
+  quantite: number;
+}
+
+caisseRouter.post('/additions/:id/offert', async (req, res) => {
+  const { lignes, motif, commentaire, codeGerant } = req.body ?? {};
+
+  if (!Array.isArray(lignes) || lignes.length === 0) {
+    res.status(400).json({ error: 'Sélectionnez au moins un article à offrir' });
+    return;
+  }
+  for (const l of lignes as LigneAOffrir[]) {
+    if (typeof l?.ligneCommandeId !== 'string' || !Number.isInteger(l?.quantite) || l.quantite <= 0) {
+      res.status(400).json({ error: 'Lignes à offrir invalides' });
+      return;
+    }
+  }
+  if (typeof motif !== 'string' || !motif.trim() || motif.length > 100) {
+    res.status(400).json({ error: "Le motif de l'offert est obligatoire" });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const addition = await prisma.addition.findUnique({
+    where: { id: req.params.id },
+    include: INCLUDE_ADDITION,
+  });
+  if (!addition || addition.etablissementId !== etablissementId) {
+    res.status(404).json({ error: 'Addition introuvable' });
+    return;
+  }
+  if (addition.statut !== 'OUVERTE') {
+    res.status(400).json({ error: 'Cette addition est déjà soldée' });
+    return;
+  }
+
+  const lignesParId = new Map(addition.commandes.flatMap((c) => c.lignes).map((l) => [l.id, l]));
+  for (const cible of lignes as LigneAOffrir[]) {
+    const ligne = lignesParId.get(cible.ligneCommandeId);
+    if (!ligne) {
+      res.status(400).json({ error: 'Article invalide pour cette addition' });
+      return;
+    }
+    const offrable = ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
+    if (cible.quantite > offrable) {
+      res.status(400).json({
+        error: `Quantité non offrable pour ${ligne.nomProduit} (reste ${offrable})`,
+      });
+      return;
+    }
+  }
+
+  const resolution = await resoudreResponsable({
+    serveurId: req.user!.id,
+    etablissementId,
+    droit: 'REMISER',
+    codeGerant,
+    messageDroitManquant:
+      "Vous n'avez pas le droit d'offrir un article. Un gérant doit valider avec son code.",
+  });
+  if (!resolution.ok) {
+    res.status(resolution.status).json(resolution.body);
+    return;
+  }
+
+  const motifFinal = motif.trim();
+  const commentaireFinal =
+    typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null;
+
+  const resultat = await prisma.$transaction(async (tx) => {
+    for (const cible of lignes as LigneAOffrir[]) {
+      const ligne = lignesParId.get(cible.ligneCommandeId)!;
+      await tx.ligneCommande.update({
+        where: { id: ligne.id },
+        data: { quantiteOfferte: { increment: cible.quantite } },
+      });
+      await tx.remise.create({
+        data: {
+          type: 'OFFERT',
+          montant: arrondi(Number(ligne.prixUnitaire) * cible.quantite),
+          quantite: cible.quantite,
+          motif: motifFinal,
+          commentaire: commentaireFinal,
+          etablissementId,
+          additionId: addition.id,
+          ligneCommandeId: ligne.id,
+          accordeeParId: resolution.responsableId,
+          demandeeParId: resolution.demandeeParId,
+        },
+      });
+    }
+
+    // Si plus rien à encaisser après les offerts, l'addition se solde (libère la table).
+    const additionApres = await tx.addition.findUniqueOrThrow({
+      where: { id: addition.id },
+      include: INCLUDE_ADDITION,
+    });
+    const { solde } = calculerTotaux(additionApres);
+    if (solde <= 0.01) {
+      await tx.addition.update({
+        where: { id: addition.id },
+        data: { statut: 'PAYEE', fermeeLe: new Date() },
+      });
+    }
+    return { soldeRestant: solde, cloturee: solde <= 0.01 };
+  });
+
+  res.status(201).json({
+    soldeRestant: resultat.soldeRestant,
+    additionCloturee: resultat.cloturee,
   });
 });
 
@@ -939,7 +1180,8 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
         res.status(400).json({ error: 'Quantité invalide' });
         return;
       }
-      const restant = ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee;
+      const restant =
+        ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
       if (entree.quantite > restant) {
         res.status(400).json({ error: `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})` });
         return;

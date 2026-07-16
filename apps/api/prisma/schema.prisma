@@ -40,6 +40,13 @@ enum StatutUtilisateur {
 enum DroitUtilisateur {
   ANNULER
   CLOTURER
+  REMISER
+}
+
+// Geste commercial : remise sur l'addition, ou article offert.
+enum TypeRemise {
+  REMISE
+  OFFERT
 }
 
 enum StatutCategorie {
@@ -129,6 +136,7 @@ model Etablissement {
   additions      Addition[]
   annulations    Annulation[]
   journeesCaisse JourneeCaisse[]
+  remises        Remise[]
 
   @@map("etablissements")
 }
@@ -158,6 +166,8 @@ model Utilisateur {
   journeesOuvertes     JourneeCaisse[] @relation("JourneesOuvertes")
   journeesCloturees    JourneeCaisse[] @relation("JourneesCloturees")
   cloturesDemandees    JourneeCaisse[] @relation("CloturesDemandees")
+  remisesAccordees     Remise[]        @relation("RemisesAccordees")
+  remisesDemandees     Remise[]        @relation("RemisesDemandees")
 
   @@map("utilisateurs")
 }
@@ -259,6 +269,7 @@ model LigneCommande {
   quantite        Int
   quantitePayee   Int      @default(0)
   quantiteAnnulee Int      @default(0)
+  quantiteOfferte Int      @default(0)
   creeLe          DateTime @default(now())
 
   commandeId String
@@ -270,6 +281,7 @@ model LigneCommande {
   options        LigneCommandeOption[]
   paiementLignes PaiementLigne[]
   annulations    Annulation[]
+  remises        Remise[]
 
   @@map("lignes_commande")
 }
@@ -288,8 +300,42 @@ model Addition {
 
   commandes Commande[]
   paiements Paiement[]
+  remises   Remise[]
 
   @@map("additions")
+}
+
+// Trace de chaque geste commercial : qui, quand, combien, pourquoi.
+model Remise {
+  id          String     @id @default(cuid())
+  type        TypeRemise
+  montant     Decimal    @db.Decimal(10, 2)
+  // Renseigné si la remise a été saisie en pourcentage.
+  pourcentage Int?
+  // Renseigné pour un article offert.
+  quantite    Int?
+  motif       String
+  commentaire String?
+  creeLe      DateTime   @default(now())
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  additionId String
+  addition   Addition @relation(fields: [additionId], references: [id])
+
+  ligneCommandeId String?
+  ligneCommande   LigneCommande? @relation(fields: [ligneCommandeId], references: [id])
+
+  // Celui qui porte la responsabilité (serveur avec le droit, ou gérant validant).
+  accordeeParId String
+  accordeePar   Utilisateur @relation("RemisesAccordees", fields: [accordeeParId], references: [id])
+
+  // Le serveur qui a demandé, quand la validation vient d'un gérant.
+  demandeeParId String?
+  demandeePar   Utilisateur? @relation("RemisesDemandees", fields: [demandeeParId], references: [id])
+
+  @@map("remises")
 }
 
 model Paiement {

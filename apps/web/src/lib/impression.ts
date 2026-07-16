@@ -84,12 +84,28 @@ export function htmlTicketClient(
     .flatMap((c) => c.lignes)
     .filter((l) => l.quantite - l.quantiteAnnulee > 0)
     .map((l) => {
-      const quantite = l.quantite - l.quantiteAnnulee;
+      const quantiteFacturable = l.quantite - l.quantiteAnnulee - l.quantiteOfferte;
       const options = l.options.length
         ? `<div class="option petit">(${echapper(l.options.map((o) => o.valeur).join(', '))})</div>`
         : '';
-      return `<div class="ligne"><span class="lib">${quantite} x ${echapper(l.nomProduit)}</span><span>${l.prixUnitaire * quantite} DA</span></div>${options}`;
+      const facturable =
+        quantiteFacturable > 0
+          ? `<div class="ligne"><span class="lib">${quantiteFacturable} x ${echapper(l.nomProduit)}</span><span>${l.prixUnitaire * quantiteFacturable} DA</span></div>${options}`
+          : '';
+      const offert =
+        l.quantiteOfferte > 0
+          ? `<div class="ligne"><span class="lib">${l.quantiteOfferte} x ${echapper(l.nomProduit)} — OFFERT</span><span>0 DA</span></div>`
+          : '';
+      return facturable + offert;
     })
+    .join('');
+
+  const remisesAddition = detail.remises
+    .filter((r) => r.type === 'REMISE')
+    .map(
+      (r) =>
+        `<div class="ligne"><span class="lib">Remise${r.pourcentage ? ` ${r.pourcentage} %` : ''} (${echapper(r.motif)})</span><span>-${r.montant} DA</span></div>`,
+    )
     .join('');
 
   const paiements = detail.paiements
@@ -112,6 +128,7 @@ export function htmlTicketClient(
     <div class="sep"></div>
     ${lignes}
     <div class="sep"></div>
+    ${remisesAddition}
     <div class="ligne gras"><span>TOTAL</span><span>${detail.total} DA</span></div>
     ${paiements ? `<div class="ligne"><span>Payé</span><span>${detail.totalPaye} DA</span></div>${paiements}` : ''}
     ${detail.solde > 0 ? `<div class="ligne gras"><span>RESTE À PAYER</span><span>${detail.solde} DA</span></div>` : ''}

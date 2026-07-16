@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type AdditionDetail, type AdditionResume, type ModePaiement } from '../lib/api';
 import { htmlTicketClient, imprimerHtml } from '../lib/impression';
+import { ModalGesteCommercial } from './ModalGesteCommercial';
 import {
   badgeVert,
   boutonDiscret,
@@ -27,7 +28,7 @@ const LIBELLES_MODE: Record<Mode, string> = {
   ARTICLES: 'Par article',
 };
 
-export function Encaissement() {
+export function Encaissement({ droitRemiser }: { droitRemiser: boolean }) {
   const [additions, setAdditions] = useState<AdditionResume[]>([]);
   const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>([]);
   const [journeeOuverte, setJourneeOuverte] = useState(true);
@@ -48,6 +49,7 @@ export function Encaissement() {
   const [moyenPaiement, setMoyenPaiement] = useState<ModePaiement>('ESPECES');
   const [montantRecu, setMontantRecu] = useState('');
   const [resultat, setResultat] = useState<string | null>(null);
+  const [modalGeste, setModalGeste] = useState(false);
 
   async function chargerListe() {
     setChargement(true);
@@ -108,7 +110,7 @@ export function Encaissement() {
 
   const lignesToutes = detail?.commandes.flatMap((c) => c.lignes) ?? [];
   const lignesDisponibles = lignesToutes.filter(
-    (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0,
+    (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte > 0,
   );
 
   const montantArticles = lignesDisponibles.reduce((s, l) => {
@@ -224,6 +226,15 @@ export function Encaissement() {
           {detail.table ? `Table ${detail.table.numero}` : 'À emporter'}
         </h2>
         <span className="flex items-center gap-4">
+          {detail.statut === 'OUVERTE' && (
+            <button
+              type="button"
+              onClick={() => setModalGeste(true)}
+              className="rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800 transition-colors hover:bg-brand-100"
+            >
+              % Remise / Offert
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
@@ -241,6 +252,20 @@ export function Encaissement() {
         </span>
       </div>
 
+      {modalGeste && (
+        <ModalGesteCommercial
+          detail={detail}
+          droitRemiser={droitRemiser}
+          onFermer={() => setModalGeste(false)}
+          onApplique={async () => {
+            setModalGeste(false);
+            setResultat('Geste commercial appliqué.');
+            await chargerDetail(detail.id);
+            await chargerListe();
+          }}
+        />
+      )}
+
       {bandeauJourneeFermee}
       {erreur && <p className={messageErreur}>{erreur}</p>}
       {resultat && <p className={messageSucces}>{resultat}</p>}
@@ -251,6 +276,9 @@ export function Encaissement() {
           <div className="flex items-end justify-between">
             <div className="text-sm text-stone-500">
               <p>Total : {detail.total} DA</p>
+              {detail.montantRemises > 0 && (
+                <p className="text-brand-700">dont remise : −{detail.montantRemises} DA</p>
+              )}
               <p>Déjà payé : {detail.totalPaye} DA</p>
             </div>
             <p className="text-2xl font-bold text-stone-900">{detail.solde} DA</p>
@@ -258,15 +286,15 @@ export function Encaissement() {
 
           <ul className="flex flex-col divide-y divide-stone-100 border-t border-stone-100 pt-2 text-sm">
             {lignesToutes.map((l) => {
-              const quantiteActive = l.quantite - l.quantiteAnnulee;
-              const touteAnnulee = quantiteActive === 0;
+              const quantiteFacturable = l.quantite - l.quantiteAnnulee - l.quantiteOfferte;
+              const rienAFacturer = quantiteFacturable === 0;
               return (
                 <li key={l.id} className="flex items-center justify-between gap-2 py-2">
                   <span className="min-w-0">
                     <span
-                      className={`font-medium ${touteAnnulee ? 'text-stone-400 line-through' : 'text-stone-900'}`}
+                      className={`font-medium ${rienAFacturer ? 'text-stone-400 line-through' : 'text-stone-900'}`}
                     >
-                      {touteAnnulee ? l.quantite : quantiteActive}× {l.nomProduit}
+                      {rienAFacturer ? l.quantite : quantiteFacturable}× {l.nomProduit}
                     </span>
                     {l.options.length > 0 && (
                       <span className="ml-1 text-xs text-stone-500">
@@ -276,6 +304,11 @@ export function Encaissement() {
                     {l.quantitePayee > 0 && (
                       <span className={`${badgeVert} ml-2`}>{l.quantitePayee} payé{l.quantitePayee > 1 ? 's' : ''}</span>
                     )}
+                    {l.quantiteOfferte > 0 && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+                        {l.quantiteOfferte} offert{l.quantiteOfferte > 1 ? 's' : ''}
+                      </span>
+                    )}
                     {l.quantiteAnnulee > 0 && (
                       <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
                         {l.quantiteAnnulee} annulé{l.quantiteAnnulee > 1 ? 's' : ''}
@@ -283,9 +316,9 @@ export function Encaissement() {
                     )}
                   </span>
                   <span
-                    className={`font-medium ${touteAnnulee ? 'text-stone-400 line-through' : 'text-stone-900'}`}
+                    className={`font-medium ${rienAFacturer ? 'text-stone-400 line-through' : 'text-stone-900'}`}
                   >
-                    {l.prixUnitaire * (touteAnnulee ? l.quantite : quantiteActive)} DA
+                    {l.prixUnitaire * (rienAFacturer ? l.quantite : quantiteFacturable)} DA
                   </span>
                 </li>
               );

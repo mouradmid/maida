@@ -1,6 +1,6 @@
 const API_BASE = '/api';
 
-export type DroitUtilisateur = 'ANNULER' | 'CLOTURER';
+export type DroitUtilisateur = 'ANNULER' | 'CLOTURER' | 'REMISER';
 
 export interface Utilisateur {
   id: string;
@@ -71,6 +71,7 @@ export interface LigneCommande {
   quantite: number;
   quantitePayee: number;
   quantiteAnnulee: number;
+  quantiteOfferte: number;
   options: Array<{ nomGroupe: string; valeur: string }>;
 }
 
@@ -125,6 +126,17 @@ export interface AdditionResume {
   total: number;
   totalPaye: number;
   solde: number;
+  montantRemises: number;
+}
+
+export interface RemiseAddition {
+  id: string;
+  type: 'REMISE' | 'OFFERT';
+  montant: number;
+  pourcentage: number | null;
+  quantite: number | null;
+  motif: string;
+  creeLe: string;
 }
 
 export interface AdditionDetail extends AdditionResume {
@@ -142,6 +154,7 @@ export interface AdditionDetail extends AdditionResume {
     montantRecu: number | null;
     creeLe: string;
   }>;
+  remises: RemiseAddition[];
 }
 
 export interface TotauxJournee {
@@ -203,6 +216,11 @@ export interface RapportVentes {
   foodCost: {
     nourriture: ResumeCout;
     boissons: ResumeCout;
+  };
+  remises: {
+    montant: number;
+    nombre: number;
+    offerts: { montant: number; quantite: number };
   };
 }
 
@@ -451,6 +469,53 @@ export const api = {
 
   caisseEtablissement: () =>
     apiFetch<{ nom: string; adresse: string | null; ville: string | null }>('/caisse/etablissement'),
+
+  creerRemise: (
+    additionId: string,
+    data: {
+      mode: 'POURCENTAGE' | 'MONTANT';
+      valeur: number;
+      motif: string;
+      commentaire?: string;
+      codeGerant?: string;
+    },
+  ) =>
+    apiFetch<{ montant: number; soldeRestant: number; additionCloturee: boolean }>(
+      `/caisse/additions/${additionId}/remise`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+
+  offrirArticles: (
+    additionId: string,
+    data: {
+      lignes: Array<{ ligneCommandeId: string; quantite: number }>;
+      motif: string;
+      commentaire?: string;
+      codeGerant?: string;
+    },
+  ) =>
+    apiFetch<{ soldeRestant: number; additionCloturee: boolean }>(
+      `/caisse/additions/${additionId}/offert`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+
+  listRemises: () =>
+    apiFetch<
+      Array<{
+        id: string;
+        type: 'REMISE' | 'OFFERT';
+        montant: number;
+        pourcentage: number | null;
+        quantite: number | null;
+        motif: string;
+        commentaire: string | null;
+        creeLe: string;
+        table: { numero: string } | null;
+        produit: string | null;
+        accordeePar: { nom: string; prenom: string; role: string };
+        demandeePar: { nom: string; prenom: string } | null;
+      }>
+    >('/gerant/remises'),
 
   getJournee: () => apiFetch<EtatJournee>('/caisse/journee'),
 
