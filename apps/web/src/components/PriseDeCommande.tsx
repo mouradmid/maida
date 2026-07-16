@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { api, type CategorieMenu, type Commande, type ProduitMenu, type TableCaisse } from '../lib/api';
+import {
+  api,
+  ErreurReseau,
+  type CategorieMenu,
+  type Commande,
+  type ProduitMenu,
+  type TableCaisse,
+  type Utilisateur,
+} from '../lib/api';
+import { lireCache, mettreEnAttente, sauvegarderCache } from '../lib/horsLigne';
 import { badgeBrand, badgeNeutre, badgeVert, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
 import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
@@ -59,8 +68,22 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       setTables(tablesActives);
       setCommandes(commandesRecentes);
       setCategorieActiveId((actif) => actif ?? menu[0]?.id ?? null);
+      sauvegarderCache('menu', menu);
+      sauvegarderCache('tables', tablesActives);
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
+      // Coupure réseau : on continue avec le dernier menu connu.
+      const menuCache = err instanceof ErreurReseau ? lireCache<CategorieMenu[]>('menu') : null;
+      if (menuCache && menuCache.length > 0) {
+        setCategories(menuCache);
+        setTables(lireCache<TableCaisse[]>('tables') ?? []);
+        setCategorieActiveId((actif) => actif ?? menuCache[0]?.id ?? null);
+      } else if (err instanceof ErreurReseau) {
+        setErreur(
+          'Hors ligne et aucun menu en mémoire : connectez-vous une première fois avec du réseau.',
+        );
+      } else {
+        setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
+      }
     } finally {
       setChargement(false);
     }
@@ -135,17 +158,19 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       setErreur('Choisissez une table');
       return;
     }
+    const donnees = {
+      canal,
+      tableId: canal === 'SUR_PLACE' ? tableId : undefined,
+      noteCuisine: noteCuisine.trim() || undefined,
+      lignes: lignesPanier.map((l) => ({
+        produitId: l.produit.id,
+        quantite: l.quantite,
+        options: l.options.map((o) => ({ groupeOptionId: o.groupeOptionId, optionValeurId: o.optionValeurId })),
+      })),
+    };
+
     try {
-      const commande = await api.creerCommande({
-        canal,
-        tableId: canal === 'SUR_PLACE' ? tableId : undefined,
-        noteCuisine: noteCuisine.trim() || undefined,
-        lignes: lignesPanier.map((l) => ({
-          produitId: l.produit.id,
-          quantite: l.quantite,
-          options: l.options.map((o) => ({ groupeOptionId: o.groupeOptionId, optionValeurId: o.optionValeurId })),
-        })),
-      });
+      const commande = await api.creerCommande(donnees);
       setConfirmation(`Commande envoyée — total ${commande.total} DA`);
       setDerniereCommande(commande);
       setPanier({});
@@ -153,6 +178,52 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       setNoteCuisine('');
       await chargerTout();
     } catch (err) {
+      if (err instanceof ErreurReseau) {
+        // Coupure réseau : la commande part dans la file locale, le service continue.
+        const entree = mettreEnAttente({
+          description: `${tableSelectionnee ? `Table ${tableSelectionnee.numero}` : 'À emporter'} — ${total} DA`,
+          donnees,
+        });
+        const utilisateurLocal = lireCache<Utilisateur>('utilisateur');
+        // Reconstitution locale de la commande : permet d'imprimer le ticket
+        // cuisine même sans réseau.
+        setDerniereCommande({
+          id: entree.cleIdempotence,
+          canal,
+          noteCuisine: noteCuisine.trim() || null,
+          additionId: '',
+          additionStatut: 'OUVERTE',
+          table: tableSelectionnee ? { numero: tableSelectionnee.numero } : null,
+          statut: 'ENVOYEE',
+          creeLe: entree.creeLe,
+          preteLe: null,
+          serveur: {
+            nom: utilisateurLocal?.nom ?? '',
+            prenom: utilisateurLocal?.prenom ?? 'Caisse',
+          },
+          lignes: lignesPanier.map((l, i) => ({
+            id: `${entree.cleIdempotence}-${i}`,
+            nomProduit: l.produit.nom,
+            prixUnitaire: l.produit.prix,
+            quantite: l.quantite,
+            quantitePayee: 0,
+            quantiteAnnulee: 0,
+            quantiteOfferte: 0,
+            options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
+          })),
+          total,
+        });
+        setConfirmation(
+          `Hors ligne — commande enregistrée (${total} DA), elle sera envoyée au retour du réseau`,
+        );
+        if (canal === 'SUR_PLACE' && tableId) {
+          setTables((liste) => liste.map((t) => (t.id === tableId ? { ...t, occupee: true } : t)));
+        }
+        setPanier({});
+        setTableId('');
+        setNoteCuisine('');
+        return;
+      }
       setErreur(err instanceof Error ? err.message : 'Erreur');
     }
   }

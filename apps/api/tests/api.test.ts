@@ -482,6 +482,47 @@ describe('Remises et offerts', () => {
   });
 });
 
+describe('Idempotence des commandes hors ligne', () => {
+  const cle = `test-idem-${Date.now()}`;
+  let premiereId = '';
+
+  it('crée la commande avec sa clé et son heure de prise hors ligne', async () => {
+    const creeLe = new Date(Date.now() - 10 * 60_000).toISOString();
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+      cleIdempotence: cle,
+      creeLeHorsLigne: creeLe,
+    });
+    expect(res.status).toBe(201);
+    premiereId = res.body.id;
+    expect(new Date(res.body.creeLe).toISOString()).toBe(creeLe);
+  });
+
+  it('rejouer la même commande ne crée pas de doublon', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+      cleIdempotence: cle,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(premiereId);
+
+    const nombre = await prisma.commande.count({ where: { cleIdempotence: cle } });
+    expect(nombre).toBe(1);
+  });
+
+  it('refuse une date de prise hors ligne trop ancienne', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+      cleIdempotence: `${cle}-vieille`,
+      creeLeHorsLigne: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 const identifiantsAdmin = process.env.SEED_SUPER_ADMIN_EMAIL && process.env.SEED_SUPER_ADMIN_PASSWORD;
 
 describe.skipIf(!identifiantsAdmin)('Suspension par le super-admin', () => {

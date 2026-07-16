@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LoginPin } from '../components/LoginPin';
 import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
@@ -6,6 +6,8 @@ import { PriseDeCommande } from '../components/PriseDeCommande';
 import { Encaissement } from '../components/Encaissement';
 import { EcranCuisine } from '../components/EcranCuisine';
 import { JourneeCaisse } from '../components/JourneeCaisse';
+import { demarrerSynchronisation } from '../lib/horsLigne';
+import { messageErreur, messageSucces } from '../lib/ui';
 import { useMe } from '../hooks/useMe';
 
 const ONGLETS = [
@@ -20,6 +22,24 @@ type Onglet = (typeof ONGLETS)[number]['id'];
 export function EspaceCaisse() {
   const { user, loading, refresh } = useMe();
   const [onglet, setOnglet] = useState<Onglet>('commande');
+  const [messageSync, setMessageSync] = useState<{ texte: string; erreur: boolean } | null>(null);
+
+  // Rejoue automatiquement les commandes prises hors ligne dès que possible.
+  useEffect(() => {
+    demarrerSynchronisation(({ envoyees, erreurs }) => {
+      if (erreurs.length > 0) {
+        setMessageSync({
+          texte: `Synchronisation : ${erreurs.length} commande${erreurs.length > 1 ? 's' : ''} refusée${erreurs.length > 1 ? 's' : ''} — ${erreurs.join(' · ')}`,
+          erreur: true,
+        });
+      } else if (envoyees > 0) {
+        setMessageSync({
+          texte: `Réseau retrouvé : ${envoyees} commande${envoyees > 1 ? 's' : ''} hors ligne envoyée${envoyees > 1 ? 's' : ''} en cuisine.`,
+          erreur: false,
+        });
+      }
+    });
+  }, []);
 
   if (loading) {
     return <p className="p-8 text-center text-stone-500">Chargement...</p>;
@@ -30,6 +50,14 @@ export function EspaceCaisse() {
       <div className="min-h-screen">
         <EnTeteEspace espace="Caisse" user={user} onLogout={refresh} />
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+          {messageSync && (
+            <p className={messageSync.erreur ? messageErreur : messageSucces}>
+              {messageSync.texte}{' '}
+              <button type="button" onClick={() => setMessageSync(null)} className="ml-2 underline">
+                OK
+              </button>
+            </p>
+          )}
           <nav className="flex flex-wrap gap-2">
             {ONGLETS.map((o) => (
               <button

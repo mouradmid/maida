@@ -253,12 +253,26 @@ export interface CompteClient {
   derniereCommande: string | null;
 }
 
+// Levée quand la requête n'a même pas atteint le serveur (coupure réseau) :
+// permet de distinguer « hors ligne » d'une vraie erreur métier.
+export class ErreurReseau extends Error {
+  constructor() {
+    super('Connexion impossible — vérifiez le réseau');
+    this.name = 'ErreurReseau';
+  }
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+    });
+  } catch {
+    throw new ErreurReseau();
+  }
 
   if (res.status === 204) {
     return undefined as T;
@@ -394,6 +408,8 @@ export const api = {
       quantite: number;
       options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
     }>;
+    cleIdempotence?: string;
+    creeLeHorsLigne?: string;
   }) => apiFetch<Commande>('/caisse/commandes', { method: 'POST', body: JSON.stringify(data) }),
 
   createGroupeOption: (produitId: string, data: { nom: string; obligatoire: boolean }) =>

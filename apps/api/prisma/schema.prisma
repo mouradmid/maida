@@ -242,6 +242,9 @@ model Commande {
   canal       CanalCommande
   noteCuisine String?
   statut      StatutCommande @default(ENVOYEE)
+  // Générée par la caisse pour les commandes prises hors ligne : garantit
+  // qu'une resynchronisation répétée ne crée jamais de doublon.
+  cleIdempotence String?     @unique
   creeLe      DateTime       @default(now())
   preteLe     DateTime?
 

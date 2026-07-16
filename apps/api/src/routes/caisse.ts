@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
-import type { DroitUtilisateur, ModePaiement, Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
+import type { DroitUtilisateur, ModePaiement } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireCompteActif } from '../middleware/requireCompteActif';
@@ -456,11 +457,35 @@ interface LigneEntree {
 }
 
 caisseRouter.post('/commandes', async (req, res) => {
-  const { canal, tableId, noteCuisine, lignes } = req.body ?? {};
+  const { canal, tableId, noteCuisine, lignes, cleIdempotence, creeLeHorsLigne } = req.body ?? {};
 
   if (canal !== 'SUR_PLACE' && canal !== 'EMPORTER') {
     res.status(400).json({ error: 'Canal invalide' });
     return;
+  }
+  if (
+    cleIdempotence !== undefined &&
+    (typeof cleIdempotence !== 'string' || !cleIdempotence.trim() || cleIdempotence.length > 100)
+  ) {
+    res.status(400).json({ error: "Clé d'idempotence invalide" });
+    return;
+  }
+  // Heure réelle de prise de commande quand elle a été enregistrée hors ligne :
+  // la cuisine et les rapports gardent la bonne chronologie après resynchronisation.
+  let creeLeFinal: Date | undefined;
+  if (creeLeHorsLigne !== undefined) {
+    const date = typeof creeLeHorsLigne === 'string' ? new Date(creeLeHorsLigne) : null;
+    const maintenant = Date.now();
+    if (
+      !date ||
+      Number.isNaN(date.getTime()) ||
+      date.getTime() > maintenant + 5 * 60_000 ||
+      date.getTime() < maintenant - 48 * 60 * 60_000
+    ) {
+      res.status(400).json({ error: 'Date de prise hors ligne invalide' });
+      return;
+    }
+    creeLeFinal = date;
   }
   if (canal === 'SUR_PLACE' && typeof tableId !== 'string') {
     res.status(400).json({ error: 'La table est requise pour une commande sur place' });
@@ -494,6 +519,22 @@ caisseRouter.post('/commandes', async (req, res) => {
   }
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  // Rejeu d'une commande déjà synchronisée : on renvoie l'existante, sans doublon.
+  if (typeof cleIdempotence === 'string') {
+    const existante = await prisma.commande.findUnique({
+      where: { cleIdempotence: cleIdempotence.trim() },
+      include: INCLUDE_COMMANDE,
+    });
+    if (existante) {
+      if (existante.etablissementId !== etablissementId) {
+        res.status(409).json({ error: "Clé d'idempotence déjà utilisée" });
+        return;
+      }
+      res.status(200).json(toPublicCommande(existante));
+      return;
+    }
+  }
 
   let additionId: string;
   if (canal === 'SUR_PLACE') {
@@ -581,34 +622,55 @@ caisseRouter.post('/commandes', async (req, res) => {
     });
   }
 
-  const commande = await prisma.commande.create({
-    data: {
-      canal,
-      additionId,
-      noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
-      etablissementId,
-      serveurId: req.user!.id,
-      lignes: {
-        create: lignesAvecOptions.map((l) => ({
-          produitId: l.produitId,
-          nomProduit: l.nomProduit,
-          prixUnitaire: l.prixUnitaire,
-          coutRevientUnitaire: l.coutRevientUnitaire,
-          quantite: l.quantite,
-          options: {
-            create: l.options.map((o) => ({
-              optionValeurId: o.optionValeurId,
-              nomGroupe: o.nomGroupe,
-              valeur: o.valeur,
-            })),
-          },
-        })),
+  try {
+    const commande = await prisma.commande.create({
+      data: {
+        canal,
+        additionId,
+        cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
+        creeLe: creeLeFinal,
+        noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
+        etablissementId,
+        serveurId: req.user!.id,
+        lignes: {
+          create: lignesAvecOptions.map((l) => ({
+            produitId: l.produitId,
+            nomProduit: l.nomProduit,
+            prixUnitaire: l.prixUnitaire,
+            coutRevientUnitaire: l.coutRevientUnitaire,
+            quantite: l.quantite,
+            options: {
+              create: l.options.map((o) => ({
+                optionValeurId: o.optionValeurId,
+                nomGroupe: o.nomGroupe,
+                valeur: o.valeur,
+              })),
+            },
+          })),
+        },
       },
-    },
-    include: INCLUDE_COMMANDE,
-  });
-
-  res.status(201).json(toPublicCommande(commande));
+      include: INCLUDE_COMMANDE,
+    });
+    res.status(201).json(toPublicCommande(commande));
+  } catch (error) {
+    // Deux synchronisations simultanées de la même commande hors ligne :
+    // la seconde renvoie celle que la première vient de créer.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      typeof cleIdempotence === 'string'
+    ) {
+      const existante = await prisma.commande.findUnique({
+        where: { cleIdempotence: cleIdempotence.trim() },
+        include: INCLUDE_COMMANDE,
+      });
+      if (existante && existante.etablissementId === etablissementId) {
+        res.status(200).json(toPublicCommande(existante));
+        return;
+      }
+    }
+    throw error;
+  }
 });
 
 // --- Journée de caisse ---
