@@ -3,6 +3,55 @@ import { api, type Categorie, type Produit } from '../lib/api';
 import { badgeNeutre, boutonDiscret, boutonPrimaire, carte, champ, messageErreur } from '../lib/ui';
 import { OptionsProduit } from './OptionsProduit';
 
+// Taux de TVA proposés (Algérie) : le gérant choisit, « Autre » ouvre la saisie libre.
+const TAUX_TVA_PROPOSES = [
+  { valeur: '19', libelle: '19 % — taux normal' },
+  { valeur: '9', libelle: '9 % — taux réduit' },
+  { valeur: '0', libelle: '0 % — exonéré' },
+];
+
+function SelecteurTva({ valeur, onChange }: { valeur: string; onChange: (v: string) => void }) {
+  const estPredefini = TAUX_TVA_PROPOSES.some((t) => t.valeur === valeur);
+  const [libre, setLibre] = useState(!estPredefini && valeur !== '');
+
+  return (
+    <span className="flex items-center gap-2">
+      <select
+        value={libre ? 'autre' : valeur}
+        onChange={(e) => {
+          if (e.target.value === 'autre') {
+            setLibre(true);
+            onChange('');
+          } else {
+            setLibre(false);
+            onChange(e.target.value);
+          }
+        }}
+        className={`${champ} w-auto px-2 py-1.5`}
+      >
+        {TAUX_TVA_PROPOSES.map((t) => (
+          <option key={t.valeur} value={t.valeur}>
+            {t.libelle}
+          </option>
+        ))}
+        <option value="autre">Autre…</option>
+      </select>
+      {libre && (
+        <input
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          value={valeur}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="%"
+          className={`${champ} w-16 px-2 py-1`}
+        />
+      )}
+    </span>
+  );
+}
+
 export function GestionMenu() {
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [produits, setProduits] = useState<Produit[]>([]);
@@ -355,18 +404,10 @@ export function GestionMenu() {
                             </label>
                             <label
                               className="flex flex-col gap-1 text-xs font-medium text-stone-600"
-                              title="Prix TTC : la TVA est extraite du prix affiché. Algérie : 19 % normal, 9 % réduit."
+                              title="Prix TTC : la TVA est extraite du prix affiché."
                             >
-                              TVA (%)
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={editTva}
-                                onChange={(e) => setEditTva(e.target.value)}
-                                className={`${champ} px-2 py-1`}
-                              />
+                              TVA
+                              <SelecteurTva valeur={editTva} onChange={setEditTva} />
                             </label>
                           </div>
                           <div className="flex gap-2">
@@ -461,19 +502,10 @@ export function GestionMenu() {
                 />
                 <label
                   className="flex shrink-0 items-center gap-1.5 text-xs text-stone-500"
-                  title="Prix TTC : la TVA est extraite du prix affiché. Algérie : 19 % normal, 9 % réduit."
+                  title="Prix TTC : la TVA est extraite du prix affiché."
                 >
                   TVA
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={nouveauProduitTva}
-                    onChange={(e) => setNouveauProduitTva(e.target.value)}
-                    className={`${champ} w-16 px-2`}
-                  />
-                  %
+                  <SelecteurTva valeur={nouveauProduitTva} onChange={setNouveauProduitTva} />
                 </label>
               </div>
               <select
