@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type ModePaiement, type RapportVentes } from '../lib/api';
+import { api, type ModePaiement, type RapportVentes, type ResumeCout } from '../lib/api';
 import { carte, champ, messageErreur } from '../lib/ui';
 
 const LIBELLES_MOYEN: Record<ModePaiement, string> = {
@@ -57,6 +57,39 @@ function Tuile({ libelle, valeur, detail, accent }: { libelle: string; valeur: s
       <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{libelle}</p>
       <p className={`text-2xl font-bold ${accent === 'perte' ? 'text-red-700' : 'text-stone-900'}`}>{valeur}</p>
       {detail && <p className="text-xs text-stone-500">{detail}</p>}
+    </div>
+  );
+}
+
+// Food cost ou beverage cost de la période : % + coût/marge, avec le taux de
+// couverture pour prévenir quand des coûts de revient manquent au menu.
+function CarteCout({ titre, resume }: { titre: string; resume: ResumeCout }) {
+  return (
+    <div className={`${carte} flex flex-col gap-1`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{titre}</p>
+      {resume.pct !== null ? (
+        <>
+          <p className="text-2xl font-bold text-stone-900">{resume.pct} %</p>
+          <p className="text-xs text-stone-500">
+            coût {resume.cout} DA · marge brute {resume.marge} DA
+          </p>
+          {resume.couverturePct !== null && resume.couverturePct < 100 && (
+            <p className="text-xs text-amber-700">
+              Calculé sur {resume.couverturePct} % des ventes — complétez les coûts de revient dans le
+              Menu pour un chiffre exact.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-2xl font-bold text-stone-300">—</p>
+          <p className="text-xs text-stone-500">
+            {resume.ventes > 0
+              ? 'Renseignez les coûts de revient de vos produits (Menu → Coût) pour suivre ce chiffre.'
+              : 'Aucune vente sur cette période.'}
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -197,6 +230,11 @@ export function RapportsGerant() {
             />
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CarteCout titre="Food cost — nourriture" resume={rapport.foodCost.nourriture} />
+            <CarteCout titre="Beverage cost — boissons" resume={rapport.foodCost.boissons} />
+          </div>
+
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <div className={carte}>
               <h3 className="mb-2 font-semibold text-stone-900">Palmarès des produits</h3>
@@ -206,7 +244,9 @@ export function RapportsGerant() {
                     key={p.nom}
                     libelle={p.nom}
                     sousLibelle={p.categorie}
-                    quantite={`${p.quantite} vendu${p.quantite > 1 ? 's' : ''}`}
+                    quantite={`${p.quantite} vendu${p.quantite > 1 ? 's' : ''}${
+                      p.marge !== null ? ` · marge ${p.marge} DA (FC ${p.foodCostPct} %)` : ''
+                    }`}
                     montant={p.montant}
                     max={maxProduit}
                   />

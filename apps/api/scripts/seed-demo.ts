@@ -16,6 +16,7 @@ interface ProduitSeed {
   nom: string;
   description?: string;
   prix: number;
+  cout?: number;
   tempsPreparationMinutes?: number;
   options?: { nom: string; obligatoire: boolean; valeurs: string[] }[];
 }
@@ -24,9 +25,10 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
   {
     categorie: 'Entrées',
     produits: [
-      { nom: 'Chorba frik', description: 'Soupe traditionnelle au blé vert et agneau', prix: 300, tempsPreparationMinutes: 5 },
-      { nom: 'Bourek viande (2 pièces)', description: 'Feuilles de brick croustillantes à la viande hachée', prix: 250, tempsPreparationMinutes: 8 },
-      { nom: 'Salade variée', description: 'Tomates, concombre, oignons, olives', prix: 350, tempsPreparationMinutes: 5 },
+      { nom: 'Chorba frik', description: 'Soupe traditionnelle au blé vert et agneau', prix: 300, cout: 90, tempsPreparationMinutes: 5 },
+      { nom: 'Bourek viande (2 pièces)', description: 'Feuilles de brick croustillantes à la viande hachée', prix: 250, cout: 80, tempsPreparationMinutes: 8 },
+      { nom: 'Salade variée', description: 'Tomates, concombre, oignons, olives', prix: 350, cout: 100, tempsPreparationMinutes: 5 },
+      // Volontairement sans coût de revient : montre l'alerte de couverture dans les rapports.
       { nom: 'Salade César', description: 'Poulet grillé, parmesan, croûtons', prix: 550, tempsPreparationMinutes: 8 },
     ],
   },
@@ -37,24 +39,26 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         nom: 'Entrecôte grillée',
         description: '350 g, frites maison et sauce au choix',
         prix: 1600,
+        cout: 560,
         tempsPreparationMinutes: 20,
         options: [{ nom: 'Cuisson', obligatoire: true, valeurs: CUISSONS }],
       },
-      { nom: "Côtelettes d'agneau", description: 'Grillées au charbon de bois, garniture', prix: 1400, tempsPreparationMinutes: 18 },
-      { nom: 'Brochettes de poulet', description: '3 brochettes marinées, frites et salade', prix: 900, tempsPreparationMinutes: 15 },
-      { nom: 'Brochettes kefta', description: '3 brochettes de viande hachée épicée', prix: 850, tempsPreparationMinutes: 15 },
-      { nom: 'Merguez grillées', description: '5 merguez, frites maison', prix: 700, tempsPreparationMinutes: 12 },
-      { nom: 'Demi-poulet braisé', description: 'Mariné aux épices, riz ou frites', prix: 950, tempsPreparationMinutes: 20 },
+      { nom: "Côtelettes d'agneau", description: 'Grillées au charbon de bois, garniture', prix: 1400, cout: 480, tempsPreparationMinutes: 18 },
+      { nom: 'Brochettes de poulet', description: '3 brochettes marinées, frites et salade', prix: 900, cout: 280, tempsPreparationMinutes: 15 },
+      { nom: 'Brochettes kefta', description: '3 brochettes de viande hachée épicée', prix: 850, cout: 260, tempsPreparationMinutes: 15 },
+      { nom: 'Merguez grillées', description: '5 merguez, frites maison', prix: 700, cout: 210, tempsPreparationMinutes: 12 },
+      { nom: 'Demi-poulet braisé', description: 'Mariné aux épices, riz ou frites', prix: 950, cout: 300, tempsPreparationMinutes: 20 },
     ],
   },
   {
     categorie: 'Burgers & Tacos',
     produits: [
-      { nom: 'Burger maison', description: 'Steak haché frais 150 g, cheddar, sauce secrète', prix: 750, tempsPreparationMinutes: 12 },
+      { nom: 'Burger maison', description: 'Steak haché frais 150 g, cheddar, sauce secrète', prix: 750, cout: 230, tempsPreparationMinutes: 12 },
       {
         nom: 'Tacos poulet',
         description: 'Poulet mariné, frites, fromage fondu',
         prix: 600,
+        cout: 180,
         tempsPreparationMinutes: 10,
         options: [{ nom: 'Sauce', obligatoire: true, valeurs: SAUCES }],
       },
@@ -62,6 +66,7 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         nom: 'Tacos mixte',
         description: 'Poulet + viande hachée, frites, fromage fondu',
         prix: 750,
+        cout: 230,
         tempsPreparationMinutes: 10,
         options: [{ nom: 'Sauce', obligatoire: true, valeurs: SAUCES }],
       },
@@ -74,6 +79,7 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         nom: 'Pizza Margherita',
         description: 'Tomate, mozzarella, basilic',
         prix: 700,
+        cout: 190,
         tempsPreparationMinutes: 15,
         options: [{ nom: 'Taille', obligatoire: true, valeurs: TAILLES_PIZZA }],
       },
@@ -81,6 +87,7 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         nom: 'Pizza 4 fromages',
         description: 'Mozzarella, chèvre, bleu, emmental',
         prix: 950,
+        cout: 310,
         tempsPreparationMinutes: 15,
         options: [{ nom: 'Taille', obligatoire: true, valeurs: TAILLES_PIZZA }],
       },
@@ -88,6 +95,7 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         nom: 'Pizza Pepperoni',
         description: 'Tomate, mozzarella, pepperoni de boeuf',
         prix: 900,
+        cout: 270,
         tempsPreparationMinutes: 15,
         options: [{ nom: 'Taille', obligatoire: true, valeurs: TAILLES_PIZZA }],
       },
@@ -96,21 +104,22 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
   {
     categorie: 'Boissons',
     produits: [
-      { nom: 'Eau minérale 50 cl', prix: 60 },
-      { nom: 'Coca-Cola 33 cl', prix: 150 },
-      { nom: 'Hamoud Boualem 33 cl', prix: 120 },
+      { nom: 'Eau minérale 50 cl', prix: 60, cout: 25 },
+      { nom: 'Coca-Cola 33 cl', prix: 150, cout: 70 },
+      { nom: 'Hamoud Boualem 33 cl', prix: 120, cout: 55 },
+      // Volontairement sans coût de revient : montre l'alerte de couverture dans les rapports.
       { nom: "Jus d'orange frais", description: 'Pressé minute', prix: 300, tempsPreparationMinutes: 5 },
-      { nom: 'Thé à la menthe', prix: 150 },
-      { nom: 'Café expresso', prix: 120 },
+      { nom: 'Thé à la menthe', prix: 150, cout: 30 },
+      { nom: 'Café expresso', prix: 120, cout: 35 },
     ],
   },
   {
     categorie: 'Desserts',
     produits: [
-      { nom: 'Tiramisu maison', prix: 450, tempsPreparationMinutes: 5 },
-      { nom: 'Crème brûlée', prix: 400, tempsPreparationMinutes: 5 },
-      { nom: 'Baklawa (2 pièces)', description: 'Aux amandes et miel', prix: 300 },
-      { nom: 'Kalb el louz', description: 'Gâteau de semoule aux amandes', prix: 250 },
+      { nom: 'Tiramisu maison', prix: 450, cout: 130, tempsPreparationMinutes: 5 },
+      { nom: 'Crème brûlée', prix: 400, cout: 110, tempsPreparationMinutes: 5 },
+      { nom: 'Baklawa (2 pièces)', description: 'Aux amandes et miel', prix: 300, cout: 90 },
+      { nom: 'Kalb el louz', description: 'Gâteau de semoule aux amandes', prix: 250, cout: 70 },
     ],
   },
 ];
@@ -185,12 +194,16 @@ async function main() {
   console.log('Anciennes données purgées.');
 
   // Menu
-  const produitsParNom = new Map<string, { id: string; prix: number }>();
+  const produitsParNom = new Map<string, { id: string; prix: number; cout: number | null }>();
   const optionsParProduit = new Map<string, Map<string, { groupeNom: string; valeurId: string }>>();
 
   for (const bloc of MENU) {
     const categorie = await prisma.categorie.create({
-      data: { nom: bloc.categorie, etablissementId },
+      data: {
+        nom: bloc.categorie,
+        type: bloc.categorie === 'Boissons' ? 'BOISSON' : 'NOURRITURE',
+        etablissementId,
+      },
     });
     for (const p of bloc.produits) {
       const produit = await prisma.produit.create({
@@ -198,12 +211,13 @@ async function main() {
           nom: p.nom,
           description: p.description,
           prix: p.prix,
+          coutRevient: p.cout,
           tempsPreparationMinutes: p.tempsPreparationMinutes,
           categorieId: categorie.id,
           etablissementId,
         },
       });
-      produitsParNom.set(p.nom, { id: produit.id, prix: p.prix });
+      produitsParNom.set(p.nom, { id: produit.id, prix: p.prix, cout: p.cout ?? null });
       if (p.options) {
         const valeursMap = new Map<string, { groupeNom: string; valeurId: string }>();
         for (const groupe of p.options) {
@@ -264,6 +278,7 @@ async function main() {
           produitId: produit.id,
           nomProduit: l.produit,
           prixUnitaire: produit.prix,
+          coutRevientUnitaire: produit.cout,
           quantite: l.quantite,
         },
       });

@@ -116,7 +116,7 @@ gerantRouter.get('/categories', async (req, res) => {
 
   const categories = await prisma.categorie.findMany({
     where: { etablissementId },
-    select: { id: true, nom: true, statut: true, creeLe: true },
+    select: { id: true, nom: true, type: true, statut: true, creeLe: true },
     orderBy: { creeLe: 'asc' },
   });
 
@@ -124,24 +124,28 @@ gerantRouter.get('/categories', async (req, res) => {
 });
 
 gerantRouter.post('/categories', async (req, res) => {
-  const { nom } = req.body ?? {};
+  const { nom, type } = req.body ?? {};
 
   if (typeof nom !== 'string' || !nom.trim()) {
     res.status(400).json({ error: 'Le nom de la catégorie est requis' });
+    return;
+  }
+  if (type !== undefined && type !== 'NOURRITURE' && type !== 'BOISSON') {
+    res.status(400).json({ error: 'Type de catégorie invalide' });
     return;
   }
 
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const categorie = await prisma.categorie.create({
-    data: { nom, etablissementId },
+    data: { nom, type: type ?? undefined, etablissementId },
   });
 
   res.status(201).json(categorie);
 });
 
 gerantRouter.patch('/categories/:id', async (req, res) => {
-  const { nom, statut } = req.body ?? {};
+  const { nom, statut, type } = req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const categorie = await prisma.categorie.findUnique({ where: { id: req.params.id } });
@@ -154,12 +158,17 @@ gerantRouter.patch('/categories/:id', async (req, res) => {
     res.status(400).json({ error: 'Statut invalide' });
     return;
   }
+  if (type !== undefined && type !== 'NOURRITURE' && type !== 'BOISSON') {
+    res.status(400).json({ error: 'Type de catégorie invalide' });
+    return;
+  }
 
   const categorieMaj = await prisma.categorie.update({
     where: { id: categorie.id },
     data: {
       nom: typeof nom === 'string' && nom.trim() ? nom : undefined,
       statut: statut ?? undefined,
+      type: type ?? undefined,
     },
   });
 
@@ -168,8 +177,25 @@ gerantRouter.patch('/categories/:id', async (req, res) => {
 
 // --- Produits ---
 
-function toPublicProduit(produit: { prix: { toString(): string } } & Record<string, unknown>) {
-  return { ...produit, prix: Number(produit.prix) };
+function toPublicProduit(
+  produit: { prix: { toString(): string }; coutRevient: { toString(): string } | null } & Record<string, unknown>,
+) {
+  return {
+    ...produit,
+    prix: Number(produit.prix),
+    coutRevient: produit.coutRevient !== null ? Number(produit.coutRevient) : null,
+  };
+}
+
+// Coût de revient : nombre positif, ou vide/null pour « non renseigné ».
+function validerCoutRevient(valeur: unknown): { ok: true; valeur: number | null } | { ok: false } {
+  if (valeur === undefined || valeur === null || valeur === '') {
+    return { ok: true, valeur: null };
+  }
+  if (typeof valeur !== 'number' || !Number.isFinite(valeur) || valeur < 0) {
+    return { ok: false };
+  }
+  return { ok: true, valeur };
 }
 
 gerantRouter.get('/produits', async (req, res) => {
@@ -204,7 +230,7 @@ function validerTempsPreparation(valeur: unknown): { ok: true; valeur: number | 
 }
 
 gerantRouter.post('/produits', async (req, res) => {
-  const { nom, description, prix, categorieId, tempsPreparationMinutes } = req.body ?? {};
+  const { nom, description, prix, categorieId, tempsPreparationMinutes, coutRevient } = req.body ?? {};
 
   if (typeof nom !== 'string' || !nom.trim()) {
     res.status(400).json({ error: 'Le nom du produit est requis' });
@@ -223,6 +249,11 @@ gerantRouter.post('/produits', async (req, res) => {
     res.status(400).json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
     return;
   }
+  const cout = validerCoutRevient(coutRevient);
+  if (!cout.ok) {
+    res.status(400).json({ error: 'Le coût de revient doit être un nombre positif ou nul' });
+    return;
+  }
 
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
@@ -237,6 +268,7 @@ gerantRouter.post('/produits', async (req, res) => {
       nom,
       description: typeof description === 'string' ? description : null,
       prix,
+      coutRevient: cout.valeur,
       categorieId,
       etablissementId,
       tempsPreparationMinutes: tempsPrepa.valeur,
@@ -247,7 +279,7 @@ gerantRouter.post('/produits', async (req, res) => {
 });
 
 gerantRouter.patch('/produits/:id', async (req, res) => {
-  const { nom, description, prix, categorieId, statut, tempsPreparationMinutes } = req.body ?? {};
+  const { nom, description, prix, categorieId, statut, tempsPreparationMinutes, coutRevient } = req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const produit = await prisma.produit.findUnique({ where: { id: req.params.id } });
@@ -280,6 +312,15 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
     }
     nouveauTempsPrepa = tempsPrepa.valeur;
   }
+  let nouveauCout: number | null | undefined = undefined;
+  if (coutRevient !== undefined) {
+    const cout = validerCoutRevient(coutRevient);
+    if (!cout.ok) {
+      res.status(400).json({ error: 'Le coût de revient doit être un nombre positif ou nul' });
+      return;
+    }
+    nouveauCout = cout.valeur;
+  }
 
   const produitMaj = await prisma.produit.update({
     where: { id: produit.id },
@@ -290,6 +331,7 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
       categorieId: categorieId ?? undefined,
       statut: statut ?? undefined,
       tempsPreparationMinutes: nouveauTempsPrepa,
+      coutRevient: nouveauCout,
     },
   });
 
@@ -602,9 +644,10 @@ gerantRouter.get('/rapports', async (req, res) => {
           select: {
             nomProduit: true,
             prixUnitaire: true,
+            coutRevientUnitaire: true,
             quantite: true,
             quantiteAnnulee: true,
-            produit: { select: { categorie: { select: { nom: true } } } },
+            produit: { select: { categorie: { select: { nom: true, type: true } } } },
           },
         },
       },
@@ -628,10 +671,19 @@ gerantRouter.get('/rapports', async (req, res) => {
     .sort((a, b) => b.montant - a.montant);
   const caEncaisse = arrondi(parMoyen.reduce((s, m) => s + m.montant, 0));
 
-  // Ventes par produit / catégorie / serveur (quantités annulées exclues)
-  const parProduitMap = new Map<string, { categorie: string; quantite: number; montant: number }>();
+  // Ventes par produit / catégorie / serveur (quantités annulées exclues).
+  // Le coût n'est connu que sur les lignes dont le produit avait un coût de
+  // revient au moment de la commande : on suit séparément la part « couverte ».
+  const parProduitMap = new Map<
+    string,
+    { categorie: string; quantite: number; montant: number; cout: number; montantCoute: number }
+  >();
   const parCategorieMap = new Map<string, { quantite: number; montant: number }>();
   const parServeurMap = new Map<string, { nom: string; prenom: string; nbCommandes: number; montant: number }>();
+  const parType = {
+    NOURRITURE: { ventes: 0, ventesCoutees: 0, cout: 0 },
+    BOISSON: { ventes: 0, ventesCoutees: 0, cout: 0 },
+  };
   let caCommande = 0;
   let nbCommandes = 0;
 
@@ -644,18 +696,32 @@ gerantRouter.get('/rapports', async (req, res) => {
       const quantite = ligne.quantite - ligne.quantiteAnnulee;
       if (quantite <= 0) continue;
       const montant = Number(ligne.prixUnitaire) * quantite;
+      const cout = ligne.coutRevientUnitaire !== null ? Number(ligne.coutRevientUnitaire) * quantite : null;
       const categorie = ligne.produit.categorie.nom;
       montantCommande += montant;
 
-      const prod = parProduitMap.get(ligne.nomProduit) ?? { categorie, quantite: 0, montant: 0 };
+      const prod =
+        parProduitMap.get(ligne.nomProduit) ??
+        { categorie, quantite: 0, montant: 0, cout: 0, montantCoute: 0 };
       prod.quantite += quantite;
       prod.montant += montant;
+      if (cout !== null) {
+        prod.cout += cout;
+        prod.montantCoute += montant;
+      }
       parProduitMap.set(ligne.nomProduit, prod);
 
       const cat = parCategorieMap.get(categorie) ?? { quantite: 0, montant: 0 };
       cat.quantite += quantite;
       cat.montant += montant;
       parCategorieMap.set(categorie, cat);
+
+      const type = parType[ligne.produit.categorie.type];
+      type.ventes += montant;
+      if (cout !== null) {
+        type.ventesCoutees += montant;
+        type.cout += cout;
+      }
     }
 
     caCommande += montantCommande;
@@ -690,7 +756,16 @@ gerantRouter.get('/rapports', async (req, res) => {
     nbCommandes,
     ticketMoyen: nbCommandes > 0 ? arrondi(caCommande / nbCommandes) : 0,
     parProduit: [...parProduitMap.entries()]
-      .map(([nom, v]) => ({ nom, categorie: v.categorie, quantite: v.quantite, montant: arrondi(v.montant) }))
+      .map(([nom, v]) => ({
+        nom,
+        categorie: v.categorie,
+        quantite: v.quantite,
+        montant: arrondi(v.montant),
+        // Marge et food cost % calculés sur la part des ventes dont le coût est connu.
+        cout: v.montantCoute > 0 ? arrondi(v.cout) : null,
+        marge: v.montantCoute > 0 ? arrondi(v.montantCoute - v.cout) : null,
+        foodCostPct: v.montantCoute > 0 ? arrondi((v.cout / v.montantCoute) * 100) : null,
+      }))
       .sort((a, b) => b.montant - a.montant),
     parCategorie: [...parCategorieMap.entries()]
       .map(([nom, v]) => ({ nom, quantite: v.quantite, montant: arrondi(v.montant) }))
@@ -706,8 +781,24 @@ gerantRouter.get('/rapports', async (req, res) => {
         quantite: pertes.apresPreparation.quantite,
       },
     },
+    foodCost: {
+      nourriture: resumeCout(parType.NOURRITURE),
+      boissons: resumeCout(parType.BOISSON),
+    },
   });
 });
+
+// Résumé food/bev cost : % calculé sur la part des ventes dont le coût est
+// connu, avec le taux de couverture pour juger de la fiabilité du chiffre.
+function resumeCout(t: { ventes: number; ventesCoutees: number; cout: number }) {
+  return {
+    ventes: arrondi(t.ventes),
+    cout: t.ventesCoutees > 0 ? arrondi(t.cout) : null,
+    marge: t.ventesCoutees > 0 ? arrondi(t.ventesCoutees - t.cout) : null,
+    pct: t.ventesCoutees > 0 ? arrondi((t.cout / t.ventesCoutees) * 100) : null,
+    couverturePct: t.ventes > 0 ? arrondi((t.ventesCoutees / t.ventes) * 100) : null,
+  };
+}
 
 // --- Journées de caisse ---
 

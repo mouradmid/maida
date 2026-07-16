@@ -44,6 +44,12 @@ enum StatutCategorie {
   INACTIF
 }
 
+// Sépare le food cost du beverage cost dans les rapports.
+enum TypeCategorie {
+  NOURRITURE
+  BOISSON
+}
+
 enum StatutProduit {
   ACTIF
   INACTIF
@@ -156,6 +162,7 @@ model Utilisateur {
 model Categorie {
   id     String          @id @default(cuid())
   nom    String
+  type   TypeCategorie   @default(NOURRITURE)
   statut StatutCategorie @default(ACTIF)
   creeLe DateTime        @default(now())
 
@@ -172,6 +179,8 @@ model Produit {
   nom                     String
   description             String?
   prix                    Decimal       @db.Decimal(10, 2)
+  // Coût de production saisi par le gérant (matières premières). Sert au food cost.
+  coutRevient             Decimal?      @db.Decimal(10, 2)
   tempsPreparationMinutes Int?
   statut                  StatutProduit @default(ACTIF)
   creeLe                  DateTime      @default(now())
@@ -242,6 +251,8 @@ model LigneCommande {
   id              String   @id @default(cuid())
   nomProduit      String
   prixUnitaire    Decimal  @db.Decimal(10, 2)
+  // Coût de revient du produit figé au moment de la commande (comme prixUnitaire).
+  coutRevientUnitaire Decimal? @db.Decimal(10, 2)
   quantite        Int
   quantitePayee   Int      @default(0)
   quantiteAnnulee Int      @default(0)

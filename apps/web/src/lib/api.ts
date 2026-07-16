@@ -13,9 +13,12 @@ export interface Utilisateur {
   etablissementId: string | null;
 }
 
+export type TypeCategorie = 'NOURRITURE' | 'BOISSON';
+
 export interface Categorie {
   id: string;
   nom: string;
+  type: TypeCategorie;
   statut: 'ACTIF' | 'INACTIF';
   creeLe: string;
 }
@@ -37,6 +40,7 @@ export interface Produit {
   nom: string;
   description: string | null;
   prix: number;
+  coutRevient: number | null;
   tempsPreparationMinutes: number | null;
   statut: 'ACTIF' | 'INACTIF';
   categorieId: string;
@@ -180,7 +184,15 @@ export interface RapportVentes {
   caCommande: number;
   nbCommandes: number;
   ticketMoyen: number;
-  parProduit: Array<{ nom: string; categorie: string; quantite: number; montant: number }>;
+  parProduit: Array<{
+    nom: string;
+    categorie: string;
+    quantite: number;
+    montant: number;
+    cout: number | null;
+    marge: number | null;
+    foodCostPct: number | null;
+  }>;
   parCategorie: Array<{ nom: string; quantite: number; montant: number }>;
   parServeur: Array<{ nom: string; prenom: string; nbCommandes: number; montant: number }>;
   pertes: {
@@ -188,6 +200,18 @@ export interface RapportVentes {
     quantite: number;
     apresPreparation: { montant: number; quantite: number };
   };
+  foodCost: {
+    nourriture: ResumeCout;
+    boissons: ResumeCout;
+  };
+}
+
+export interface ResumeCout {
+  ventes: number;
+  cout: number | null;
+  marge: number | null;
+  pct: number | null;
+  couverturePct: number | null;
 }
 
 export interface ResultatPaiement {
@@ -242,7 +266,7 @@ export const api = {
   createCategorie: (nom: string) =>
     apiFetch<Categorie>('/gerant/categories', { method: 'POST', body: JSON.stringify({ nom }) }),
 
-  updateCategorie: (id: string, data: { nom?: string; statut?: 'ACTIF' | 'INACTIF' }) =>
+  updateCategorie: (id: string, data: { nom?: string; statut?: 'ACTIF' | 'INACTIF'; type?: TypeCategorie }) =>
     apiFetch<Categorie>(`/gerant/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   listProduits: () => apiFetch<Produit[]>('/gerant/produits'),
@@ -253,6 +277,7 @@ export const api = {
     categorieId: string;
     description?: string;
     tempsPreparationMinutes?: number;
+    coutRevient?: number;
   }) => apiFetch<Produit>('/gerant/produits', { method: 'POST', body: JSON.stringify(data) }),
 
   updateProduit: (
@@ -264,6 +289,7 @@ export const api = {
       description: string;
       statut: 'ACTIF' | 'INACTIF';
       tempsPreparationMinutes: number | null;
+      coutRevient: number | null;
     }>,
   ) => apiFetch<Produit>(`/gerant/produits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 

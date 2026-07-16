@@ -510,6 +510,7 @@ caisseRouter.post('/commandes', async (req, res) => {
     produitId: string;
     nomProduit: string;
     prixUnitaire: (typeof produits)[number]['prix'];
+    coutRevientUnitaire: (typeof produits)[number]['coutRevient'];
     quantite: number;
     options: Array<{ optionValeurId: string; nomGroupe: string; valeur: string }>;
   }> = [];
@@ -553,6 +554,7 @@ caisseRouter.post('/commandes', async (req, res) => {
       produitId: produit.id,
       nomProduit: produit.nom,
       prixUnitaire: produit.prix,
+      coutRevientUnitaire: produit.coutRevient,
       quantite: ligne.quantite,
       options: optionsResolues,
     });
@@ -570,6 +572,7 @@ caisseRouter.post('/commandes', async (req, res) => {
           produitId: l.produitId,
           nomProduit: l.nomProduit,
           prixUnitaire: l.prixUnitaire,
+          coutRevientUnitaire: l.coutRevientUnitaire,
           quantite: l.quantite,
           options: {
             create: l.options.map((o) => ({

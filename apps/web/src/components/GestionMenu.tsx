@@ -13,8 +13,11 @@ export function GestionMenu() {
   const [nouvelleCategorie, setNouvelleCategorie] = useState('');
   const [nouveauProduitNom, setNouveauProduitNom] = useState('');
   const [nouveauProduitPrix, setNouveauProduitPrix] = useState('');
+  const [nouveauProduitCout, setNouveauProduitCout] = useState('');
   const [nouveauProduitCategorieId, setNouveauProduitCategorieId] = useState('');
   const [nouveauProduitTempsPrepa, setNouveauProduitTempsPrepa] = useState('');
+  const [coutEnEdition, setCoutEnEdition] = useState<string | null>(null);
+  const [coutSaisi, setCoutSaisi] = useState('');
 
   async function chargerTout() {
     setChargement(true);
@@ -52,6 +55,27 @@ export function GestionMenu() {
     await chargerTout();
   }
 
+  async function handleToggleTypeCategorie(categorie: Categorie) {
+    await api.updateCategorie(categorie.id, {
+      type: categorie.type === 'NOURRITURE' ? 'BOISSON' : 'NOURRITURE',
+    });
+    await chargerTout();
+  }
+
+  async function handleEnregistrerCout(produit: Produit) {
+    setErreur(null);
+    try {
+      await api.updateProduit(produit.id, {
+        coutRevient: coutSaisi === '' ? null : Number(coutSaisi),
+      });
+      setCoutEnEdition(null);
+      setCoutSaisi('');
+      await chargerTout();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   async function handleAjouterProduit(e: React.FormEvent) {
     e.preventDefault();
     setErreur(null);
@@ -66,9 +90,11 @@ export function GestionMenu() {
         prix,
         categorieId: nouveauProduitCategorieId,
         tempsPreparationMinutes: nouveauProduitTempsPrepa ? Number(nouveauProduitTempsPrepa) : undefined,
+        coutRevient: nouveauProduitCout ? Number(nouveauProduitCout) : undefined,
       });
       setNouveauProduitNom('');
       setNouveauProduitPrix('');
+      setNouveauProduitCout('');
       setNouveauProduitTempsPrepa('');
       await chargerTout();
     } catch (err) {
@@ -109,9 +135,23 @@ export function GestionMenu() {
                     <span className={badgeNeutre}>{produitsCategorie.length}</span>
                     {categorie.statut === 'INACTIF' && <span className={badgeNeutre}>désactivée</span>}
                   </h3>
-                  <button type="button" onClick={() => handleToggleCategorie(categorie)} className={boutonDiscret}>
-                    {categorie.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
-                  </button>
+                  <span className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTypeCategorie(categorie)}
+                      title="Sert à séparer food cost et beverage cost dans les rapports"
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                        categorie.type === 'BOISSON'
+                          ? 'bg-sky-100 text-sky-800 hover:bg-sky-200'
+                          : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                      }`}
+                    >
+                      {categorie.type === 'BOISSON' ? 'Boisson' : 'Nourriture'}
+                    </button>
+                    <button type="button" onClick={() => handleToggleCategorie(categorie)} className={boutonDiscret}>
+                      {categorie.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
+                    </button>
+                  </span>
                 </div>
 
                 <ul className="flex flex-col divide-y divide-stone-100">
@@ -125,12 +165,28 @@ export function GestionMenu() {
                         >
                           <span className="font-medium">{produit.nom}</span>
                           <span className="font-semibold text-brand-700">{produit.prix} DA</span>
+                          {produit.coutRevient != null && (
+                            <span className={badgeNeutre}>
+                              coût {produit.coutRevient} DA · marge{' '}
+                              {Math.round(((produit.prix - produit.coutRevient) / produit.prix) * 100)} %
+                            </span>
+                          )}
                           {produit.tempsPreparationMinutes != null && (
                             <span className={badgeNeutre}>{produit.tempsPreparationMinutes} min</span>
                           )}
                           {produit.statut === 'INACTIF' && <span className={badgeNeutre}>désactivé</span>}
                         </span>
                         <span className="flex shrink-0 items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCoutEnEdition(coutEnEdition === produit.id ? null : produit.id);
+                              setCoutSaisi(produit.coutRevient != null ? String(produit.coutRevient) : '');
+                            }}
+                            className={boutonDiscret}
+                          >
+                            Coût
+                          </button>
                           <button
                             type="button"
                             onClick={() =>
@@ -145,6 +201,30 @@ export function GestionMenu() {
                           </button>
                         </span>
                       </div>
+                      {coutEnEdition === produit.id && (
+                        <div className="flex items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
+                          <label className="text-xs font-medium text-stone-600" htmlFor={`cout-${produit.id}`}>
+                            Coût de revient (DA)
+                          </label>
+                          <input
+                            id={`cout-${produit.id}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={coutSaisi}
+                            onChange={(e) => setCoutSaisi(e.target.value)}
+                            placeholder="vide = non suivi"
+                            className={`${champ} w-36 px-2 py-1`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleEnregistrerCout(produit)}
+                            className={`${boutonPrimaire} px-3 py-1 text-xs`}
+                          >
+                            Enregistrer
+                          </button>
+                        </div>
+                      )}
                       {produitOptionsOuvert === produit.id && (
                         <OptionsProduit produit={produit} onChange={chargerTout} />
                       )}
@@ -207,6 +287,15 @@ export function GestionMenu() {
                   className={champ}
                 />
               </div>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Coût de revient (DA, optionnel — pour le food cost)"
+                value={nouveauProduitCout}
+                onChange={(e) => setNouveauProduitCout(e.target.value)}
+                className={champ}
+              />
               <select
                 value={nouveauProduitCategorieId}
                 onChange={(e) => setNouveauProduitCategorieId(e.target.value)}
