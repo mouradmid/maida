@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
-import type { ModePaiement, Prisma } from '../generated/prisma/client';
+import type { DroitUtilisateur, ModePaiement, Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
@@ -9,12 +9,56 @@ export const caisseRouter = Router();
 
 caisseRouter.use(requireAuth, requireRole('SERVEUR'));
 
+const arrondi = (n: number) => Math.round(n * 100) / 100;
+
 async function getContexteServeur(serveurId: string) {
   const serveur = await prisma.utilisateur.findUnique({ where: { id: serveurId } });
   if (!serveur?.etablissementId) {
     throw new Error('Serveur sans établissement associé');
   }
   return { etablissementId: serveur.etablissementId };
+}
+
+// Action sensible : soit le serveur a le droit requis, soit un gérant de
+// l'établissement valide avec son code PIN et porte la responsabilité.
+async function resoudreResponsable(options: {
+  serveurId: string;
+  etablissementId: string;
+  droit: DroitUtilisateur;
+  codeGerant: unknown;
+  messageDroitManquant: string;
+}): Promise<
+  | { ok: true; responsableId: string; demandeeParId: string | null }
+  | { ok: false; status: number; body: { error: string; codeGerantRequis?: boolean } }
+> {
+  const serveur = await prisma.utilisateur.findUnique({ where: { id: options.serveurId } });
+  if (!serveur) {
+    return { ok: false, status: 401, body: { error: 'Non authentifié' } };
+  }
+  if (serveur.droits.includes(options.droit)) {
+    return { ok: true, responsableId: serveur.id, demandeeParId: null };
+  }
+  if (typeof options.codeGerant !== 'string' || !options.codeGerant) {
+    return {
+      ok: false,
+      status: 403,
+      body: { error: options.messageDroitManquant, codeGerantRequis: true },
+    };
+  }
+  const gerants = await prisma.utilisateur.findMany({
+    where: {
+      etablissementId: options.etablissementId,
+      role: 'GERANT',
+      statut: 'ACTIF',
+      codePinHash: { not: null },
+    },
+  });
+  for (const gerant of gerants) {
+    if (gerant.codePinHash && (await bcrypt.compare(options.codeGerant, gerant.codePinHash))) {
+      return { ok: true, responsableId: gerant.id, demandeeParId: serveur.id };
+    }
+  }
+  return { ok: false, status: 403, body: { error: 'Code gérant invalide', codeGerantRequis: true } };
 }
 
 caisseRouter.get('/moyens-paiement', async (req, res) => {
@@ -241,40 +285,19 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
-  const serveur = await prisma.utilisateur.findUnique({ where: { id: req.user!.id } });
-  if (!serveur) {
-    res.status(401).json({ error: 'Non authentifié' });
+  const resolution = await resoudreResponsable({
+    serveurId: req.user!.id,
+    etablissementId,
+    droit: 'ANNULER',
+    codeGerant,
+    messageDroitManquant: "Vous n'avez pas le droit d'annuler. Un gérant doit valider avec son code.",
+  });
+  if (!resolution.ok) {
+    res.status(resolution.status).json(resolution.body);
     return;
   }
-
-  // Droit d'annuler : soit le serveur l'a, soit un gérant valide avec son code PIN.
-  let annuleeParId = serveur.id;
-  let demandeeParId: string | null = null;
-  if (!serveur.droits.includes('ANNULER')) {
-    if (typeof codeGerant !== 'string' || !codeGerant) {
-      res.status(403).json({
-        error: "Vous n'avez pas le droit d'annuler. Un gérant doit valider avec son code.",
-        codeGerantRequis: true,
-      });
-      return;
-    }
-    const gerants = await prisma.utilisateur.findMany({
-      where: { etablissementId, role: 'GERANT', statut: 'ACTIF', codePinHash: { not: null } },
-    });
-    let gerantValidant: (typeof gerants)[number] | null = null;
-    for (const gerant of gerants) {
-      if (gerant.codePinHash && (await bcrypt.compare(codeGerant, gerant.codePinHash))) {
-        gerantValidant = gerant;
-        break;
-      }
-    }
-    if (!gerantValidant) {
-      res.status(403).json({ error: 'Code gérant invalide', codeGerantRequis: true });
-      return;
-    }
-    annuleeParId = gerantValidant.id;
-    demandeeParId = serveur.id;
-  }
+  const annuleeParId = resolution.responsableId;
+  const demandeeParId = resolution.demandeeParId;
 
   const commande = await prisma.commande.findFirst({
     where: { id: req.params.id, etablissementId },
@@ -564,6 +587,187 @@ caisseRouter.post('/commandes', async (req, res) => {
   res.status(201).json(toPublicCommande(commande));
 });
 
+// --- Journée de caisse ---
+
+const INCLUDE_JOURNEE = {
+  ouvertePar: { select: { nom: true, prenom: true } },
+  clotureePar: { select: { nom: true, prenom: true, role: true } },
+  clotureDemandeePar: { select: { nom: true, prenom: true } },
+} satisfies Prisma.JourneeCaisseInclude;
+
+type JourneeAvecActeurs = Prisma.JourneeCaisseGetPayload<{ include: typeof INCLUDE_JOURNEE }>;
+
+function toPublicJournee(j: JourneeAvecActeurs) {
+  return {
+    id: j.id,
+    statut: j.statut,
+    fondDeCaisse: Number(j.fondDeCaisse),
+    ouverteLe: j.ouverteLe,
+    clotureeLe: j.clotureeLe,
+    especesAttendues: j.especesAttendues !== null ? Number(j.especesAttendues) : null,
+    especesComptees: j.especesComptees !== null ? Number(j.especesComptees) : null,
+    ecart: j.ecart !== null ? Number(j.ecart) : null,
+    commentaire: j.commentaire,
+    ouvertePar: j.ouvertePar,
+    clotureePar: j.clotureePar,
+    clotureDemandeePar: j.clotureDemandeePar,
+  };
+}
+
+function getJourneeOuverte(etablissementId: string) {
+  return prisma.journeeCaisse.findFirst({
+    where: { etablissementId, statut: 'OUVERTE' },
+    orderBy: { ouverteLe: 'desc' },
+  });
+}
+
+async function totauxJournee(journeeCaisseId: string) {
+  const groupes = await prisma.paiement.groupBy({
+    by: ['moyenPaiement'],
+    where: { journeeCaisseId },
+    _sum: { montant: true },
+    _count: { _all: true },
+  });
+  const parMoyen = groupes.map((g) => ({
+    moyenPaiement: g.moyenPaiement,
+    montant: arrondi(Number(g._sum.montant ?? 0)),
+    nombre: g._count._all,
+  }));
+  const total = arrondi(parMoyen.reduce((s, m) => s + m.montant, 0));
+  return { parMoyen, total };
+}
+
+caisseRouter.get('/journee', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const journee = await prisma.journeeCaisse.findFirst({
+    where: { etablissementId, statut: 'OUVERTE' },
+    include: INCLUDE_JOURNEE,
+    orderBy: { ouverteLe: 'desc' },
+  });
+
+  if (!journee) {
+    const derniere = await prisma.journeeCaisse.findFirst({
+      where: { etablissementId, statut: 'CLOTUREE' },
+      include: INCLUDE_JOURNEE,
+      orderBy: { clotureeLe: 'desc' },
+    });
+    res.json({
+      journee: null,
+      derniereCloture: derniere
+        ? { ...toPublicJournee(derniere), totaux: await totauxJournee(derniere.id) }
+        : null,
+    });
+    return;
+  }
+
+  const totaux = await totauxJournee(journee.id);
+  const especesEncaissees = totaux.parMoyen.find((m) => m.moyenPaiement === 'ESPECES')?.montant ?? 0;
+  const additionsOuvertes = await prisma.addition.count({
+    where: { etablissementId, statut: 'OUVERTE' },
+  });
+
+  res.json({
+    journee: toPublicJournee(journee),
+    totaux,
+    especesAttendues: arrondi(Number(journee.fondDeCaisse) + especesEncaissees),
+    additionsOuvertes,
+  });
+});
+
+caisseRouter.post('/journee/ouverture', async (req, res) => {
+  const { fondDeCaisse } = req.body ?? {};
+
+  if (typeof fondDeCaisse !== 'number' || !Number.isFinite(fondDeCaisse) || fondDeCaisse < 0) {
+    res.status(400).json({ error: 'Le fond de caisse doit être un nombre positif ou nul' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const existante = await getJourneeOuverte(etablissementId);
+  if (existante) {
+    res.status(409).json({ error: 'Une journée de caisse est déjà ouverte' });
+    return;
+  }
+
+  const journee = await prisma.journeeCaisse.create({
+    data: { etablissementId, fondDeCaisse: arrondi(fondDeCaisse), ouverteParId: req.user!.id },
+    include: INCLUDE_JOURNEE,
+  });
+
+  res.status(201).json(toPublicJournee(journee));
+});
+
+caisseRouter.post('/journee/cloture', async (req, res) => {
+  const { especesComptees, commentaire, codeGerant } = req.body ?? {};
+
+  if (typeof especesComptees !== 'number' || !Number.isFinite(especesComptees) || especesComptees < 0) {
+    res.status(400).json({ error: 'Le montant des espèces comptées doit être un nombre positif ou nul' });
+    return;
+  }
+  if (commentaire !== undefined && typeof commentaire !== 'string') {
+    res.status(400).json({ error: 'Commentaire invalide' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const journee = await getJourneeOuverte(etablissementId);
+  if (!journee) {
+    res.status(409).json({ error: 'Aucune journée de caisse ouverte' });
+    return;
+  }
+
+  // On ne clôture pas avec des tables non soldées : tout doit être encaissé ou annulé.
+  const additionsOuvertes = await prisma.addition.count({
+    where: { etablissementId, statut: 'OUVERTE' },
+  });
+  if (additionsOuvertes > 0) {
+    res.status(409).json({
+      error: `Il reste ${additionsOuvertes} addition${additionsOuvertes > 1 ? 's' : ''} ouverte${additionsOuvertes > 1 ? 's' : ''}. Encaissez-les ou annulez-les avant de clôturer.`,
+    });
+    return;
+  }
+
+  const resolution = await resoudreResponsable({
+    serveurId: req.user!.id,
+    etablissementId,
+    droit: 'CLOTURER',
+    codeGerant,
+    messageDroitManquant:
+      "Vous n'avez pas le droit de clôturer la caisse. Un gérant doit valider avec son code.",
+  });
+  if (!resolution.ok) {
+    res.status(resolution.status).json(resolution.body);
+    return;
+  }
+
+  const totaux = await totauxJournee(journee.id);
+  const especesEncaissees = totaux.parMoyen.find((m) => m.moyenPaiement === 'ESPECES')?.montant ?? 0;
+  const especesAttendues = arrondi(Number(journee.fondDeCaisse) + especesEncaissees);
+  const ecart = arrondi(especesComptees - especesAttendues);
+  const commentaireFinal =
+    typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null;
+
+  const journeeMaj = await prisma.journeeCaisse.update({
+    where: { id: journee.id },
+    data: {
+      statut: 'CLOTUREE',
+      clotureeLe: new Date(),
+      especesAttendues,
+      especesComptees: arrondi(especesComptees),
+      ecart,
+      commentaire: commentaireFinal,
+      clotureeParId: resolution.responsableId,
+      clotureDemandeeParId: resolution.demandeeParId,
+    },
+    include: INCLUDE_JOURNEE,
+  });
+
+  res.json({ ...toPublicJournee(journeeMaj), totaux });
+});
+
 // --- Encaissement ---
 
 const INCLUDE_ADDITION = {
@@ -747,10 +951,19 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
     return;
   }
 
+  const journee = await getJourneeOuverte(etablissementId);
+  if (!journee) {
+    res.status(409).json({
+      error: "Aucune journée de caisse ouverte. Ouvrez la journée (onglet Journée) avant d'encaisser.",
+    });
+    return;
+  }
+
   const resultat = await prisma.$transaction(async (tx) => {
     const paiement = await tx.paiement.create({
       data: {
         additionId: addition.id,
+        journeeCaisseId: journee.id,
         montant: montantFinal,
         moyenPaiement: moyenPaiementValide,
         montantRecu: moyenPaiementValide === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,

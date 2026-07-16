@@ -5,12 +5,14 @@ import { EnTeteEspace } from '../components/EnTeteEspace';
 import { PriseDeCommande } from '../components/PriseDeCommande';
 import { Encaissement } from '../components/Encaissement';
 import { EcranCuisine } from '../components/EcranCuisine';
+import { JourneeCaisse } from '../components/JourneeCaisse';
 import { useMe } from '../hooks/useMe';
 
 const ONGLETS = [
   { id: 'commande', libelle: 'Prise de commande' },
   { id: 'encaissement', libelle: 'Encaissement' },
   { id: 'cuisine', libelle: 'Cuisine' },
+  { id: 'journee', libelle: 'Journée' },
 ] as const;
 
 type Onglet = (typeof ONGLETS)[number]['id'];
@@ -48,6 +50,7 @@ export function EspaceCaisse() {
           {onglet === 'commande' && <PriseDeCommande droitAnnuler={user.droits.includes('ANNULER')} />}
           {onglet === 'encaissement' && <Encaissement />}
           {onglet === 'cuisine' && <EcranCuisine />}
+          {onglet === 'journee' && <JourneeCaisse droitCloturer={user.droits.includes('CLOTURER')} />}
         </main>
       </div>
     );

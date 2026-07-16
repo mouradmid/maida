@@ -29,6 +29,7 @@ const LIBELLES_MODE: Record<Mode, string> = {
 export function Encaissement() {
   const [additions, setAdditions] = useState<AdditionResume[]>([]);
   const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>([]);
+  const [journeeOuverte, setJourneeOuverte] = useState(true);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [additionId, setAdditionId] = useState<string | null>(null);
@@ -45,12 +46,14 @@ export function Encaissement() {
   async function chargerListe() {
     setChargement(true);
     try {
-      const [additionsOuvertes, moyens] = await Promise.all([
+      const [additionsOuvertes, moyens, etatJournee] = await Promise.all([
         api.listAdditionsOuvertes(),
         api.caisseMoyensPaiement(),
+        api.getJournee(),
       ]);
       setAdditions(additionsOuvertes);
       setMoyensActifs(moyens.actifs);
+      setJourneeOuverte(etatJournee.journee !== null);
       if (moyens.actifs.length > 0 && !moyens.actifs.includes(moyenPaiement)) {
         setMoyenPaiement(moyens.actifs[0]);
       }
@@ -168,9 +171,16 @@ export function Encaissement() {
 
   if (chargement) return <p className="text-center text-stone-500">Chargement de l'encaissement...</p>;
 
+  const bandeauJourneeFermee = !journeeOuverte && (
+    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      Aucune journée de caisse ouverte : ouvrez la journée (onglet « Journée ») avant d'encaisser.
+    </p>
+  );
+
   if (!additionId) {
     return (
       <div className="flex w-full flex-col gap-4">
+        {bandeauJourneeFermee}
         {erreur && <p className={messageErreur}>{erreur}</p>}
         {additions.length === 0 && (
           <div className={`${carte} py-10 text-center text-stone-400`}>
@@ -210,6 +220,7 @@ export function Encaissement() {
         </button>
       </div>
 
+      {bandeauJourneeFermee}
       {erreur && <p className={messageErreur}>{erreur}</p>}
       {resultat && <p className={messageSucces}>{resultat}</p>}
 
@@ -409,7 +420,12 @@ export function Encaissement() {
               </div>
             )}
 
-            <button type="button" onClick={handleEncaisser} className={`${boutonPrimaire} py-3 text-base`}>
+            <button
+              type="button"
+              onClick={handleEncaisser}
+              disabled={!journeeOuverte}
+              className={`${boutonPrimaire} py-3 text-base`}
+            >
               Encaisser {montantPropose > 0 ? `${montantPropose} DA` : ''}
             </button>
           </div>

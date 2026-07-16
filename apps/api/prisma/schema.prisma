@@ -36,6 +36,7 @@ enum StatutUtilisateur {
 // Droits spécifiques activables individuellement (en plus du rôle).
 enum DroitUtilisateur {
   ANNULER
+  CLOTURER
 }
 
 enum StatutCategorie {
@@ -82,6 +83,11 @@ enum ModePaiement {
   AUTRE
 }
 
+enum StatutJourneeCaisse {
+  OUVERTE
+  CLOTUREE
+}
+
 model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
@@ -106,13 +112,14 @@ model Etablissement {
   compteClientId String
   compteClient   CompteClient @relation(fields: [compteClientId], references: [id])
 
-  utilisateurs Utilisateur[]
-  categories   Categorie[]
-  produits     Produit[]
-  commandes    Commande[]
-  tables       Table[]
-  additions    Addition[]
-  annulations  Annulation[]
+  utilisateurs   Utilisateur[]
+  categories     Categorie[]
+  produits       Produit[]
+  commandes      Commande[]
+  tables         Table[]
+  additions      Addition[]
+  annulations    Annulation[]
+  journeesCaisse JourneeCaisse[]
 
   @@map("etablissements")
 }
@@ -139,6 +146,9 @@ model Utilisateur {
   commandes            Commande[]
   annulationsValidees  Annulation[] @relation("AnnulationsValidees")
   annulationsDemandees Annulation[] @relation("AnnulationsDemandees")
+  journeesOuvertes     JourneeCaisse[] @relation("JourneesOuvertes")
+  journeesCloturees    JourneeCaisse[] @relation("JourneesCloturees")
+  cloturesDemandees    JourneeCaisse[] @relation("CloturesDemandees")
 
   @@map("utilisateurs")
 }
@@ -278,9 +288,46 @@ model Paiement {
   additionId String
   addition   Addition @relation(fields: [additionId], references: [id])
 
+  journeeCaisseId String?
+  journeeCaisse   JourneeCaisse? @relation(fields: [journeeCaisseId], references: [id])
+
   lignes PaiementLigne[]
 
   @@map("paiements")
+}
+
+// Journée de caisse : ouverte le matin avec un fond de caisse, clôturée le soir
+// avec comptage des espèces. Les paiements s'y rattachent au fil de la journée.
+model JourneeCaisse {
+  id           String              @id @default(cuid())
+  statut       StatutJourneeCaisse @default(OUVERTE)
+  fondDeCaisse Decimal             @db.Decimal(10, 2)
+  ouverteLe    DateTime            @default(now())
+  clotureeLe   DateTime?
+
+  // Figés à la clôture : attendu = fond + espèces encaissées, écart = compté − attendu.
+  especesAttendues Decimal? @db.Decimal(10, 2)
+  especesComptees  Decimal? @db.Decimal(10, 2)
+  ecart            Decimal? @db.Decimal(10, 2)
+  commentaire      String?
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  ouverteParId String
+  ouvertePar   Utilisateur @relation("JourneesOuvertes", fields: [ouverteParId], references: [id])
+
+  // Celui qui porte la responsabilité de la clôture (serveur avec le droit, ou gérant validant).
+  clotureeParId String?
+  clotureePar   Utilisateur? @relation("JourneesCloturees", fields: [clotureeParId], references: [id])
+
+  // Le serveur qui a demandé, quand la validation vient d'un gérant.
+  clotureDemandeeParId String?
+  clotureDemandeePar   Utilisateur? @relation("CloturesDemandees", fields: [clotureDemandeeParId], references: [id])
+
+  paiements Paiement[]
+
+  @@map("journees_caisse")
 }
 
 model PaiementLigne {

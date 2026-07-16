@@ -34,11 +34,11 @@ export function GestionServeurs() {
     charger();
   }, []);
 
-  async function handleToggleDroitAnnuler(serveur: Serveur) {
+  async function handleToggleDroit(serveur: Serveur, droit: DroitUtilisateur) {
     setErreur(null);
-    const droits = serveur.droits.includes('ANNULER')
-      ? serveur.droits.filter((d) => d !== 'ANNULER')
-      : [...serveur.droits, 'ANNULER' as const];
+    const droits = serveur.droits.includes(droit)
+      ? serveur.droits.filter((d) => d !== droit)
+      : [...serveur.droits, droit];
     try {
       await api.updateDroitsServeur(serveur.id, droits);
       await charger();
@@ -46,6 +46,21 @@ export function GestionServeurs() {
       setErreur(err instanceof Error ? err.message : 'Erreur');
     }
   }
+
+  const DROITS_UI: Array<{ droit: DroitUtilisateur; actif: string; inactif: string; titre: string }> = [
+    {
+      droit: 'ANNULER',
+      actif: '✓ Peut annuler',
+      inactif: 'Ne peut pas annuler',
+      titre: 'Autoriser ce serveur à annuler sans validation du gérant',
+    },
+    {
+      droit: 'CLOTURER',
+      actif: '✓ Peut clôturer',
+      inactif: 'Ne peut pas clôturer',
+      titre: 'Autoriser ce serveur à clôturer la journée de caisse sans validation du gérant',
+    },
+  ];
 
   async function handleAjouter(e: React.FormEvent) {
     e.preventDefault();
@@ -71,37 +86,42 @@ export function GestionServeurs() {
         <div className={carte}>
           <h3 className="mb-3 font-semibold text-stone-900">Serveurs ({serveurs.length})</h3>
           <ul className="flex flex-col divide-y divide-stone-100">
-            {serveurs.map((s) => {
-              const peutAnnuler = s.droits.includes('ANNULER');
-              return (
-                <li key={s.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <span className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-800">
-                      {s.prenom.charAt(0)}
-                      {s.nom.charAt(0)}
-                    </span>
-                    <span className="font-medium text-stone-900">
-                      {s.prenom} {s.nom}
-                    </span>
-                    <span className={s.statut === 'ACTIF' ? badgeVert : badgeNeutre}>
-                      {s.statut === 'ACTIF' ? 'actif' : 'désactivé'}
-                    </span>
+            {serveurs.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
+                <span className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-800">
+                    {s.prenom.charAt(0)}
+                    {s.nom.charAt(0)}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleDroitAnnuler(s)}
-                    title="Autoriser ce serveur à annuler sans validation du gérant"
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                      peutAnnuler
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
-                    }`}
-                  >
-                    {peutAnnuler ? '✓ Peut annuler' : 'Ne peut pas annuler'}
-                  </button>
-                </li>
-              );
-            })}
+                  <span className="font-medium text-stone-900">
+                    {s.prenom} {s.nom}
+                  </span>
+                  <span className={s.statut === 'ACTIF' ? badgeVert : badgeNeutre}>
+                    {s.statut === 'ACTIF' ? 'actif' : 'désactivé'}
+                  </span>
+                </span>
+                <span className="flex flex-wrap gap-2">
+                  {DROITS_UI.map(({ droit, actif, inactif, titre }) => {
+                    const possede = s.droits.includes(droit);
+                    return (
+                      <button
+                        key={droit}
+                        type="button"
+                        onClick={() => handleToggleDroit(s, droit)}
+                        title={titre}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                          possede
+                            ? 'bg-brand-600 text-white'
+                            : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                        }`}
+                      >
+                        {possede ? actif : inactif}
+                      </button>
+                    );
+                  })}
+                </span>
+              </li>
+            ))}
             {serveurs.length === 0 && (
               <li className="py-2 text-sm text-stone-400">Aucun serveur pour l'instant.</li>
             )}

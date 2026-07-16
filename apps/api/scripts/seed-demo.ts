@@ -159,7 +159,7 @@ async function main() {
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[0].id },
-    data: { codePinHash: await bcrypt.hash('1234', 12), droits: ['ANNULER'] },
+    data: { codePinHash: await bcrypt.hash('1234', 12), droits: ['ANNULER', 'CLOTURER'] },
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[1].id },
@@ -171,6 +171,8 @@ async function main() {
   // Purge des données transactionnelles et du menu existant
   await prisma.paiementLigne.deleteMany({});
   await prisma.paiement.deleteMany({});
+  await prisma.journeeCaisse.deleteMany({});
+  await prisma.annulation.deleteMany({});
   await prisma.ligneCommandeOption.deleteMany({});
   await prisma.ligneCommande.deleteMany({});
   await prisma.commande.deleteMany({});
@@ -285,6 +287,75 @@ async function main() {
   const maintenant = Date.now();
   const ilYA = (minutes: number) => new Date(maintenant - minutes * 60_000);
 
+  // Journée de caisse d'hier, clôturée avec un petit écart (pour l'historique gérant)
+  const journeeHier = await prisma.journeeCaisse.create({
+    data: {
+      etablissementId,
+      statut: 'CLOTUREE',
+      fondDeCaisse: 5000,
+      ouverteLe: ilYA(1560),
+      clotureeLe: ilYA(1080),
+      especesAttendues: 7000,
+      especesComptees: 6900,
+      ecart: -100,
+      commentaire: 'Manque 100 DA, sûrement une erreur de rendu monnaie',
+      ouverteParId: serveurs[0].id,
+      clotureeParId: gerant.id,
+      clotureDemandeeParId: serveurs[1].id,
+    },
+  });
+
+  // Repas d'hier soir (table 2) pour donner de la matière à la journée clôturée
+  const addHier = await prisma.addition.create({
+    data: {
+      etablissementId,
+      tableId: tablesParNumero.get('2')!,
+      statut: 'PAYEE',
+      ouverteLe: ilYA(1320),
+      fermeeLe: ilYA(1200),
+    },
+  });
+  await creerCommande(
+    addHier.id,
+    serveurs[1].id,
+    [
+      { produit: 'Brochettes kefta', quantite: 2 },
+      { produit: 'Demi-poulet braisé', quantite: 1 },
+      { produit: 'Coca-Cola 33 cl', quantite: 3 },
+    ],
+    undefined,
+    ilYA(1315),
+  );
+  await prisma.paiement.create({
+    data: {
+      additionId: addHier.id,
+      journeeCaisseId: journeeHier.id,
+      montant: 2000,
+      moyenPaiement: 'ESPECES',
+      montantRecu: 2000,
+      creeLe: ilYA(1210),
+    },
+  });
+  await prisma.paiement.create({
+    data: {
+      additionId: addHier.id,
+      journeeCaisseId: journeeHier.id,
+      montant: 1100,
+      moyenPaiement: 'CARTE',
+      creeLe: ilYA(1205),
+    },
+  });
+
+  // Journée de caisse du jour, ouverte il y a 3 h par Sofiane
+  const journeeDuJour = await prisma.journeeCaisse.create({
+    data: {
+      etablissementId,
+      fondDeCaisse: 5000,
+      ouverteLe: ilYA(180),
+      ouverteParId: serveurs[0].id,
+    },
+  });
+
   // Table 3 — commande récente
   const addT3 = await prisma.addition.create({
     data: { etablissementId, tableId: tablesParNumero.get('3')!, ouverteLe: ilYA(25) },
@@ -376,7 +447,14 @@ async function main() {
     data: { quantitePayee: 2 },
   });
   const paiement = await prisma.paiement.create({
-    data: { additionId: addPayee.id, montant: totalPaye, moyenPaiement: 'ESPECES', montantRecu: 2000, creeLe: ilYA(95) },
+    data: {
+      additionId: addPayee.id,
+      journeeCaisseId: journeeDuJour.id,
+      montant: totalPaye,
+      moyenPaiement: 'ESPECES',
+      montantRecu: 2000,
+      creeLe: ilYA(95),
+    },
   });
   for (const l of lignesPayees) {
     await prisma.paiementLigne.create({
@@ -390,6 +468,7 @@ async function main() {
   }
 
   console.log('Commandes de démo créées : tables 3, 5 et 8 ouvertes, table 1 payée (historique).');
+  console.log('Journées de caisse : hier clôturée (écart -100 DA), aujourd\'hui ouverte (fond 5000 DA).');
   console.log('Seed de démo terminé.');
 }
 

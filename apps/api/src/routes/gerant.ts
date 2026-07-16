@@ -29,7 +29,7 @@ gerantRouter.get('/serveurs', async (req, res) => {
   res.json(serveurs);
 });
 
-const DROITS_VALIDES = ['ANNULER'] as const;
+const DROITS_VALIDES = ['ANNULER', 'CLOTURER'] as const;
 
 gerantRouter.patch('/serveurs/:id/droits', async (req, res) => {
   const { droits } = req.body ?? {};
@@ -564,5 +564,64 @@ gerantRouter.get('/annulations', async (req, res) => {
       annuleePar: a.annuleePar,
       demandeePar: a.demandeePar,
     })),
+  );
+});
+
+// --- Journées de caisse ---
+
+gerantRouter.get('/journees', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const journees = await prisma.journeeCaisse.findMany({
+    where: { etablissementId },
+    include: {
+      ouvertePar: { select: { nom: true, prenom: true } },
+      clotureePar: { select: { nom: true, prenom: true, role: true } },
+      clotureDemandeePar: { select: { nom: true, prenom: true } },
+    },
+    orderBy: { ouverteLe: 'desc' },
+    take: 90,
+  });
+
+  const totaux = await prisma.paiement.groupBy({
+    by: ['journeeCaisseId', 'moyenPaiement'],
+    where: { journeeCaisseId: { in: journees.map((j) => j.id) } },
+    _sum: { montant: true },
+    _count: { _all: true },
+  });
+  const totauxParJournee = new Map<string, Array<{ moyenPaiement: string; montant: number; nombre: number }>>();
+  for (const t of totaux) {
+    if (!t.journeeCaisseId) continue;
+    const liste = totauxParJournee.get(t.journeeCaisseId) ?? [];
+    liste.push({
+      moyenPaiement: t.moyenPaiement,
+      montant: Math.round(Number(t._sum.montant ?? 0) * 100) / 100,
+      nombre: t._count._all,
+    });
+    totauxParJournee.set(t.journeeCaisseId, liste);
+  }
+
+  res.json(
+    journees.map((j) => {
+      const parMoyen = totauxParJournee.get(j.id) ?? [];
+      return {
+        id: j.id,
+        statut: j.statut,
+        fondDeCaisse: Number(j.fondDeCaisse),
+        ouverteLe: j.ouverteLe,
+        clotureeLe: j.clotureeLe,
+        especesAttendues: j.especesAttendues !== null ? Number(j.especesAttendues) : null,
+        especesComptees: j.especesComptees !== null ? Number(j.especesComptees) : null,
+        ecart: j.ecart !== null ? Number(j.ecart) : null,
+        commentaire: j.commentaire,
+        ouvertePar: j.ouvertePar,
+        clotureePar: j.clotureePar,
+        clotureDemandeePar: j.clotureDemandeePar,
+        totaux: {
+          parMoyen,
+          total: Math.round(parMoyen.reduce((s, m) => s + m.montant, 0) * 100) / 100,
+        },
+      };
+    }),
   );
 });

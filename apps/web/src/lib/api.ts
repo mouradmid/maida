@@ -1,6 +1,6 @@
 const API_BASE = '/api';
 
-export type DroitUtilisateur = 'ANNULER';
+export type DroitUtilisateur = 'ANNULER' | 'CLOTURER';
 
 export interface Utilisateur {
   id: string;
@@ -138,6 +138,38 @@ export interface AdditionDetail extends AdditionResume {
     montantRecu: number | null;
     creeLe: string;
   }>;
+}
+
+export interface TotauxJournee {
+  parMoyen: Array<{ moyenPaiement: ModePaiement; montant: number; nombre: number }>;
+  total: number;
+}
+
+export interface JourneeCaisse {
+  id: string;
+  statut: 'OUVERTE' | 'CLOTUREE';
+  fondDeCaisse: number;
+  ouverteLe: string;
+  clotureeLe: string | null;
+  especesAttendues: number | null;
+  especesComptees: number | null;
+  ecart: number | null;
+  commentaire: string | null;
+  ouvertePar: { nom: string; prenom: string };
+  clotureePar: { nom: string; prenom: string; role: string } | null;
+  clotureDemandeePar: { nom: string; prenom: string } | null;
+}
+
+export interface EtatJournee {
+  journee: JourneeCaisse | null;
+  totaux?: TotauxJournee;
+  especesAttendues?: number;
+  additionsOuvertes?: number;
+  derniereCloture?: (JourneeCaisse & { totaux: TotauxJournee }) | null;
+}
+
+export interface JourneeGerant extends JourneeCaisse {
+  totaux: TotauxJournee;
 }
 
 export interface ResultatPaiement {
@@ -361,4 +393,20 @@ export const api = {
     }),
 
   caisseMoyensPaiement: () => apiFetch<{ actifs: ModePaiement[] }>('/caisse/moyens-paiement'),
+
+  getJournee: () => apiFetch<EtatJournee>('/caisse/journee'),
+
+  ouvrirJournee: (fondDeCaisse: number) =>
+    apiFetch<JourneeCaisse>('/caisse/journee/ouverture', {
+      method: 'POST',
+      body: JSON.stringify({ fondDeCaisse }),
+    }),
+
+  cloturerJournee: (data: { especesComptees: number; commentaire?: string; codeGerant?: string }) =>
+    apiFetch<JourneeCaisse & { totaux: TotauxJournee }>('/caisse/journee/cloture', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listJournees: () => apiFetch<JourneeGerant[]>('/gerant/journees'),
 };
