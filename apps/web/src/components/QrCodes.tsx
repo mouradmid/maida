@@ -46,6 +46,23 @@ export function QrCodes({ etablissementId }: { etablissementId: string }) {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [copie, setCopie] = useState<string | null>(null);
+  const [commandeClientActive, setCommandeClientActive] = useState(false);
+
+  useEffect(() => {
+    api
+      .getParametres()
+      .then((p) => setCommandeClientActive(p.commandeClientActive))
+      .catch(() => {});
+  }, []);
+
+  async function handleToggleCommandeClient() {
+    try {
+      const maj = await api.updateParametres({ commandeClientActive: !commandeClientActive });
+      setCommandeClientActive(maj.commandeClientActive);
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -90,15 +107,29 @@ export function QrCodes({ etablissementId }: { etablissementId: string }) {
           Chaque table a son QR code : le client le scanne et consulte le menu sur son téléphone.
           Imprimez la planche, découpez, plastifiez, posez sur les tables.
         </p>
-        {qrs.length > 0 && (
+        <span className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => imprimerHtml(htmlPlanche(nomEtablissement, qrs))}
-            className={boutonPrimaire}
+            onClick={handleToggleCommandeClient}
+            title="Quand c'est activé, le client peut envoyer sa commande depuis son téléphone ; elle arrive à la caisse pour validation par un serveur."
+            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              commandeClientActive
+                ? 'bg-brand-600 text-white'
+                : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+            }`}
           >
-            🖨 Imprimer la planche
+            {commandeClientActive ? '✓ Commande client activée' : 'Commande client désactivée'}
           </button>
-        )}
+          {qrs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => imprimerHtml(htmlPlanche(nomEtablissement, qrs))}
+              className={boutonPrimaire}
+            >
+              🖨 Imprimer la planche
+            </button>
+          )}
+        </span>
       </div>
 
       {qrs.length === 0 && !erreur && (

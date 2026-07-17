@@ -272,6 +272,22 @@ export interface ParametresGerant {
   moduleFoodCost: boolean;
   moduleQrMenu: boolean;
   suiviCoutsActive: boolean;
+  commandeClientActive: boolean;
+}
+
+export interface DemandeClient {
+  id: string;
+  table: { numero: string };
+  note: string | null;
+  creeLe: string;
+  lignes: Array<{
+    nomProduit: string;
+    quantite: number;
+    prixUnitaire: number;
+    options: string[];
+  }> | null;
+  total: number | null;
+  probleme: string | null;
 }
 
 export interface CompteClient {
@@ -584,6 +600,7 @@ export const api = {
   menuPublic: (etablissementId: string) =>
     apiFetch<{
       etablissement: { nom: string; adresse: string | null; ville: string | null };
+      commandeClientActive: boolean;
       categories: Array<{
         id: string;
         nom: string;
@@ -592,10 +609,37 @@ export const api = {
           nom: string;
           description: string | null;
           prix: number;
-          options: Array<{ nom: string; valeurs: string[] }>;
+          options: Array<{
+            id: string;
+            nom: string;
+            obligatoire: boolean;
+            valeurs: Array<{ id: string; valeur: string }>;
+          }>;
         }>;
       }>;
     }>(`/public/menu/${etablissementId}`),
+
+  commanderClient: (data: {
+    etablissementId: string;
+    tableNumero: string;
+    lignes: Array<{
+      produitId: string;
+      quantite: number;
+      options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
+    }>;
+    note?: string;
+  }) =>
+    apiFetch<{ id: string; total: number; message: string }>('/public/commandes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listDemandes: () => apiFetch<DemandeClient[]>('/caisse/demandes'),
+
+  accepterDemande: (id: string) =>
+    apiFetch<Commande>(`/caisse/demandes/${id}/accepter`, { method: 'POST' }),
+
+  refuserDemande: (id: string) => apiFetch<void>(`/caisse/demandes/${id}/refuser`, { method: 'POST' }),
 
   listReservations: (debut: Date, fin: Date) =>
     apiFetch<Reservation[]>(
@@ -685,7 +729,7 @@ export const api = {
 
   getParametres: () => apiFetch<ParametresGerant>('/gerant/parametres'),
 
-  updateParametres: (data: { suiviCoutsActive: boolean }) =>
+  updateParametres: (data: { suiviCoutsActive?: boolean; commandeClientActive?: boolean }) =>
     apiFetch<ParametresGerant>('/gerant/parametres', {
       method: 'PATCH',
       body: JSON.stringify(data),

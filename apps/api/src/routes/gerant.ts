@@ -644,7 +644,7 @@ gerantRouter.get('/parametres', async (req, res) => {
     prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
     prisma.etablissement.findUnique({
       where: { id: etablissementId },
-      select: { suiviCoutsActive: true },
+      select: { suiviCoutsActive: true, commandeClientActive: true },
     }),
   ]);
 
@@ -652,14 +652,23 @@ gerantRouter.get('/parametres', async (req, res) => {
     moduleFoodCost: compte?.modules.includes('FOOD_COST') ?? false,
     moduleQrMenu: compte?.modules.includes('QR_MENU') ?? false,
     suiviCoutsActive: etablissement?.suiviCoutsActive ?? true,
+    commandeClientActive: etablissement?.commandeClientActive ?? false,
   });
 });
 
 gerantRouter.patch('/parametres', async (req, res) => {
-  const { suiviCoutsActive } = req.body ?? {};
+  const { suiviCoutsActive, commandeClientActive } = req.body ?? {};
 
-  if (typeof suiviCoutsActive !== 'boolean') {
+  if (suiviCoutsActive !== undefined && typeof suiviCoutsActive !== 'boolean') {
     res.status(400).json({ error: 'Paramètre invalide' });
+    return;
+  }
+  if (commandeClientActive !== undefined && typeof commandeClientActive !== 'boolean') {
+    res.status(400).json({ error: 'Paramètre invalide' });
+    return;
+  }
+  if (suiviCoutsActive === undefined && commandeClientActive === undefined) {
+    res.status(400).json({ error: 'Rien à modifier' });
     return;
   }
 
@@ -669,8 +678,11 @@ gerantRouter.patch('/parametres', async (req, res) => {
     prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
     prisma.etablissement.update({
       where: { id: etablissementId },
-      data: { suiviCoutsActive },
-      select: { suiviCoutsActive: true },
+      data: {
+        suiviCoutsActive: suiviCoutsActive ?? undefined,
+        commandeClientActive: commandeClientActive ?? undefined,
+      },
+      select: { suiviCoutsActive: true, commandeClientActive: true },
     }),
   ]);
 
@@ -678,6 +690,7 @@ gerantRouter.patch('/parametres', async (req, res) => {
     moduleFoodCost: compte?.modules.includes('FOOD_COST') ?? false,
     moduleQrMenu: compte?.modules.includes('QR_MENU') ?? false,
     suiviCoutsActive: etablissement.suiviCoutsActive,
+    commandeClientActive: etablissement.commandeClientActive,
   });
 });
 

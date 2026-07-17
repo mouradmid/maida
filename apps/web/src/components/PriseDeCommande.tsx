@@ -4,6 +4,7 @@ import {
   ErreurReseau,
   type CategorieMenu,
   type Commande,
+  type DemandeClient,
   type ProduitMenu,
   type TableCaisse,
   type Utilisateur,
@@ -17,6 +18,7 @@ import {
   boutonSecondaire,
   carte,
   champ,
+  da,
   messageErreur,
   messageSucces,
 } from '../lib/ui';
@@ -65,6 +67,45 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [erreurOptions, setErreurOptions] = useState<string | null>(null);
   const [commandeAAnnuler, setCommandeAAnnuler] = useState<Commande | null>(null);
   const [derniereCommande, setDerniereCommande] = useState<Commande | null>(null);
+  const [demandes, setDemandes] = useState<DemandeClient[]>([]);
+
+  async function chargerDemandes() {
+    try {
+      setDemandes(await api.listDemandes());
+    } catch {
+      // hors ligne ou erreur passagère : on garde la dernière liste connue
+    }
+  }
+
+  useEffect(() => {
+    chargerDemandes();
+    const minuterie = setInterval(chargerDemandes, 15_000);
+    return () => clearInterval(minuterie);
+  }, []);
+
+  async function handleAccepterDemande(demande: DemandeClient) {
+    setErreur(null);
+    try {
+      await api.accepterDemande(demande.id);
+      setConfirmation(
+        `Commande client de la table ${demande.table.numero} acceptée — envoyée en cuisine.`,
+      );
+      await Promise.all([chargerDemandes(), chargerTout()]);
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+      await chargerDemandes();
+    }
+  }
+
+  async function handleRefuserDemande(demande: DemandeClient) {
+    setErreur(null);
+    try {
+      await api.refuserDemande(demande.id);
+      await chargerDemandes();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
 
   async function chargerTout() {
     setChargement(true);
@@ -253,6 +294,68 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   return (
     <div className="flex w-full flex-col gap-6">
       {erreur && <p className={messageErreur}>{erreur}</p>}
+      {demandes.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border-2 border-sky-300 bg-sky-50 p-4">
+          <h3 className="flex items-center gap-2 font-semibold text-sky-900">
+            📱 Commandes clients à valider
+            <span className="inline-flex items-center rounded-full bg-sky-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+              {demandes.length}
+            </span>
+          </h3>
+          <ul className="flex flex-col divide-y divide-sky-200">
+            {demandes.map((demande) => (
+              <li key={demande.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0 text-sm">
+                  <p className="font-semibold text-stone-900">
+                    Table {demande.table.numero}
+                    <span className="ml-2 font-normal text-stone-500">
+                      {new Date(demande.creeLe).toLocaleTimeString('fr-FR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    {demande.total !== null && (
+                      <span className="ml-2 font-bold text-sky-900">{da(demande.total)}</span>
+                    )}
+                  </p>
+                  {demande.lignes && (
+                    <p className="text-stone-600">
+                      {demande.lignes
+                        .map(
+                          (l) =>
+                            `${l.quantite}× ${l.nomProduit}${l.options.length ? ` (${l.options.join(', ')})` : ''}`,
+                        )
+                        .join(' · ')}
+                    </p>
+                  )}
+                  {demande.note && <p className="text-xs text-stone-500">« {demande.note} »</p>}
+                  {demande.probleme && (
+                    <p className="text-xs font-medium text-red-700">⚠ {demande.probleme}</p>
+                  )}
+                </div>
+                <span className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={demande.probleme !== null}
+                    onClick={() => handleAccepterDemande(demande)}
+                    className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-40"
+                  >
+                    Accepter → cuisine
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRefuserDemande(demande)}
+                    className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
+                  >
+                    Refuser
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {confirmation && (
         <div className={`${messageSucces} flex items-center justify-between gap-3`}>
           <span>{confirmation}</span>

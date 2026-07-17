@@ -24,6 +24,9 @@
 - **QR code à table** : menu public consultable par le client sur son téléphone (sans connexion),
   QR par table et planche imprimable dans l'espace gérant — **module optionnel par compte client**,
   comme le food cost
+- **Commande par le client** depuis le QR : panier sur téléphone, options, note — la demande
+  arrive à la caisse et un serveur la valide avant l'envoi en cuisine (anti-abus) ; activable
+  par chaque gérant
 
 ### Mode hors ligne — le différenciateur
 
@@ -62,7 +65,6 @@
 
 ## 🔜 Prochaines étapes envisagées
 
-- [ ] **Commande par le client** depuis le QR à table (le menu consultable est en place)
 - [ ] **Premier restaurant pilote** (le produit est prêt)
 - [ ] Réservation en ligne par le client + email de confirmation
 - [ ] Hors-ligne : paiement par article et remises

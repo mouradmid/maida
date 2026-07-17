@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { Prisma } from '../generated/prisma/client';
 import type { DroitUtilisateur, ModePaiement } from '../generated/prisma/client';
+import { erreurLignesEntree, resoudreLignesCommande, type LigneEntree } from '../lib/commandes';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireCompteActif } from '../middleware/requireCompteActif';
@@ -659,11 +660,150 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
   res.status(201).json(toPublicCommande(commandeMaj));
 });
 
-interface LigneEntree {
-  produitId: string;
-  quantite: number;
-  options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
-}
+// --- Demandes des clients (commande depuis le QR à table) ---
+
+caisseRouter.get('/demandes', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const demandes = await prisma.demandeClient.findMany({
+    where: { etablissementId, statut: 'EN_ATTENTE' },
+    include: { table: { select: { numero: true } } },
+    orderBy: { creeLe: 'asc' },
+  });
+
+  // Résolution d'affichage contre le menu actuel : si un produit a été
+  // désactivé entre-temps, le serveur voit le problème et peut refuser.
+  const resultat = [];
+  for (const demande of demandes) {
+    const resolution = await resoudreLignesCommande(
+      etablissementId,
+      demande.lignes as unknown as LigneEntree[],
+    );
+    resultat.push({
+      id: demande.id,
+      table: demande.table,
+      note: demande.note,
+      creeLe: demande.creeLe,
+      lignes: resolution.ok
+        ? resolution.lignes.map((l) => ({
+            nomProduit: l.nomProduit,
+            quantite: l.quantite,
+            prixUnitaire: Number(l.prixUnitaire),
+            options: l.options.map((o) => o.valeur),
+          }))
+        : null,
+      total: resolution.ok
+        ? Math.round(
+            resolution.lignes.reduce((s, l) => s + Number(l.prixUnitaire) * l.quantite, 0) * 100,
+          ) / 100
+        : null,
+      probleme: resolution.ok ? null : resolution.erreur,
+    });
+  }
+
+  res.json(resultat);
+});
+
+caisseRouter.post('/demandes/:id/accepter', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const demande = await prisma.demandeClient.findFirst({
+    where: { id: req.params.id, etablissementId },
+  });
+  if (!demande) {
+    res.status(404).json({ error: 'Demande introuvable' });
+    return;
+  }
+  if (demande.statut !== 'EN_ATTENTE') {
+    res.status(409).json({ error: 'Cette demande a déjà été traitée' });
+    return;
+  }
+
+  const resolution = await resoudreLignesCommande(
+    etablissementId,
+    demande.lignes as unknown as LigneEntree[],
+  );
+  if (!resolution.ok) {
+    res.status(400).json({
+      error: `Impossible d'accepter : ${resolution.erreur}. Refusez la demande et voyez avec le client.`,
+    });
+    return;
+  }
+
+  const commande = await prisma.$transaction(async (tx) => {
+    const additionOuverte = await tx.addition.findFirst({
+      where: { etablissementId, tableId: demande.tableId, statut: 'OUVERTE' },
+    });
+    const additionId = additionOuverte
+      ? additionOuverte.id
+      : (await tx.addition.create({ data: { etablissementId, tableId: demande.tableId } })).id;
+
+    const creee = await tx.commande.create({
+      data: {
+        canal: 'SUR_PLACE',
+        additionId,
+        etablissementId,
+        serveurId: req.user!.id,
+        noteCuisine: demande.note ? `Commande client : ${demande.note}` : 'Commande client (QR)',
+        lignes: {
+          create: resolution.lignes.map((l) => ({
+            produitId: l.produitId,
+            nomProduit: l.nomProduit,
+            prixUnitaire: l.prixUnitaire,
+            coutRevientUnitaire: l.coutRevientUnitaire,
+            tauxTva: l.tauxTva,
+            quantite: l.quantite,
+            options: {
+              create: l.options.map((o) => ({
+                optionValeurId: o.optionValeurId,
+                nomGroupe: o.nomGroupe,
+                valeur: o.valeur,
+              })),
+            },
+          })),
+        },
+      },
+      include: INCLUDE_COMMANDE,
+    });
+
+    await tx.demandeClient.update({
+      where: { id: demande.id },
+      data: {
+        statut: 'ACCEPTEE',
+        commandeId: creee.id,
+        traiteeParId: req.user!.id,
+        traiteeLe: new Date(),
+      },
+    });
+
+    return creee;
+  });
+
+  res.status(201).json(toPublicCommande(commande));
+});
+
+caisseRouter.post('/demandes/:id/refuser', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const demande = await prisma.demandeClient.findFirst({
+    where: { id: req.params.id, etablissementId },
+  });
+  if (!demande) {
+    res.status(404).json({ error: 'Demande introuvable' });
+    return;
+  }
+  if (demande.statut !== 'EN_ATTENTE') {
+    res.status(409).json({ error: 'Cette demande a déjà été traitée' });
+    return;
+  }
+
+  await prisma.demandeClient.update({
+    where: { id: demande.id },
+    data: { statut: 'REFUSEE', traiteeParId: req.user!.id, traiteeLe: new Date() },
+  });
+
+  res.status(204).send();
+});
 
 caisseRouter.post('/commandes', async (req, res) => {
   const { canal, tableId, noteCuisine, lignes, cleIdempotence, creeLeHorsLigne } = req.body ?? {};
@@ -704,33 +844,10 @@ caisseRouter.post('/commandes', async (req, res) => {
     res.status(400).json({ error: 'La note cuisine doit être du texte' });
     return;
   }
-  if (!Array.isArray(lignes) || lignes.length === 0) {
-    res.status(400).json({ error: 'La commande doit contenir au moins un produit' });
+  const erreurLignes = erreurLignesEntree(lignes);
+  if (erreurLignes) {
+    res.status(400).json({ error: erreurLignes });
     return;
-  }
-  for (const ligne of lignes) {
-    if (
-      typeof ligne?.produitId !== 'string' ||
-      !Number.isInteger(ligne?.quantite) ||
-      ligne.quantite <= 0
-    ) {
-      res
-        .status(400)
-        .json({ error: 'Chaque ligne doit avoir un produitId et une quantité entière positive' });
-      return;
-    }
-    if (
-      ligne.options !== undefined &&
-      (!Array.isArray(ligne.options) ||
-        ligne.options.some(
-          (o: unknown) =>
-            typeof (o as { groupeOptionId?: unknown })?.groupeOptionId !== 'string' ||
-            typeof (o as { optionValeurId?: unknown })?.optionValeurId !== 'string',
-        ))
-    ) {
-      res.status(400).json({ error: 'Options de ligne invalides' });
-      return;
-    }
   }
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
@@ -768,76 +885,12 @@ caisseRouter.post('/commandes', async (req, res) => {
     additionId = (await prisma.addition.create({ data: { etablissementId, tableId: null } })).id;
   }
 
-  const lignesEntree = lignes as LigneEntree[];
-  const produitIds = [...new Set(lignesEntree.map((l) => l.produitId))];
-  const produits = await prisma.produit.findMany({
-    where: { id: { in: produitIds }, etablissementId, statut: 'ACTIF' },
-    include: { groupesOptions: { include: { valeurs: true } } },
-  });
-  const produitsParId = new Map(produits.map((p) => [p.id, p]));
-
-  for (const id of produitIds) {
-    if (!produitsParId.has(id)) {
-      res.status(400).json({ error: `Produit invalide ou indisponible: ${id}` });
-      return;
-    }
+  const resolution = await resoudreLignesCommande(etablissementId, lignes as LigneEntree[]);
+  if (!resolution.ok) {
+    res.status(400).json({ error: resolution.erreur });
+    return;
   }
-
-  const lignesAvecOptions: Array<{
-    produitId: string;
-    nomProduit: string;
-    prixUnitaire: (typeof produits)[number]['prix'];
-    coutRevientUnitaire: (typeof produits)[number]['coutRevient'];
-    tauxTva: number;
-    quantite: number;
-    options: Array<{ optionValeurId: string; nomGroupe: string; valeur: string }>;
-  }> = [];
-
-  for (const ligne of lignesEntree) {
-    const produit = produitsParId.get(ligne.produitId)!;
-    const optionsFournies = ligne.options ?? [];
-    const groupesChoisis = new Set<string>();
-    const optionsResolues: Array<{ optionValeurId: string; nomGroupe: string; valeur: string }> = [];
-
-    for (const choix of optionsFournies) {
-      const groupe = produit.groupesOptions.find((g) => g.id === choix.groupeOptionId);
-      if (!groupe) {
-        res.status(400).json({ error: `Groupe d'option invalide pour ${produit.nom}` });
-        return;
-      }
-      if (groupesChoisis.has(groupe.id)) {
-        res.status(400).json({ error: `Une seule valeur autorisée par groupe (${groupe.nom})` });
-        return;
-      }
-      const valeur = groupe.valeurs.find((v) => v.id === choix.optionValeurId);
-      if (!valeur) {
-        res.status(400).json({ error: `Valeur d'option invalide pour ${groupe.nom}` });
-        return;
-      }
-      groupesChoisis.add(groupe.id);
-      optionsResolues.push({ optionValeurId: valeur.id, nomGroupe: groupe.nom, valeur: valeur.valeur });
-    }
-
-    const groupesObligatoiresManquants = produit.groupesOptions.filter(
-      (g) => g.obligatoire && !groupesChoisis.has(g.id),
-    );
-    if (groupesObligatoiresManquants.length > 0) {
-      res.status(400).json({
-        error: `Sélection requise pour ${produit.nom}: ${groupesObligatoiresManquants.map((g) => g.nom).join(', ')}`,
-      });
-      return;
-    }
-
-    lignesAvecOptions.push({
-      produitId: produit.id,
-      nomProduit: produit.nom,
-      prixUnitaire: produit.prix,
-      coutRevientUnitaire: produit.coutRevient,
-      tauxTva: produit.tauxTva,
-      quantite: ligne.quantite,
-      options: optionsResolues,
-    });
-  }
+  const lignesAvecOptions = resolution.lignes;
 
   try {
     const commande = await prisma.commande.create({

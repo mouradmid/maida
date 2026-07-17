@@ -254,7 +254,12 @@ async function main() {
   });
   await prisma.etablissement.update({
     where: { id: etablissementId },
-    data: { adresse: '12 rue des Frères Boudjema, Hydra', ville: 'Alger' },
+    data: {
+      adresse: '12 rue des Frères Boudjema, Hydra',
+      ville: 'Alger',
+      // La démo montre la commande client depuis le QR.
+      commandeClientActive: true,
+    },
   });
 
   // Deuxième compte client, suspendu : donne de la matière à l'espace super-admin.
@@ -288,6 +293,7 @@ async function main() {
   await prisma.journeeCaisse.deleteMany({});
   await prisma.annulation.deleteMany({});
   await prisma.remise.deleteMany({});
+  await prisma.demandeClient.deleteMany({});
   await prisma.ligneCommandeOption.deleteMany({});
   await prisma.ligneCommande.deleteMany({});
   await prisma.commande.deleteMany({});
@@ -678,6 +684,20 @@ async function main() {
     });
   }
   console.log('Réservations de démo : 2 à venir (badge plan sur table 2) + historique avec no-shows.');
+
+  // Une commande client en attente de validation (démo du flux QR → caisse).
+  await prisma.demandeClient.create({
+    data: {
+      etablissementId,
+      tableId: tablesParNumero.get('7')!,
+      note: 'On est pressés, merci !',
+      lignes: [
+        { produitId: produitsParNom.get('Burger maison')!.id, quantite: 2 },
+        { produitId: produitsParNom.get('Hamoud Boualem 33 cl')!.id, quantite: 2 },
+      ],
+    },
+  });
+  console.log('Demande client de démo : table 7 (2 burgers + 2 Hamoud), en attente de validation.');
 
   console.log('Commandes de démo créées : tables 3, 5 et 8 ouvertes, table 1 payée (historique).');
   console.log("Journées de caisse : hier clôturée (écart -100 DA), aujourd'hui ouverte (fond 5000 DA).");

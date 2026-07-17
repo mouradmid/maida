@@ -134,6 +134,9 @@ model Etablissement {
   // Préférence du gérant : masquer le suivi des coûts même si le module
   // FOOD_COST est accordé au compte.
   suiviCoutsActive     Boolean             @default(true)
+  // Le gérant choisit d'accepter (ou non) les commandes passées par les
+  // clients depuis le QR à table. Désactivé par défaut : opt-in explicite.
+  commandeClientActive Boolean             @default(false)
   creeLe               DateTime            @default(now())
 
   compteClientId String
@@ -149,6 +152,7 @@ model Etablissement {
   journeesCaisse JourneeCaisse[]
   remises        Remise[]
   reservations   Reservation[]
+  demandesClients DemandeClient[]
 
   @@map("etablissements")
 }
@@ -181,6 +185,7 @@ model Utilisateur {
   remisesAccordees     Remise[]        @relation("RemisesAccordees")
   remisesDemandees     Remise[]        @relation("RemisesDemandees")
   reservationsPrises   Reservation[]
+  demandesTraitees     DemandeClient[]
 
   @@map("utilisateurs")
 }
@@ -273,8 +278,9 @@ model Commande {
   additionId String
   addition   Addition @relation(fields: [additionId], references: [id])
 
-  lignes      LigneCommande[]
-  annulations Annulation[]
+  lignes        LigneCommande[]
+  annulations   Annulation[]
+  demandeClient DemandeClient?
 
   @@map("commandes")
 }
@@ -486,6 +492,40 @@ model ErreurServeur {
   @@map("erreurs_serveur")
 }
 
+enum StatutDemandeClient {
+  EN_ATTENTE
+  ACCEPTEE
+  REFUSEE
+}
+
+// Commande passée par un client depuis le QR à table : elle reste une
+// « demande » tant qu'un serveur ne l'a pas acceptée (anti-abus). À
+// l'acceptation, une vraie Commande est créée dans le circuit normal.
+model DemandeClient {
+  id     String              @id @default(cuid())
+  statut StatutDemandeClient @default(EN_ATTENTE)
+  // Charge utile telle qu'envoyée par le client : [{ produitId, quantite, options? }]
+  lignes Json
+  note   String?
+  creeLe DateTime            @default(now())
+
+  tableId String
+  table   Table @relation(fields: [tableId], references: [id])
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  // La commande créée si la demande a été acceptée.
+  commandeId String?   @unique
+  commande   Commande? @relation(fields: [commandeId], references: [id])
+
+  traiteeParId String?
+  traiteePar   Utilisateur? @relation(fields: [traiteeParId], references: [id])
+  traiteeLe    DateTime?
+
+  @@map("demandes_clients")
+}
+
 enum StatutReservation {
   A_VENIR
   ARRIVEE
@@ -535,8 +575,9 @@ model Table {
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
-  additions    Addition[]
-  reservations Reservation[]
+  additions       Addition[]
+  reservations    Reservation[]
+  demandesClients DemandeClient[]
 
   @@unique([etablissementId, numero])
   @@map("tables")

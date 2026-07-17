@@ -39,6 +39,7 @@ async function purgerCompteTest() {
   await prisma.annulation.deleteMany({ where: filtreEtab });
   await prisma.remise.deleteMany({ where: filtreEtab });
   await prisma.reservation.deleteMany({ where: filtreEtab });
+  await prisma.demandeClient.deleteMany({ where: filtreEtab });
   await prisma.ligneCommandeOption.deleteMany({ where: { ligneCommande: { commande: filtreEtab } } });
   await prisma.ligneCommande.deleteMany({ where: { commande: filtreEtab } });
   await prisma.commande.deleteMany({ where: filtreEtab });
@@ -757,6 +758,102 @@ describe('Menu public (QR code)', () => {
   it('renvoie 404 pour un établissement inconnu', async () => {
     const res = await request(app).get('/api/public/menu/inconnu-xyz');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Commande client depuis le QR', () => {
+  let demandeId = '';
+  let demandeARefuserId = '';
+
+  it("refuse tant que le gérant n'a pas activé la commande client", async () => {
+    const res = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T1',
+        lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+      });
+    expect(res.status).toBe(403);
+  });
+
+  it('le gérant active la commande client depuis ses paramètres', async () => {
+    const res = await gerant.patch('/api/gerant/parametres').send({ commandeClientActive: true });
+    expect(res.status).toBe(200);
+    expect(res.body.commandeClientActive).toBe(true);
+    const menu = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(menu.body.commandeClientActive).toBe(true);
+  });
+
+  it('valide les options obligatoires dès la demande', async () => {
+    const res = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T1',
+        lignes: [{ produitId: produitOptionsId, quantite: 1 }],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Choix');
+  });
+
+  it('crée une demande en attente avec le bon total', async () => {
+    const res = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T1',
+        lignes: [
+          { produitId: produitPlatId, quantite: 2 },
+          { produitId: produitBoissonId, quantite: 1 },
+        ],
+        note: 'Sans oignons svp',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.total).toBe(2200); // 2 × 1000 + 200
+    demandeId = res.body.id;
+
+    const seconde = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T1',
+        lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+      });
+    demandeARefuserId = seconde.body.id;
+  });
+
+  it('la caisse voit les demandes résolues contre le menu', async () => {
+    const res = await serveur.get('/api/caisse/demandes');
+    expect(res.status).toBe(200);
+    const demande = res.body.find((d: { id: string }) => d.id === demandeId);
+    expect(demande.table.numero).toBe('T1');
+    expect(demande.total).toBe(2200);
+    expect(demande.note).toBe('Sans oignons svp');
+    expect(demande.lignes.map((l: { nomProduit: string }) => l.nomProduit)).toContain('Plat T');
+  });
+
+  it("l'acceptation crée une vraie commande en cuisine, une seule fois", async () => {
+    const res = await serveur.post(`/api/caisse/demandes/${demandeId}/accepter`);
+    expect(res.status).toBe(201);
+    expect(res.body.canal).toBe('SUR_PLACE');
+    expect(res.body.table.numero).toBe('T1');
+    expect(res.body.total).toBe(2200);
+    expect(res.body.noteCuisine).toContain('Sans oignons');
+
+    const cuisine = await serveur.get('/api/caisse/cuisine/commandes');
+    expect(cuisine.body.map((c: { id: string }) => c.id)).toContain(res.body.id);
+
+    const rejeu = await serveur.post(`/api/caisse/demandes/${demandeId}/accepter`);
+    expect(rejeu.status).toBe(409);
+  });
+
+  it('le refus est tracé et la demande disparaît de la liste', async () => {
+    const res = await serveur.post(`/api/caisse/demandes/${demandeARefuserId}/refuser`);
+    expect(res.status).toBe(204);
+    const liste = await serveur.get('/api/caisse/demandes');
+    expect(liste.body.map((d: { id: string }) => d.id)).not.toContain(demandeARefuserId);
+    const enBase = await prisma.demandeClient.findUnique({ where: { id: demandeARefuserId } });
+    expect(enBase?.statut).toBe('REFUSEE');
   });
 });
 
