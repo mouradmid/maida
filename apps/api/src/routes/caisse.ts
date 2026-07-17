@@ -368,6 +368,7 @@ function toPublicCommande(commande: {
   canal: string;
   noteCuisine: string | null;
   statut: string;
+  suiteReclamee: number;
   creeLe: Date;
   preteLe: Date | null;
   serveur: { nom: string; prenom: string };
@@ -377,6 +378,7 @@ function toPublicCommande(commande: {
     nomProduit: string;
     prixUnitaire: unknown;
     tauxTva: number | null;
+    suite: number;
     quantite: number;
     quantitePayee: number;
     quantiteAnnulee: number;
@@ -389,6 +391,7 @@ function toPublicCommande(commande: {
     nomProduit: l.nomProduit,
     prixUnitaire: Number(l.prixUnitaire),
     tauxTva: l.tauxTva,
+    suite: l.suite,
     quantite: l.quantite,
     quantitePayee: l.quantitePayee,
     quantiteAnnulee: l.quantiteAnnulee,
@@ -409,6 +412,7 @@ function toPublicCommande(commande: {
     additionStatut: commande.addition.statut,
     table: commande.addition.table,
     statut: commande.statut,
+    suiteReclamee: commande.suiteReclamee,
     creeLe: commande.creeLe,
     preteLe: commande.preteLe,
     serveur: commande.serveur,
@@ -447,6 +451,70 @@ caisseRouter.get('/cuisine/commandes', async (req, res) => {
   });
 
   res.json(commandes.map(toPublicCommande));
+});
+
+// Le serveur réclame la suite suivante : la cuisine peut alors la préparer.
+caisseRouter.post('/commandes/:id/reclamer', async (req, res) => {
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const commande = await prisma.commande.findFirst({
+    where: { id: req.params.id, etablissementId },
+    include: { lignes: { select: { suite: true } } },
+  });
+  if (!commande) {
+    res.status(404).json({ error: 'Commande introuvable' });
+    return;
+  }
+  if (commande.statut !== 'ENVOYEE') {
+    res.status(409).json({ error: "Cette commande n'est plus en préparation" });
+    return;
+  }
+  const suiteMax = Math.max(1, ...commande.lignes.map((l) => l.suite));
+  if (commande.suiteReclamee >= suiteMax) {
+    res.status(409).json({ error: 'Toutes les suites de cette commande sont déjà réclamées' });
+    return;
+  }
+
+  const majApres = await prisma.commande.update({
+    where: { id: commande.id },
+    data: { suiteReclamee: commande.suiteReclamee + 1 },
+    include: INCLUDE_COMMANDE,
+  });
+
+  res.json(toPublicCommande(majApres));
+});
+
+// Corrige la suite d'un article (une salade partie en plat par erreur…).
+caisseRouter.patch('/lignes/:id/suite', async (req, res) => {
+  const { suite } = req.body ?? {};
+
+  if (!Number.isInteger(suite) || suite < 1 || suite > 5) {
+    res.status(400).json({ error: 'Suite invalide (1 à 5)' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const ligne = await prisma.ligneCommande.findFirst({
+    where: { id: req.params.id, commande: { etablissementId } },
+    include: { commande: true },
+  });
+  if (!ligne) {
+    res.status(404).json({ error: 'Article introuvable' });
+    return;
+  }
+  if (ligne.commande.statut !== 'ENVOYEE') {
+    res.status(409).json({ error: "Cette commande n'est plus en préparation" });
+    return;
+  }
+
+  await prisma.ligneCommande.update({ where: { id: ligne.id }, data: { suite } });
+
+  const commande = await prisma.commande.findUniqueOrThrow({
+    where: { id: ligne.commandeId },
+    include: INCLUDE_COMMANDE,
+  });
+  res.json(toPublicCommande(commande));
 });
 
 caisseRouter.patch('/commandes/:id/prete', async (req, res) => {
@@ -752,6 +820,7 @@ caisseRouter.post('/demandes/:id/accepter', async (req, res) => {
             prixUnitaire: l.prixUnitaire,
             coutRevientUnitaire: l.coutRevientUnitaire,
             tauxTva: l.tauxTva,
+            suite: l.suite,
             quantite: l.quantite,
             options: {
               create: l.options.map((o) => ({
@@ -909,6 +978,7 @@ caisseRouter.post('/commandes', async (req, res) => {
             prixUnitaire: l.prixUnitaire,
             coutRevientUnitaire: l.coutRevientUnitaire,
             tauxTva: l.tauxTva,
+            suite: l.suite,
             quantite: l.quantite,
             options: {
               create: l.options.map((o) => ({

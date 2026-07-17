@@ -119,38 +119,68 @@ export function EcranCuisine() {
                 </span>
               </div>
 
-              <ul className="flex flex-1 flex-col gap-2 px-4 py-3">
-                {commande.lignes.map((ligne) => {
-                  const quantiteActive = ligne.quantite - ligne.quantiteAnnulee;
-                  return (
-                    <li key={ligne.id} className="text-sm">
-                      <span
-                        className={`font-semibold ${
-                          quantiteActive === 0 ? 'text-stone-400 line-through' : 'text-stone-900'
-                        }`}
-                      >
-                        {quantiteActive === 0 ? ligne.quantite : quantiteActive}× {ligne.nomProduit}
-                      </span>
-                      {ligne.options.length > 0 && (
-                        <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">
-                          {ligne.options.map((o, i) => (
-                            <span key={i} className={badgeBrand}>
-                              {o.valeur}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                      {ligne.quantiteAnnulee > 0 && (
-                        <span className="ml-1.5 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                          {quantiteActive === 0
-                            ? 'annulé'
-                            : `${ligne.quantiteAnnulee} annulé${ligne.quantiteAnnulee > 1 ? 's' : ''}`}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="flex flex-1 flex-col gap-3 px-4 py-3">
+                {[...new Set(commande.lignes.map((l) => l.suite))]
+                  .sort((a, b) => a - b)
+                  .map((suite) => {
+                    const lignesSuite = commande.lignes.filter((l) => l.suite === suite);
+                    const plusieursSuites = new Set(commande.lignes.map((l) => l.suite)).size > 1;
+                    const aPreperer = suite <= commande.suiteReclamee;
+                    return (
+                      <div key={suite} className={aPreperer ? '' : 'opacity-45'}>
+                        {plusieursSuites && (
+                          <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
+                            Suite {suite}
+                            {aPreperer ? (
+                              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 font-medium normal-case text-green-800">
+                                à préparer
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 font-medium normal-case text-stone-500">
+                                en attente de réclame
+                              </span>
+                            )}
+                          </p>
+                        )}
+                        <ul className="flex flex-col gap-2">
+                          {lignesSuite.map((ligne) => {
+                            const quantiteActive = ligne.quantite - ligne.quantiteAnnulee;
+                            return (
+                              <li key={ligne.id} className="text-sm">
+                                <span
+                                  className={`font-semibold ${
+                                    quantiteActive === 0
+                                      ? 'text-stone-400 line-through'
+                                      : 'text-stone-900'
+                                  }`}
+                                >
+                                  {quantiteActive === 0 ? ligne.quantite : quantiteActive}×{' '}
+                                  {ligne.nomProduit}
+                                </span>
+                                {ligne.options.length > 0 && (
+                                  <span className="ml-1.5 inline-flex flex-wrap gap-1 align-middle">
+                                    {ligne.options.map((o, i) => (
+                                      <span key={i} className={badgeBrand}>
+                                        {o.valeur}
+                                      </span>
+                                    ))}
+                                  </span>
+                                )}
+                                {ligne.quantiteAnnulee > 0 && (
+                                  <span className="ml-1.5 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                                    {quantiteActive === 0
+                                      ? 'annulé'
+                                      : `${ligne.quantiteAnnulee} annulé${ligne.quantiteAnnulee > 1 ? 's' : ''}`}
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  })}
+              </div>
 
               {commande.noteCuisine && (
                 <p className="mx-4 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">

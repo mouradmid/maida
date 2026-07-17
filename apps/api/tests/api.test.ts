@@ -632,6 +632,82 @@ describe('Réservations', () => {
   });
 });
 
+describe('Suites de service', () => {
+  let commandeId = '';
+  let lignePlatId = '';
+
+  it('le gérant règle la suite par défaut de la catégorie Plats sur 2', async () => {
+    const categories = await gerant.get('/api/gerant/categories');
+    const plats = categories.body.find((c: { nom: string }) => c.nom === 'Plats Test');
+    expect(plats.suiteParDefaut).toBe(1); // défaut initial
+    const maj = await gerant.patch(`/api/gerant/categories/${plats.id}`).send({ suiteParDefaut: 2 });
+    expect(maj.status).toBe(200);
+    expect(maj.body.suiteParDefaut).toBe(2);
+  });
+
+  it('les lignes héritent de la suite de leur catégorie', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'SUR_PLACE',
+      tableId,
+      lignes: [
+        { produitId: produitPlatId, quantite: 1 },
+        { produitId: produitBoissonId, quantite: 1 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    commandeId = res.body.id;
+    expect(res.body.suiteReclamee).toBe(1);
+    const plat = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Plat T');
+    const boisson = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Boisson T');
+    expect(plat.suite).toBe(2);
+    expect(boisson.suite).toBe(1);
+    lignePlatId = plat.id;
+  });
+
+  it("corrige la suite d'une ligne (glisser-déposer côté caisse)", async () => {
+    const res = await serveur.patch(`/api/caisse/lignes/${lignePlatId}/suite`).send({ suite: 3 });
+    expect(res.status).toBe(200);
+    const plat = res.body.lignes.find((l: { id: string }) => l.id === lignePlatId);
+    expect(plat.suite).toBe(3);
+  });
+
+  it('réclame les suites une à une, jamais au-delà de la dernière', async () => {
+    const deux = await serveur.post(`/api/caisse/commandes/${commandeId}/reclamer`);
+    expect(deux.status).toBe(200);
+    expect(deux.body.suiteReclamee).toBe(2);
+    const trois = await serveur.post(`/api/caisse/commandes/${commandeId}/reclamer`);
+    expect(trois.body.suiteReclamee).toBe(3);
+    const trop = await serveur.post(`/api/caisse/commandes/${commandeId}/reclamer`);
+    expect(trop.status).toBe(409);
+  });
+
+  it('la commande client par QR hérite aussi des suites', async () => {
+    // Ce describe tourne avant celui de la commande client : on active l'option ici.
+    await gerant.patch('/api/gerant/parametres').send({ commandeClientActive: true });
+    const demande = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T1',
+        lignes: [
+          { produitId: produitPlatId, quantite: 1 },
+          { produitId: produitBoissonId, quantite: 1 },
+        ],
+      });
+    expect(demande.status).toBe(201);
+    const acceptee = await serveur.post(`/api/caisse/demandes/${demande.body.id}/accepter`);
+    expect(acceptee.status).toBe(201);
+    const plat = acceptee.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Plat T');
+    const boisson = acceptee.body.lignes.find(
+      (l: { nomProduit: string }) => l.nomProduit === 'Boisson T',
+    );
+    expect(plat.suite).toBe(2);
+    expect(boisson.suite).toBe(1);
+    // On rend l'option comme on l'a trouvée : désactivée.
+    await gerant.patch('/api/gerant/parametres').send({ commandeClientActive: false });
+  });
+});
+
 describe('Idempotence des commandes hors ligne', () => {
   const cle = `test-idem-${Date.now()}`;
   let premiereId = '';

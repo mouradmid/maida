@@ -309,15 +309,19 @@ async function main() {
   // Menu
   const produitsParNom = new Map<
     string,
-    { id: string; prix: number; cout: number | null; tauxTva: number }
+    { id: string; prix: number; cout: number | null; tauxTva: number; suite: number }
   >();
   const optionsParProduit = new Map<string, Map<string, { groupeNom: string; valeurId: string }>>();
 
   for (const bloc of MENU) {
+    // Suites de service : entrées et boissons dès l'envoi, plats en 2, desserts en 3.
+    const suiteParDefaut =
+      bloc.categorie === 'Desserts' ? 3 : ['Entrées', 'Boissons'].includes(bloc.categorie) ? 1 : 2;
     const categorie = await prisma.categorie.create({
       data: {
         nom: bloc.categorie,
         type: bloc.categorie === 'Boissons' ? 'BOISSON' : 'NOURRITURE',
+        suiteParDefaut,
         etablissementId,
       },
     });
@@ -337,7 +341,13 @@ async function main() {
           etablissementId,
         },
       });
-      produitsParNom.set(p.nom, { id: produit.id, prix: p.prix, cout: p.cout ?? null, tauxTva });
+      produitsParNom.set(p.nom, {
+        id: produit.id,
+        prix: p.prix,
+        cout: p.cout ?? null,
+        tauxTva,
+        suite: suiteParDefaut,
+      });
       if (p.options) {
         const valeursMap = new Map<string, { groupeNom: string; valeurId: string }>();
         for (const groupe of p.options) {
@@ -407,6 +417,7 @@ async function main() {
           prixUnitaire: produit.prix,
           coutRevientUnitaire: produit.cout,
           tauxTva: produit.tauxTva,
+          suite: produit.suite,
           quantite: l.quantite,
         },
       });

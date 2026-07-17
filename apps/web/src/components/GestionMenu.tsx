@@ -124,6 +124,16 @@ export function GestionMenu() {
     await chargerTout();
   }
 
+  async function handleChangerSuiteCategorie(categorie: Categorie, suiteParDefaut: number) {
+    setErreur(null);
+    try {
+      await api.updateCategorie(categorie.id, { suiteParDefaut });
+      await chargerTout();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   async function handleToggleTypeCategorie(categorie: Categorie) {
     const nouveauType = categorie.type === 'NOURRITURE' ? 'BOISSON' : 'NOURRITURE';
     // Ce type pilote la séparation food cost / beverage cost : on confirme
@@ -291,6 +301,16 @@ export function GestionMenu() {
                     >
                       {categorie.type === 'BOISSON' ? 'Boisson' : 'Nourriture'}
                     </button>
+                    <select
+                      value={categorie.suiteParDefaut}
+                      onChange={(e) => handleChangerSuiteCategorie(categorie, Number(e.target.value))}
+                      title="Suite de service par défaut des produits de cette catégorie (1 = servi dès l'envoi, 2 = plat, 3 = dessert)"
+                      className="rounded-full border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-600"
+                    >
+                      <option value={1}>Suite 1</option>
+                      <option value={2}>Suite 2</option>
+                      <option value={3}>Suite 3</option>
+                    </select>
                     <button
                       type="button"
                       onClick={() => handleToggleCategorie(categorie)}

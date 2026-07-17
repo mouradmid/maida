@@ -27,6 +27,9 @@
 - **Commande par le client** depuis le QR : panier sur téléphone, options, note — la demande
   arrive à la caisse et un serveur la valide avant l'envoi en cuisine (anti-abus) ; activable
   par chaque gérant
+- **Suites de service** : entrée / plat / dessert hérités des catégories (commandes caisse et
+  QR client), cuisine par suites avec « en attente de réclame », bouton **Réclamer la suite**,
+  correction d'un article par glisser-déposer ou toucher-toucher (tablette)
 
 ### Mode hors ligne — le différenciateur
 

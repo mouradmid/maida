@@ -17,6 +17,8 @@ export interface LigneResolue {
   prixUnitaire: Prisma.Decimal;
   coutRevientUnitaire: Prisma.Decimal | null;
   tauxTva: number;
+  // Suite de service héritée de la catégorie (corrigeable ensuite à la caisse).
+  suite: number;
   quantite: number;
   options: Array<{ optionValeurId: string; nomGroupe: string; valeur: string }>;
 }
@@ -64,7 +66,10 @@ export async function resoudreLignesCommande(
   const produitIds = [...new Set(lignes.map((l) => l.produitId))];
   const produits = await prisma.produit.findMany({
     where: { id: { in: produitIds }, etablissementId, statut: 'ACTIF' },
-    include: { groupesOptions: { include: { valeurs: true } } },
+    include: {
+      groupesOptions: { include: { valeurs: true } },
+      categorie: { select: { suiteParDefaut: true } },
+    },
   });
   const produitsParId = new Map(produits.map((p) => [p.id, p]));
 
@@ -112,6 +117,7 @@ export async function resoudreLignesCommande(
       prixUnitaire: produit.prix,
       coutRevientUnitaire: produit.coutRevient,
       tauxTva: produit.tauxTva,
+      suite: produit.categorie.suiteParDefaut,
       quantite: ligne.quantite,
       options: optionsResolues,
     });

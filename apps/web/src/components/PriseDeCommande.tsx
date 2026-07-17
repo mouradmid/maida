@@ -107,6 +107,39 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     }
   }
 
+  // --- Suites de service ---
+  const [ligneEnDeplacement, setLigneEnDeplacement] = useState<string | null>(null);
+
+  async function handleReclamer(c: Commande) {
+    setErreur(null);
+    try {
+      const maj = await api.reclamerSuite(c.id);
+      setConfirmation(
+        `Suite ${maj.suiteReclamee} réclamée en cuisine — ${
+          c.canal === 'SUR_PLACE' ? `table ${c.table?.numero}` : 'à emporter'
+        }.`,
+      );
+      await chargerTout();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleDeposerDansSuite(c: Commande, suite: number) {
+    const ligneId = ligneEnDeplacement;
+    setLigneEnDeplacement(null);
+    if (!ligneId) return;
+    const ligne = c.lignes.find((l) => l.id === ligneId);
+    if (!ligne || ligne.suite === suite) return;
+    setErreur(null);
+    try {
+      await api.updateSuiteLigne(ligneId, suite);
+      await chargerTout();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   async function chargerTout() {
     setChargement(true);
     try {
@@ -626,6 +659,17 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                     >
                       {c.total} DA
                     </span>
+                    {c.statut === 'ENVOYEE' &&
+                      c.suiteReclamee < Math.max(1, ...c.lignes.map((l) => l.suite)) && (
+                        <button
+                          type="button"
+                          onClick={() => handleReclamer(c)}
+                          title="La table est prête pour la suite : la cuisine peut la préparer"
+                          className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+                        >
+                          Réclamer la suite {c.suiteReclamee + 1}
+                        </button>
+                      )}
                     {annulable && (
                       <button
                         type="button"
@@ -637,26 +681,91 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                     )}
                   </span>
                 </div>
-                <p className="text-xs text-stone-500">
-                  {c.lignes.map((l, i) => {
-                    const active = l.quantite - l.quantiteAnnulee;
-                    const opts =
-                      l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
-                    return (
-                      <span key={l.id}>
-                        {i > 0 && ' · '}
-                        {active > 0 && `${active}× ${l.nomProduit}${opts}`}
-                        {l.quantiteAnnulee > 0 && (
-                          <span className="text-red-400 line-through">
-                            {active > 0 && ' '}
-                            {l.quantiteAnnulee}× {l.nomProduit}
-                            {opts}
+                {c.statut === 'ENVOYEE' ? (
+                  // Lignes groupées par suite : glisser un article vers une autre
+                  // suite pour corriger (une salade partie en plat, par exemple).
+                  <div className="flex flex-wrap gap-2">
+                    {[1, 2, 3]
+                      .filter(
+                        (suite) =>
+                          c.lignes.some((l) => l.suite === suite) ||
+                          new Set(c.lignes.map((l) => l.suite)).size > 1 ||
+                          ligneEnDeplacement !== null,
+                      )
+                      .map((suite) => (
+                        <div
+                          key={suite}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => handleDeposerDansSuite(c, suite)}
+                          onClick={() => {
+                            // Équivalent tactile du glisser-déposer : on touche
+                            // l'article, puis la suite de destination.
+                            if (ligneEnDeplacement) handleDeposerDansSuite(c, suite);
+                          }}
+                          className={`flex min-w-28 flex-1 flex-col gap-1 rounded-lg border px-2 py-1.5 ${
+                            ligneEnDeplacement
+                              ? 'cursor-pointer border-dashed border-sky-400 bg-sky-50'
+                              : suite <= c.suiteReclamee
+                                ? 'border-stone-200 bg-stone-50'
+                                : 'border-stone-200 bg-white'
+                          }`}
+                        >
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                            Suite {suite}
+                            {suite <= c.suiteReclamee ? ' · en cuisine' : ' · en attente'}
                           </span>
-                        )}
-                      </span>
-                    );
-                  })}
-                </p>
+                          {c.lignes
+                            .filter((l) => l.suite === suite)
+                            .map((l) => {
+                              const active = l.quantite - l.quantiteAnnulee;
+                              return (
+                                <span
+                                  key={l.id}
+                                  draggable
+                                  onDragStart={() => setLigneEnDeplacement(l.id)}
+                                  onDragEnd={() => setLigneEnDeplacement(null)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLigneEnDeplacement(ligneEnDeplacement === l.id ? null : l.id);
+                                  }}
+                                  title="Glissez (ou touchez puis touchez la suite de destination) pour corriger"
+                                  className={`cursor-grab rounded px-1.5 py-0.5 text-xs shadow-sm ring-1 active:cursor-grabbing ${
+                                    ligneEnDeplacement === l.id
+                                      ? 'bg-sky-600 text-white ring-sky-600'
+                                      : `bg-white ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
+                                  }`}
+                                >
+                                  {active === 0 ? l.quantite : active}× {l.nomProduit}
+                                  {l.options.length > 0 &&
+                                    ` (${l.options.map((o) => o.valeur).join(', ')})`}
+                                </span>
+                              );
+                            })}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-stone-500">
+                    {c.lignes.map((l, i) => {
+                      const active = l.quantite - l.quantiteAnnulee;
+                      const opts =
+                        l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
+                      return (
+                        <span key={l.id}>
+                          {i > 0 && ' · '}
+                          {active > 0 && `${active}× ${l.nomProduit}${opts}`}
+                          {l.quantiteAnnulee > 0 && (
+                            <span className="text-red-400 line-through">
+                              {active > 0 && ' '}
+                              {l.quantiteAnnulee}× {l.nomProduit}
+                              {opts}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </p>
+                )}
                 {c.noteCuisine && (
                   <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>
                 )}

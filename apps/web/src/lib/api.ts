@@ -19,6 +19,7 @@ export interface Categorie {
   id: string;
   nom: string;
   type: TypeCategorie;
+  suiteParDefaut: number;
   statut: 'ACTIF' | 'INACTIF';
   creeLe: string;
 }
@@ -70,6 +71,7 @@ export interface LigneCommande {
   nomProduit: string;
   prixUnitaire: number;
   tauxTva: number | null;
+  suite: number;
   quantite: number;
   quantitePayee: number;
   quantiteAnnulee: number;
@@ -128,6 +130,7 @@ export interface Commande {
   additionStatut: 'OUVERTE' | 'PAYEE';
   table: { numero: string } | null;
   statut: 'ENVOYEE' | 'PRETE' | 'ANNULEE';
+  suiteReclamee: number;
   creeLe: string;
   preteLe: string | null;
   serveur: { nom: string; prenom: string };
@@ -360,7 +363,12 @@ export const api = {
 
   updateCategorie: (
     id: string,
-    data: { nom?: string; statut?: 'ACTIF' | 'INACTIF'; type?: TypeCategorie },
+    data: {
+      nom?: string;
+      statut?: 'ACTIF' | 'INACTIF';
+      type?: TypeCategorie;
+      suiteParDefaut?: number;
+    },
   ) => apiFetch<Categorie>(`/gerant/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   listProduits: () => apiFetch<Produit[]>('/gerant/produits'),
@@ -438,6 +446,15 @@ export const api = {
 
   marquerCommandePrete: (id: string) =>
     apiFetch<Commande>(`/caisse/commandes/${id}/prete`, { method: 'PATCH' }),
+
+  reclamerSuite: (id: string) =>
+    apiFetch<Commande>(`/caisse/commandes/${id}/reclamer`, { method: 'POST' }),
+
+  updateSuiteLigne: (ligneId: string, suite: number) =>
+    apiFetch<Commande>(`/caisse/lignes/${ligneId}/suite`, {
+      method: 'PATCH',
+      body: JSON.stringify({ suite }),
+    }),
 
   annulerCommande: (
     id: string,

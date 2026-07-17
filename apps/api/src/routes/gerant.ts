@@ -117,7 +117,7 @@ gerantRouter.get('/categories', async (req, res) => {
 
   const categories = await prisma.categorie.findMany({
     where: { etablissementId },
-    select: { id: true, nom: true, type: true, statut: true, creeLe: true },
+    select: { id: true, nom: true, type: true, suiteParDefaut: true, statut: true, creeLe: true },
     orderBy: { creeLe: 'asc' },
   });
 
@@ -146,7 +146,7 @@ gerantRouter.post('/categories', async (req, res) => {
 });
 
 gerantRouter.patch('/categories/:id', async (req, res) => {
-  const { nom, statut, type } = req.body ?? {};
+  const { nom, statut, type, suiteParDefaut } = req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const categorie = await prisma.categorie.findUnique({ where: { id: req.params.id } });
@@ -163,6 +163,13 @@ gerantRouter.patch('/categories/:id', async (req, res) => {
     res.status(400).json({ error: 'Type de catégorie invalide' });
     return;
   }
+  if (
+    suiteParDefaut !== undefined &&
+    (!Number.isInteger(suiteParDefaut) || suiteParDefaut < 1 || suiteParDefaut > 5)
+  ) {
+    res.status(400).json({ error: 'Suite invalide (1 à 5)' });
+    return;
+  }
 
   const categorieMaj = await prisma.categorie.update({
     where: { id: categorie.id },
@@ -170,6 +177,7 @@ gerantRouter.patch('/categories/:id', async (req, res) => {
       nom: typeof nom === 'string' && nom.trim() ? nom : undefined,
       statut: statut ?? undefined,
       type: type ?? undefined,
+      suiteParDefaut: suiteParDefaut ?? undefined,
     },
   });
 

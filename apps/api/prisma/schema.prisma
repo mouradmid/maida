@@ -194,6 +194,9 @@ model Categorie {
   id     String          @id @default(cuid())
   nom    String
   type   TypeCategorie   @default(NOURRITURE)
+  // Suite de service par défaut des produits de la catégorie :
+  // 1 = entrée (préparée dès l'envoi), 2 = plat, 3 = dessert.
+  suiteParDefaut Int      @default(1)
   statut StatutCategorie @default(ACTIF)
   creeLe DateTime        @default(now())
 
@@ -266,6 +269,9 @@ model Commande {
   // Générée par la caisse pour les commandes prises hors ligne : garantit
   // qu'une resynchronisation répétée ne crée jamais de doublon.
   cleIdempotence String?     @unique
+  // La cuisine prépare les suites <= suiteReclamee ; le serveur « réclame »
+  // la suivante quand la table est prête.
+  suiteReclamee  Int         @default(1)
   creeLe      DateTime       @default(now())
   preteLe     DateTime?
 
@@ -293,6 +299,8 @@ model LigneCommande {
   coutRevientUnitaire Decimal? @db.Decimal(10, 2)
   // Taux de TVA figé au moment de la commande (null sur l'historique d'avant la TVA).
   tauxTva         Int?
+  // Suite de service (1 = entrée, 2 = plat, 3 = dessert), corrigeable à la caisse.
+  suite           Int      @default(1)
   quantite        Int
   quantitePayee   Int      @default(0)
   quantiteAnnulee Int      @default(0)
