@@ -25,6 +25,7 @@ export function Reservations() {
   // Formulaire
   const [nomClient, setNomClient] = useState('');
   const [telephone, setTelephone] = useState('');
+  const [email, setEmail] = useState('');
   const [heure, setHeure] = useState('20:00');
   const [couverts, setCouverts] = useState('2');
   const [tableId, setTableId] = useState('');
@@ -65,6 +66,7 @@ export function Reservations() {
       const reservation = await api.creerReservation({
         nomClient,
         telephone: telephone.trim() || undefined,
+        email: email.trim() || undefined,
         nombreCouverts: Number(couverts),
         date: new Date(`${jour}T${heure}:00`).toISOString(),
         note: note.trim() || undefined,
@@ -75,6 +77,7 @@ export function Reservations() {
       );
       setNomClient('');
       setTelephone('');
+      setEmail('');
       setNote('');
       await charger();
     } catch (err) {
@@ -143,6 +146,7 @@ export function Reservations() {
                     </span>
                     <span className="text-xs text-stone-500">
                       {r.telephone && <>📞 {r.telephone} · </>}
+                      {r.email && <>✉ {r.email} · </>}
                       prise par {r.prisePar.prenom}
                       {r.note && <> · « {r.note} »</>}
                     </span>
@@ -193,6 +197,13 @@ export function Reservations() {
             placeholder="Téléphone (optionnel)"
             value={telephone}
             onChange={(e) => setTelephone(e.target.value)}
+            className={champ}
+          />
+          <input
+            type="email"
+            placeholder="Email (optionnel)"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className={champ}
           />
           <div className="flex gap-2">

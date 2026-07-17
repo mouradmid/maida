@@ -485,6 +485,7 @@ model Reservation {
   id             String            @id @default(cuid())
   nomClient      String
   telephone      String?
+  email          String?
   nombreCouverts Int
   date           DateTime
   // Durée d'occupation prévue : sert à détecter les chevauchements.

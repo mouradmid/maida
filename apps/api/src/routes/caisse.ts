@@ -194,6 +194,7 @@ function toPublicReservation(r: Prisma.ReservationGetPayload<{ include: typeof I
     id: r.id,
     nomClient: r.nomClient,
     telephone: r.telephone,
+    email: r.email,
     nombreCouverts: r.nombreCouverts,
     date: r.date,
     dureeMinutes: r.dureeMinutes,
@@ -229,7 +230,8 @@ caisseRouter.get('/reservations', async (req, res) => {
 });
 
 caisseRouter.post('/reservations', async (req, res) => {
-  const { nomClient, telephone, nombreCouverts, date, dureeMinutes, note, tableId } = req.body ?? {};
+  const { nomClient, telephone, email, nombreCouverts, date, dureeMinutes, note, tableId } =
+    req.body ?? {};
 
   if (typeof nomClient !== 'string' || !nomClient.trim() || nomClient.length > 100) {
     res.status(400).json({ error: 'Le nom du client est requis' });
@@ -237,6 +239,14 @@ caisseRouter.post('/reservations', async (req, res) => {
   }
   if (telephone !== undefined && (typeof telephone !== 'string' || telephone.length > 30)) {
     res.status(400).json({ error: 'Téléphone invalide' });
+    return;
+  }
+  if (
+    email !== undefined &&
+    email !== '' &&
+    (typeof email !== 'string' || email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  ) {
+    res.status(400).json({ error: 'Adresse email invalide' });
     return;
   }
   if (!Number.isInteger(nombreCouverts) || nombreCouverts <= 0) {
@@ -306,6 +316,7 @@ caisseRouter.post('/reservations', async (req, res) => {
     data: {
       nomClient: nomClient.trim(),
       telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
+      email: typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null,
       nombreCouverts,
       date: dateReservation,
       dureeMinutes: duree,

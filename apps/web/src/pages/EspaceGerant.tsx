@@ -10,10 +10,12 @@ import { HistoriqueAnnulations } from '../components/HistoriqueAnnulations';
 import { HistoriqueJournees } from '../components/HistoriqueJournees';
 import { HistoriqueRemises } from '../components/HistoriqueRemises';
 import { RapportsGerant } from '../components/RapportsGerant';
+import { ReservationsGerant } from '../components/ReservationsGerant';
 import { useMe } from '../hooks/useMe';
 
 const ONGLETS = [
   { id: 'rapports', libelle: 'Rapports' },
+  { id: 'reservations', libelle: 'Réservations' },
   { id: 'salle', libelle: 'Plan de salle' },
   { id: 'menu', libelle: 'Menu' },
   { id: 'equipe', libelle: 'Équipe' },
@@ -55,6 +57,7 @@ export function EspaceGerant() {
           </nav>
 
           {onglet === 'rapports' && <RapportsGerant />}
+          {onglet === 'reservations' && <ReservationsGerant />}
           {onglet === 'salle' && <PlanDeSalle />}
           {onglet === 'menu' && <GestionMenu />}
           {onglet === 'equipe' && <GestionServeurs />}

@@ -534,6 +534,7 @@ async function main() {
     data: {
       nomClient: 'M. Cherif',
       telephone: '0550 12 34 56',
+      email: 'r.cherif@gmail.com',
       nombreCouverts: 2,
       date: dansMinutes(90),
       note: 'Près de la fenêtre si possible',
@@ -554,7 +555,30 @@ async function main() {
       priseParId: serveurs[1].id,
     },
   });
-  console.log('Réservations de démo : table 2 (imminente, badge plan) et table 6 (dans 3 h).');
+  // Historique pour les statistiques gérant : un habitué fiable, un habitué des lapins.
+  const historiques: Array<{ nom: string; tel: string; email?: string; jours: number; statut: 'ARRIVEE' | 'NO_SHOW' }> = [
+    { nom: 'M. Slimani', tel: '0770 11 22 33', email: 'slimani.dz@gmail.com', jours: 7, statut: 'NO_SHOW' },
+    { nom: 'M. Slimani', tel: '0770 11 22 33', email: 'slimani.dz@gmail.com', jours: 15, statut: 'NO_SHOW' },
+    { nom: 'M. Slimani', tel: '0770 11 22 33', jours: 30, statut: 'ARRIVEE' },
+    { nom: 'Mme Haddad', tel: '0555 44 33 22', jours: 3, statut: 'ARRIVEE' },
+    { nom: 'Famille Benaissa', tel: '0661 98 76 54', jours: 21, statut: 'ARRIVEE' },
+  ];
+  for (const h of historiques) {
+    await prisma.reservation.create({
+      data: {
+        nomClient: h.nom,
+        telephone: h.tel,
+        email: h.email,
+        nombreCouverts: 4,
+        date: new Date(maintenant - h.jours * 24 * 60 * 60_000),
+        statut: h.statut,
+        tableId: tablesParNumero.get('4')!,
+        etablissementId,
+        priseParId: serveurs[0].id,
+      },
+    });
+  }
+  console.log('Réservations de démo : 2 à venir (badge plan sur table 2) + historique avec no-shows.');
 
   console.log('Commandes de démo créées : tables 3, 5 et 8 ouvertes, table 1 payée (historique).');
   console.log('Journées de caisse : hier clôturée (écart -100 DA), aujourd\'hui ouverte (fond 5000 DA).');

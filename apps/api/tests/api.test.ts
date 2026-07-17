@@ -574,6 +574,46 @@ describe('Réservations', () => {
     expect(rejeu.status).toBe(409);
   });
 
+  it('refuse une adresse email invalide, accepte une valide', async () => {
+    const invalide = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Email cassé',
+      email: 'pas-un-email',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 26 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(invalide.status).toBe(400);
+
+    const valide = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Avec Email',
+      email: 'Client.Test@Example.DZ',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 26 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(valide.status).toBe(201);
+    expect(valide.body.email).toBe('client.test@example.dz');
+  });
+
+  it('le gérant voit les statistiques no-show et les clients à surveiller', async () => {
+    // Le "Second service" pose un lapin.
+    const debut = new Date(Date.now() - 60 * 60_000).toISOString();
+    const fin = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    const liste = await serveur.get(`/api/caisse/reservations?debut=${debut}&fin=${fin}`);
+    const seconde = liste.body.find((r: { nomClient: string }) => r.nomClient === 'Second service');
+    await serveur.patch(`/api/caisse/reservations/${seconde.id}`).send({ statut: 'NO_SHOW' });
+
+    const res = await gerant.get('/api/gerant/reservations');
+    expect(res.status).toBe(200);
+    expect(res.body.stats.arrivees).toBeGreaterThanOrEqual(1);
+    expect(res.body.stats.noShows).toBeGreaterThanOrEqual(1);
+    expect(res.body.stats.tauxNoShow).not.toBeNull();
+    const risque = res.body.clientsARisque.find(
+      (c: { nomClient: string }) => c.nomClient === 'Second service',
+    );
+    expect(risque.noShows).toBe(1);
+  });
+
   it('liste les réservations de la journée', async () => {
     const debut = new Date(Date.now() - 60 * 60_000).toISOString();
     const fin = new Date(Date.now() + 24 * 60 * 60_000).toISOString();

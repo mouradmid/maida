@@ -110,6 +110,7 @@ export interface Reservation {
   id: string;
   nomClient: string;
   telephone: string | null;
+  email: string | null;
   nombreCouverts: number;
   date: string;
   dureeMinutes: number;
@@ -581,6 +582,7 @@ export const api = {
   creerReservation: (data: {
     nomClient: string;
     telephone?: string;
+    email?: string;
     nombreCouverts: number;
     date: string;
     dureeMinutes?: number;
@@ -609,6 +611,26 @@ export const api = {
     }),
 
   listJournees: () => apiFetch<JourneeGerant[]>('/gerant/journees'),
+
+  reservationsGerant: () =>
+    apiFetch<{
+      stats: {
+        total: number;
+        arrivees: number;
+        noShows: number;
+        annulees: number;
+        aVenir: number;
+        tauxNoShow: number | null;
+      };
+      clientsARisque: Array<{
+        nomClient: string;
+        telephone: string | null;
+        email: string | null;
+        noShows: number;
+        venues: number;
+      }>;
+      reservations: Array<Omit<Reservation, 'dureeMinutes' | 'table'> & { table: { numero: string } }>;
+    }>('/gerant/reservations'),
 
   listComptesClients: () => apiFetch<CompteClient[]>('/admin/comptes-clients'),
 
