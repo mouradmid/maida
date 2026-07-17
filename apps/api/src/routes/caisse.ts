@@ -131,20 +131,44 @@ caisseRouter.get('/menu', async (req, res) => {
 caisseRouter.get('/tables', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
-  const tables = await prisma.table.findMany({
-    where: { etablissementId, statut: 'ACTIF' },
-    select: {
-      id: true,
-      numero: true,
-      nombreCouverts: true,
-      forme: true,
-      largeur: true,
-      hauteur: true,
-      positionX: true,
-      positionY: true,
-      additions: { where: { statut: 'OUVERTE' }, select: { id: true } },
-    },
-  });
+  const maintenant = Date.now();
+  const [tables, reservationsProches] = await Promise.all([
+    prisma.table.findMany({
+      where: { etablissementId, statut: 'ACTIF' },
+      select: {
+        id: true,
+        numero: true,
+        nombreCouverts: true,
+        forme: true,
+        largeur: true,
+        hauteur: true,
+        positionX: true,
+        positionY: true,
+        additions: { where: { statut: 'OUVERTE' }, select: { id: true } },
+      },
+    }),
+    // Réservations imminentes : signalées sur le plan pour ne pas installer
+    // des clients de passage sur une table promise.
+    prisma.reservation.findMany({
+      where: {
+        etablissementId,
+        statut: 'A_VENIR',
+        date: {
+          gte: new Date(maintenant - 30 * 60_000),
+          lte: new Date(maintenant + 2 * 60 * 60_000),
+        },
+      },
+      orderBy: { date: 'asc' },
+      select: { tableId: true, date: true, nomClient: true },
+    }),
+  ]);
+
+  const reservationParTable = new Map<string, { date: Date; nomClient: string }>();
+  for (const r of reservationsProches) {
+    if (!reservationParTable.has(r.tableId)) {
+      reservationParTable.set(r.tableId, { date: r.date, nomClient: r.nomClient });
+    }
+  }
 
   // Tri numérique naturel : « Table 2 » avant « Table 10 » (numero est une chaîne).
   tables.sort((a, b) => a.numero.localeCompare(b.numero, 'fr', { numeric: true }));
@@ -153,8 +177,178 @@ caisseRouter.get('/tables', async (req, res) => {
     tables.map(({ additions, ...table }) => ({
       ...table,
       occupee: additions.length > 0,
+      reservationProche: reservationParTable.get(table.id) ?? null,
     })),
   );
+});
+
+// --- Réservations ---
+
+const INCLUDE_RESERVATION = {
+  table: { select: { id: true, numero: true } },
+  prisePar: { select: { nom: true, prenom: true } },
+} satisfies Prisma.ReservationInclude;
+
+function toPublicReservation(r: Prisma.ReservationGetPayload<{ include: typeof INCLUDE_RESERVATION }>) {
+  return {
+    id: r.id,
+    nomClient: r.nomClient,
+    telephone: r.telephone,
+    nombreCouverts: r.nombreCouverts,
+    date: r.date,
+    dureeMinutes: r.dureeMinutes,
+    note: r.note,
+    statut: r.statut,
+    table: r.table,
+    prisePar: r.prisePar,
+  };
+}
+
+caisseRouter.get('/reservations', async (req, res) => {
+  const { debut, fin } = req.query;
+  if (typeof debut !== 'string' || typeof fin !== 'string') {
+    res.status(400).json({ error: 'Période requise (debut et fin)' });
+    return;
+  }
+  const dateDebut = new Date(debut);
+  const dateFin = new Date(fin);
+  if (Number.isNaN(dateDebut.getTime()) || Number.isNaN(dateFin.getTime()) || dateDebut > dateFin) {
+    res.status(400).json({ error: 'Période invalide' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const reservations = await prisma.reservation.findMany({
+    where: { etablissementId, date: { gte: dateDebut, lte: dateFin } },
+    include: INCLUDE_RESERVATION,
+    orderBy: { date: 'asc' },
+  });
+
+  res.json(reservations.map(toPublicReservation));
+});
+
+caisseRouter.post('/reservations', async (req, res) => {
+  const { nomClient, telephone, nombreCouverts, date, dureeMinutes, note, tableId } = req.body ?? {};
+
+  if (typeof nomClient !== 'string' || !nomClient.trim() || nomClient.length > 100) {
+    res.status(400).json({ error: 'Le nom du client est requis' });
+    return;
+  }
+  if (telephone !== undefined && (typeof telephone !== 'string' || telephone.length > 30)) {
+    res.status(400).json({ error: 'Téléphone invalide' });
+    return;
+  }
+  if (!Number.isInteger(nombreCouverts) || nombreCouverts <= 0) {
+    res.status(400).json({ error: 'Le nombre de couverts doit être un entier positif' });
+    return;
+  }
+  const dateReservation = typeof date === 'string' ? new Date(date) : null;
+  const maintenant = Date.now();
+  if (
+    !dateReservation ||
+    Number.isNaN(dateReservation.getTime()) ||
+    dateReservation.getTime() < maintenant - 30 * 60_000 ||
+    dateReservation.getTime() > maintenant + 365 * 24 * 60 * 60_000
+  ) {
+    res.status(400).json({ error: 'Date de réservation invalide (elle doit être à venir)' });
+    return;
+  }
+  const duree = dureeMinutes ?? 120;
+  if (!Number.isInteger(duree) || duree < 15 || duree > 600) {
+    res.status(400).json({ error: 'Durée invalide (15 minutes à 10 heures)' });
+    return;
+  }
+  if (typeof tableId !== 'string') {
+    res.status(400).json({ error: 'La table est requise' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const table = await prisma.table.findUnique({ where: { id: tableId } });
+  if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
+    res.status(400).json({ error: 'Table invalide' });
+    return;
+  }
+
+  // Anti double-réservation : chevauchement sur la même table.
+  const debutCreneau = dateReservation.getTime();
+  const finCreneau = debutCreneau + duree * 60_000;
+  const voisines = await prisma.reservation.findMany({
+    where: {
+      tableId: table.id,
+      statut: { in: ['A_VENIR', 'ARRIVEE'] },
+      date: {
+        gte: new Date(debutCreneau - 12 * 60 * 60_000),
+        lte: new Date(finCreneau + 12 * 60 * 60_000),
+      },
+    },
+  });
+  const conflit = voisines.find((r) => {
+    const debutR = r.date.getTime();
+    const finR = debutR + r.dureeMinutes * 60_000;
+    return debutR < finCreneau && finR > debutCreneau;
+  });
+  if (conflit) {
+    const heure = conflit.date.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Africa/Algiers',
+    });
+    res.status(409).json({
+      error: `La table ${table.numero} est déjà réservée sur ce créneau (${conflit.nomClient}, ${heure})`,
+    });
+    return;
+  }
+
+  const reservation = await prisma.reservation.create({
+    data: {
+      nomClient: nomClient.trim(),
+      telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
+      nombreCouverts,
+      date: dateReservation,
+      dureeMinutes: duree,
+      note: typeof note === 'string' && note.trim() ? note.trim() : null,
+      tableId: table.id,
+      etablissementId,
+      priseParId: req.user!.id,
+    },
+    include: INCLUDE_RESERVATION,
+  });
+
+  res.status(201).json(toPublicReservation(reservation));
+});
+
+caisseRouter.patch('/reservations/:id', async (req, res) => {
+  const { statut } = req.body ?? {};
+
+  if (statut !== 'ARRIVEE' && statut !== 'ANNULEE' && statut !== 'NO_SHOW') {
+    res.status(400).json({ error: 'Statut invalide (ARRIVEE, ANNULEE ou NO_SHOW)' });
+    return;
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const reservation = await prisma.reservation.findFirst({
+    where: { id: req.params.id, etablissementId },
+  });
+  if (!reservation) {
+    res.status(404).json({ error: 'Réservation introuvable' });
+    return;
+  }
+  if (reservation.statut !== 'A_VENIR') {
+    res.status(409).json({ error: "Cette réservation n'est plus modifiable" });
+    return;
+  }
+
+  const majApres = await prisma.reservation.update({
+    where: { id: reservation.id },
+    data: { statut },
+    include: INCLUDE_RESERVATION,
+  });
+
+  res.json(toPublicReservation(majApres));
 });
 
 function toPublicCommande(commande: {

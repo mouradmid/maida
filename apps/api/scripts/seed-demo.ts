@@ -222,6 +222,7 @@ async function main() {
   await prisma.groupeOption.deleteMany({});
   await prisma.produit.deleteMany({});
   await prisma.categorie.deleteMany({});
+  await prisma.reservation.deleteMany({});
   await prisma.table.deleteMany({});
   console.log('Anciennes données purgées.');
 
@@ -526,6 +527,34 @@ async function main() {
       },
     });
   }
+
+  // Réservations du soir : une imminente (badge sur le plan) et une plus tard.
+  const dansMinutes = (minutes: number) => new Date(maintenant + minutes * 60_000);
+  await prisma.reservation.create({
+    data: {
+      nomClient: 'M. Cherif',
+      telephone: '0550 12 34 56',
+      nombreCouverts: 2,
+      date: dansMinutes(90),
+      note: 'Près de la fenêtre si possible',
+      tableId: tablesParNumero.get('2')!,
+      etablissementId,
+      priseParId: serveurs[0].id,
+    },
+  });
+  await prisma.reservation.create({
+    data: {
+      nomClient: 'Famille Benaissa',
+      telephone: '0661 98 76 54',
+      nombreCouverts: 6,
+      date: dansMinutes(180),
+      note: 'Anniversaire — prévoir une bougie',
+      tableId: tablesParNumero.get('6')!,
+      etablissementId,
+      priseParId: serveurs[1].id,
+    },
+  });
+  console.log('Réservations de démo : table 2 (imminente, badge plan) et table 6 (dans 3 h).');
 
   console.log('Commandes de démo créées : tables 3, 5 et 8 ouvertes, table 1 payée (historique).');
   console.log('Journées de caisse : hier clôturée (écart -100 DA), aujourd\'hui ouverte (fond 5000 DA).');

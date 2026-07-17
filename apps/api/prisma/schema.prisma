@@ -147,6 +147,7 @@ model Etablissement {
   annulations    Annulation[]
   journeesCaisse JourneeCaisse[]
   remises        Remise[]
+  reservations   Reservation[]
 
   @@map("etablissements")
 }
@@ -178,6 +179,7 @@ model Utilisateur {
   cloturesDemandees    JourneeCaisse[] @relation("CloturesDemandees")
   remisesAccordees     Remise[]        @relation("RemisesAccordees")
   remisesDemandees     Remise[]        @relation("RemisesDemandees")
+  reservationsPrises   Reservation[]
 
   @@map("utilisateurs")
 }
@@ -470,6 +472,39 @@ model Annulation {
   @@map("annulations")
 }
 
+enum StatutReservation {
+  A_VENIR
+  ARRIVEE
+  ANNULEE
+  NO_SHOW
+}
+
+// Réservation prise par téléphone à la caisse (la réservation en ligne
+// par le client viendra avec le multi-canal).
+model Reservation {
+  id             String            @id @default(cuid())
+  nomClient      String
+  telephone      String?
+  nombreCouverts Int
+  date           DateTime
+  // Durée d'occupation prévue : sert à détecter les chevauchements.
+  dureeMinutes   Int               @default(120)
+  note           String?
+  statut         StatutReservation @default(A_VENIR)
+  creeLe         DateTime          @default(now())
+
+  tableId String
+  table   Table @relation(fields: [tableId], references: [id])
+
+  etablissementId String
+  etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
+
+  priseParId String
+  prisePar   Utilisateur @relation(fields: [priseParId], references: [id])
+
+  @@map("reservations")
+}
+
 model Table {
   id             String      @id @default(cuid())
   numero         String
@@ -485,7 +520,8 @@ model Table {
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
-  additions Addition[]
+  additions    Addition[]
+  reservations Reservation[]
 
   @@unique([etablissementId, numero])
   @@map("tables")

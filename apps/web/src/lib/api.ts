@@ -101,6 +101,22 @@ export interface TableCaisse {
   positionX: number;
   positionY: number;
   occupee: boolean;
+  reservationProche: { date: string; nomClient: string } | null;
+}
+
+export type StatutReservation = 'A_VENIR' | 'ARRIVEE' | 'ANNULEE' | 'NO_SHOW';
+
+export interface Reservation {
+  id: string;
+  nomClient: string;
+  telephone: string | null;
+  nombreCouverts: number;
+  date: string;
+  dureeMinutes: number;
+  note: string | null;
+  statut: StatutReservation;
+  table: { id: string; numero: string };
+  prisePar: { nom: string; prenom: string };
 }
 
 export interface Commande {
@@ -556,6 +572,27 @@ export const api = {
         demandeePar: { nom: string; prenom: string } | null;
       }>
     >('/gerant/remises'),
+
+  listReservations: (debut: Date, fin: Date) =>
+    apiFetch<Reservation[]>(
+      `/caisse/reservations?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`,
+    ),
+
+  creerReservation: (data: {
+    nomClient: string;
+    telephone?: string;
+    nombreCouverts: number;
+    date: string;
+    dureeMinutes?: number;
+    note?: string;
+    tableId: string;
+  }) => apiFetch<Reservation>('/caisse/reservations', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateReservation: (id: string, statut: 'ARRIVEE' | 'ANNULEE' | 'NO_SHOW') =>
+    apiFetch<Reservation>(`/caisse/reservations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ statut }),
+    }),
 
   getJournee: () => apiFetch<EtatJournee>('/caisse/journee'),
 

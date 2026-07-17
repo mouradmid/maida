@@ -38,6 +38,7 @@ async function purgerCompteTest() {
   await prisma.paiement.deleteMany({ where: { addition: filtreEtab } });
   await prisma.annulation.deleteMany({ where: filtreEtab });
   await prisma.remise.deleteMany({ where: filtreEtab });
+  await prisma.reservation.deleteMany({ where: filtreEtab });
   await prisma.ligneCommandeOption.deleteMany({ where: { ligneCommande: { commande: filtreEtab } } });
   await prisma.ligneCommande.deleteMany({ where: { commande: filtreEtab } });
   await prisma.commande.deleteMany({ where: filtreEtab });
@@ -511,6 +512,74 @@ describe('Remises et offerts', () => {
     const rapport = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
     expect(rapport.body.remises.montant).toBe(3000); // 1000 offert + 200 + 1800
     expect(rapport.body.remises.offerts.quantite).toBe(1);
+  });
+});
+
+describe('Réservations', () => {
+  let reservationId = '';
+
+  it('crée une réservation', async () => {
+    const res = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Famille Test',
+      telephone: '0550 12 34 56',
+      nombreCouverts: 4,
+      date: new Date(Date.now() + 3 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.statut).toBe('A_VENIR');
+    expect(res.body.table.numero).toBe('T1');
+    reservationId = res.body.id;
+  });
+
+  it('refuse un chevauchement sur la même table', async () => {
+    const res = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Doublon',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 3.5 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Famille Test');
+  });
+
+  it('accepte un créneau plus tard sur la même table', async () => {
+    const res = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Second service',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 6 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('signale la table sur le plan quand la réservation approche', async () => {
+    await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Imminent',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 90 * 60_000).toISOString(),
+      tableId,
+      dureeMinutes: 60,
+    });
+    const tables = await serveur.get('/api/caisse/tables');
+    const t1 = tables.body.find((t: { numero: string }) => t.numero === 'T1');
+    expect(t1.reservationProche?.nomClient).toBe('Imminent');
+  });
+
+  it("marque l'arrivée du client, une seule fois", async () => {
+    const arrivee = await serveur.patch(`/api/caisse/reservations/${reservationId}`).send({ statut: 'ARRIVEE' });
+    expect(arrivee.status).toBe(200);
+    expect(arrivee.body.statut).toBe('ARRIVEE');
+    const rejeu = await serveur.patch(`/api/caisse/reservations/${reservationId}`).send({ statut: 'NO_SHOW' });
+    expect(rejeu.status).toBe(409);
+  });
+
+  it('liste les réservations de la journée', async () => {
+    const debut = new Date(Date.now() - 60 * 60_000).toISOString();
+    const fin = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    const res = await serveur.get(`/api/caisse/reservations?debut=${debut}&fin=${fin}`);
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(3);
   });
 });
 

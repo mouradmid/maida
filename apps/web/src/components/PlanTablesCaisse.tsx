@@ -72,6 +72,20 @@ export function PlanTablesCaisse({
               >
                 {table.nombreCouverts} couv.
               </span>
+              {table.reservationProche && (
+                <span
+                  className={`absolute -top-2 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold ${
+                    selectionnee ? 'bg-white text-brand-800' : 'bg-sky-600 text-white'
+                  }`}
+                  title={`Réservée pour ${table.reservationProche.nomClient}`}
+                >
+                  🕐{' '}
+                  {new Date(table.reservationProche.date).toLocaleTimeString('fr-FR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              )}
             </button>
           );
         })}
@@ -86,6 +100,9 @@ export function PlanTablesCaisse({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full border-2 border-brand-700 bg-brand-600" /> sélectionnée
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-sky-600" /> réservée bientôt
         </span>
       </div>
     </div>
