@@ -64,8 +64,8 @@ export function HistoriqueJournees() {
 
       {journees.length === 0 && (
         <div className={`${carte} py-10 text-center text-stone-400`}>
-          Aucune journée de caisse pour l'instant. La caisse ouvre sa première journée depuis
-          l'onglet « Journée ».
+          Aucune journée de caisse pour l'instant. La caisse ouvre sa première journée depuis l'onglet «
+          Journée ».
         </div>
       )}
 

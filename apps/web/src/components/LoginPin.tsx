@@ -6,7 +6,9 @@ const CLE_STOCKAGE_ETAB = 'maida.etablissementId';
 const LONGUEUR_PIN = 4;
 
 export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void }) {
-  const [etablissements, setEtablissements] = useState<Array<{ id: string; nom: string; ville: string | null }>>([]);
+  const [etablissements, setEtablissements] = useState<
+    Array<{ id: string; nom: string; ville: string | null }>
+  >([]);
   const [etablissementId, setEtablissementId] = useState('');
   const [codePin, setCodePin] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);

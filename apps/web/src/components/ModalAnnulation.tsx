@@ -157,7 +157,9 @@ export function ModalAnnulation({
                 );
               })}
               {lignesAnnulables.length === 0 && (
-                <li className="text-stone-400">Plus rien d'annulable (articles payés ou déjà annulés).</li>
+                <li className="text-stone-400">
+                  Plus rien d'annulable (articles payés ou déjà annulés).
+                </li>
               )}
             </ul>
           )}
@@ -183,7 +185,10 @@ export function ModalAnnulation({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-stone-600" htmlFor="commentaireAnnulation">
+            <label
+              className="mb-1 block text-xs font-medium text-stone-600"
+              htmlFor="commentaireAnnulation"
+            >
               Commentaire {motif === 'Autre' ? '(requis)' : '(optionnel)'}
             </label>
             <textarea

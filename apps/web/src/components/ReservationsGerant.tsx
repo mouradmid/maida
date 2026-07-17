@@ -11,7 +11,17 @@ const LIBELLES_STATUT: Record<StatutReservation, { texte: string; classes: strin
   NO_SHOW: { texte: 'No-show', classes: 'bg-red-100 text-red-800' },
 };
 
-function Tuile({ libelle, valeur, detail, accent }: { libelle: string; valeur: string; detail?: string; accent?: boolean }) {
+function Tuile({
+  libelle,
+  valeur,
+  detail,
+  accent,
+}: {
+  libelle: string;
+  valeur: string;
+  detail?: string;
+  accent?: boolean;
+}) {
   return (
     <div className={`${carte} flex flex-col gap-1`}>
       <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{libelle}</p>
@@ -45,7 +55,11 @@ export function ReservationsGerant() {
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Tuile libelle="Réservations" valeur={String(stats.total)} detail={`dont ${stats.aVenir} à venir`} />
+        <Tuile
+          libelle="Réservations"
+          valeur={String(stats.total)}
+          detail={`dont ${stats.aVenir} à venir`}
+        />
         <Tuile libelle="Clients venus" valeur={String(stats.arrivees)} />
         <Tuile
           libelle="No-shows"

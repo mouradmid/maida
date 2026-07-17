@@ -40,7 +40,10 @@ function ResumeTotaux({ totaux, fondDeCaisse }: { totaux: TotauxJournee; fondDeC
     <div className="flex flex-col gap-2 text-sm">
       <div className="grid gap-2 sm:grid-cols-2">
         {totaux.parMoyen.map((m) => (
-          <div key={m.moyenPaiement} className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2">
+          <div
+            key={m.moyenPaiement}
+            className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2"
+          >
             <span className="text-stone-600">
               {LIBELLES_MOYEN[m.moyenPaiement]}{' '}
               <span className="text-xs text-stone-400">
@@ -83,7 +86,9 @@ function ModalCloture({
   const attendues = etat.especesAttendues ?? 0;
   const comptees = especesComptees === '' ? null : Number(especesComptees);
   const ecartEstime =
-    comptees !== null && Number.isFinite(comptees) ? Math.round((comptees - attendues) * 100) / 100 : null;
+    comptees !== null && Number.isFinite(comptees)
+      ? Math.round((comptees - attendues) * 100) / 100
+      : null;
 
   async function handleCloturer() {
     setErreur(null);
@@ -153,7 +158,10 @@ function ModalCloture({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-stone-600" htmlFor="commentaireCloture">
+            <label
+              className="mb-1 block text-xs font-medium text-stone-600"
+              htmlFor="commentaireCloture"
+            >
               Commentaire (optionnel)
             </label>
             <textarea
@@ -167,7 +175,10 @@ function ModalCloture({
 
           {!droitCloturer && (
             <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
-              <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="codeGerantCloture">
+              <label
+                className="mb-1 block text-sm font-medium text-stone-700"
+                htmlFor="codeGerantCloture"
+              >
                 Validation gérant
               </label>
               <p className="mb-2 text-xs text-stone-500">
@@ -287,7 +298,9 @@ export function JourneeCaisse({ droitCloturer }: { droitCloturer: boolean }) {
               <p className="text-sm text-stone-500">
                 {jour(derniere.ouverteLe)}
                 {derniere.clotureeLe ? ` — clôturée à ${heure(derniere.clotureeLe)}` : ''}
-                {derniere.clotureePar ? ` par ${derniere.clotureePar.prenom} ${derniere.clotureePar.nom}` : ''}
+                {derniere.clotureePar
+                  ? ` par ${derniere.clotureePar.prenom} ${derniere.clotureePar.nom}`
+                  : ''}
               </p>
             </div>
             <ResumeTotaux totaux={derniere.totaux} fondDeCaisse={derniere.fondDeCaisse} />
@@ -331,7 +344,9 @@ export function JourneeCaisse({ droitCloturer }: { droitCloturer: boolean }) {
 
         <div className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm">
           <span className="text-stone-600">Espèces attendues dans le tiroir</span>
-          <span className="font-semibold text-stone-900">{etat.especesAttendues ?? journee.fondDeCaisse} DA</span>
+          <span className="font-semibold text-stone-900">
+            {etat.especesAttendues ?? journee.fondDeCaisse} DA
+          </span>
         </div>
       </div>
 
@@ -364,7 +379,9 @@ export function JourneeCaisse({ droitCloturer }: { droitCloturer: boolean }) {
           onFermer={() => setModalCloture(false)}
           onCloturee={async () => {
             setModalCloture(false);
-            setMessage('Journée clôturée. Le récapitulatif est disponible ci-dessous et dans l\'espace gérant.');
+            setMessage(
+              "Journée clôturée. Le récapitulatif est disponible ci-dessous et dans l'espace gérant.",
+            );
             await charger();
           }}
         />

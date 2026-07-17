@@ -12,11 +12,11 @@ construit (`apps/web/dist`). La base de données reste sur Neon.
 
 ## Variables d'environnement à définir sur Railway
 
-| Variable | Valeur |
-|---|---|
-| `DATABASE_URL` | la chaîne de connexion Neon (la même que dans `apps/api/.env`) |
-| `JWT_SECRET` | une longue chaîne aléatoire, différente de celle de dev (générer : `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`) |
-| `NODE_ENV` | `production` |
+| Variable       | Valeur                                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | la chaîne de connexion Neon (la même que dans `apps/api/.env`)                                                                                 |
+| `JWT_SECRET`   | une longue chaîne aléatoire, différente de celle de dev (générer : `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`) |
+| `NODE_ENV`     | `production`                                                                                                                                   |
 
 ## Étapes (une seule fois)
 
@@ -27,7 +27,7 @@ construit (`apps/web/dist`). La base de données reste sur Neon.
    git push -u origin main
    ```
 2. **Railway** : [railway.app](https://railway.app) → se connecter avec GitHub →
-   *New Project* → *Deploy from GitHub repo* → choisir `maida`.
+   _New Project_ → _Deploy from GitHub repo_ → choisir `maida`.
 3. Dans le service → **Variables** : ajouter les trois variables ci-dessus.
 4. **Settings → Networking → Generate Domain** : Railway donne une URL publique
    en HTTPS (ex. `maida-production.up.railway.app`).

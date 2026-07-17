@@ -68,7 +68,9 @@ function ecrireFileAttente(file: CommandeEnAttente[]) {
   notifier();
 }
 
-export function mettreEnAttente(commande: Omit<CommandeEnAttente, 'cleIdempotence' | 'creeLe'>): CommandeEnAttente {
+export function mettreEnAttente(
+  commande: Omit<CommandeEnAttente, 'cleIdempotence' | 'creeLe'>,
+): CommandeEnAttente {
   const entree: CommandeEnAttente = {
     ...commande,
     cleIdempotence: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -209,7 +211,10 @@ export function demarrerSynchronisation(onResultat?: (r: ResultatSync) => void) 
   const lancer = async () => {
     if (nombreEnAttente() === 0) return;
     const resultat = await synchroniser();
-    if ((resultat.commandes > 0 || resultat.paiements > 0 || resultat.erreurs.length > 0) && onResultat) {
+    if (
+      (resultat.commandes > 0 || resultat.paiements > 0 || resultat.erreurs.length > 0) &&
+      onResultat
+    ) {
       onResultat(resultat);
     }
   };

@@ -552,7 +552,9 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
       .filter((l) => (annulablesParId.get(l.id) ?? 0) > 0)
       .map((l) => ({ ligneCommandeId: l.id, quantite: annulablesParId.get(l.id)! }));
     if (cibles.length === 0) {
-      res.status(400).json({ error: 'Plus rien à annuler sur cette commande (articles déjà payés ou annulés)' });
+      res
+        .status(400)
+        .json({ error: 'Plus rien à annuler sur cette commande (articles déjà payés ou annulés)' });
       return;
     }
   } else {
@@ -707,8 +709,14 @@ caisseRouter.post('/commandes', async (req, res) => {
     return;
   }
   for (const ligne of lignes) {
-    if (typeof ligne?.produitId !== 'string' || !Number.isInteger(ligne?.quantite) || ligne.quantite <= 0) {
-      res.status(400).json({ error: 'Chaque ligne doit avoir un produitId et une quantité entière positive' });
+    if (
+      typeof ligne?.produitId !== 'string' ||
+      !Number.isInteger(ligne?.quantite) ||
+      ligne.quantite <= 0
+    ) {
+      res
+        .status(400)
+        .json({ error: 'Chaque ligne doit avoir un produitId et une quantité entière positive' });
       return;
     }
     if (
@@ -999,7 +1007,9 @@ caisseRouter.post('/journee/cloture', async (req, res) => {
   const { especesComptees, commentaire, codeGerant } = req.body ?? {};
 
   if (typeof especesComptees !== 'number' || !Number.isFinite(especesComptees) || especesComptees < 0) {
-    res.status(400).json({ error: 'Le montant des espèces comptées doit être un nombre positif ou nul' });
+    res
+      .status(400)
+      .json({ error: 'Le montant des espèces comptées doit être un nombre positif ou nul' });
     return;
   }
   if (commentaire !== undefined && typeof commentaire !== 'string') {
@@ -1316,7 +1326,8 @@ caisseRouter.post('/additions/:id/offert', async (req, res) => {
       res.status(400).json({ error: 'Article invalide pour cette addition' });
       return;
     }
-    const offrable = ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
+    const offrable =
+      ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
     if (cible.quantite > offrable) {
       res.status(400).json({
         error: `Quantité non offrable pour ${ligne.nomProduit} (reste ${offrable})`,
@@ -1486,13 +1497,19 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
       const restant =
         ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
       if (entree.quantite > restant) {
-        res.status(400).json({ error: `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})` });
+        res
+          .status(400)
+          .json({ error: `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})` });
         return;
       }
     }
     lignesAPayer = (lignes as LigneAPayer[]).map((entree) => {
       const ligne = lignesParId.get(entree.ligneCommandeId)!;
-      return { ligneCommandeId: ligne.id, quantite: entree.quantite, montant: Number(ligne.prixUnitaire) * entree.quantite };
+      return {
+        ligneCommandeId: ligne.id,
+        quantite: entree.quantite,
+        montant: Number(ligne.prixUnitaire) * entree.quantite,
+      };
     });
     montantFinal = Math.round(lignesAPayer.reduce((s, l) => s + l.montant, 0) * 100) / 100;
   } else {
@@ -1530,7 +1547,8 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
           creeLe: creeLeFinal,
           montant: montantFinal,
           moyenPaiement: moyenPaiementValide,
-          montantRecu: moyenPaiementValide === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
+          montantRecu:
+            moyenPaiementValide === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
           lignes: {
             create: lignesAPayer.map((l) => ({
               ligneCommandeId: l.ligneCommandeId,
@@ -1566,7 +1584,9 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
       montantRecu: resultat.paiement.montantRecu !== null ? Number(resultat.paiement.montantRecu) : null,
       rendu:
         resultat.paiement.montantRecu !== null
-          ? Math.round((Number(resultat.paiement.montantRecu) - Number(resultat.paiement.montant)) * 100) / 100
+          ? Math.round(
+              (Number(resultat.paiement.montantRecu) - Number(resultat.paiement.montant)) * 100,
+            ) / 100
           : null,
       soldeRestant: resultat.soldeRestant,
       additionCloturee: resultat.cloturee,

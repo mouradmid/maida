@@ -30,7 +30,7 @@ export function EcranCuisine() {
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [maintenant, setMaintenant] = useState(Date.now());
+  const [maintenant, setMaintenant] = useState(() => Date.now());
   const [enCoursIds, setEnCoursIds] = useState<Set<string>>(new Set());
 
   async function charger() {
@@ -142,7 +142,9 @@ export function EcranCuisine() {
                       )}
                       {ligne.quantiteAnnulee > 0 && (
                         <span className="ml-1.5 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                          {quantiteActive === 0 ? 'annulé' : `${ligne.quantiteAnnulee} annulé${ligne.quantiteAnnulee > 1 ? 's' : ''}`}
+                          {quantiteActive === 0
+                            ? 'annulé'
+                            : `${ligne.quantiteAnnulee} annulé${ligne.quantiteAnnulee > 1 ? 's' : ''}`}
                         </span>
                       )}
                     </li>

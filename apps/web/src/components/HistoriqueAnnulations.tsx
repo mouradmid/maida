@@ -53,7 +53,9 @@ export function HistoriqueAnnulations() {
 
       <div className={carte}>
         <h3 className="mb-3 font-semibold text-stone-900">Historique</h3>
-        {annulations.length === 0 && <p className="text-sm text-stone-400">Aucune annulation enregistrée.</p>}
+        {annulations.length === 0 && (
+          <p className="text-sm text-stone-400">Aucune annulation enregistrée.</p>
+        )}
         <ul className="flex flex-col divide-y divide-stone-100">
           {annulations.map((a) => (
             <li key={a.id} className="flex flex-col gap-1 py-3 text-sm first:pt-0 last:pb-0">
@@ -87,7 +89,9 @@ export function HistoriqueAnnulations() {
                     — demandé par {a.demandeePar.prenom} {a.demandeePar.nom}
                   </span>
                 )}
-                {a.annuleePar.role === 'GERANT' && <span className={`${badgeNeutre} ml-2`}>validé gérant</span>}
+                {a.annuleePar.role === 'GERANT' && (
+                  <span className={`${badgeNeutre} ml-2`}>validé gérant</span>
+                )}
               </p>
             </li>
           ))}

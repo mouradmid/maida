@@ -283,7 +283,11 @@ export function GestionMenu() {
                     >
                       {categorie.type === 'BOISSON' ? 'Boisson' : 'Nourriture'}
                     </button>
-                    <button type="button" onClick={() => handleToggleCategorie(categorie)} className={boutonDiscret}>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCategorie(categorie)}
+                      className={boutonDiscret}
+                    >
                       {categorie.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
                     </button>
                   </span>
@@ -310,7 +314,9 @@ export function GestionMenu() {
                           {produit.tempsPreparationMinutes != null && (
                             <span className={badgeNeutre}>{produit.tempsPreparationMinutes} min</span>
                           )}
-                          {produit.statut === 'INACTIF' && <span className={badgeNeutre}>désactivé</span>}
+                          {produit.statut === 'INACTIF' && (
+                            <span className={badgeNeutre}>désactivé</span>
+                          )}
                         </span>
                         <span className="flex shrink-0 items-center gap-3">
                           <button
@@ -327,13 +333,19 @@ export function GestionMenu() {
                           <button
                             type="button"
                             onClick={() =>
-                              setProduitOptionsOuvert(produitOptionsOuvert === produit.id ? null : produit.id)
+                              setProduitOptionsOuvert(
+                                produitOptionsOuvert === produit.id ? null : produit.id,
+                              )
                             }
                             className={boutonDiscret}
                           >
                             Options ({produit.groupesOptions.length})
                           </button>
-                          <button type="button" onClick={() => handleToggleProduit(produit)} className={boutonDiscret}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleProduit(produit)}
+                            className={boutonDiscret}
+                          >
                             {produit.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
                           </button>
                         </span>

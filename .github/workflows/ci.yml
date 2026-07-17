@@ -1,0 +1,46 @@
+# Intégration continue : à chaque push, le code est compilé, vérifié par le
+# linter et testé. Railway peut attendre ce feu vert avant de déployer
+# (Settings → « Wait for CI » sur le service).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Qualité (lint racine)
+        run: |
+          npm ci
+          npm run lint
+
+      - name: Front — compilation et build
+        working-directory: apps/web
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run build
+
+      - name: API — compilation et tests
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          JWT_SECRET: secret-ci-uniquement-pour-les-tests
+        run: |
+          npm ci
+          npx prisma generate
+          npx tsc --noEmit
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::warning::Secret DATABASE_URL_TEST absent — tests d'intégration sautés"
+          else
+            npm test
+          fi

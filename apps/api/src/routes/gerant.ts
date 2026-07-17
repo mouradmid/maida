@@ -179,7 +179,10 @@ gerantRouter.patch('/categories/:id', async (req, res) => {
 // --- Produits ---
 
 function toPublicProduit(
-  produit: { prix: { toString(): string }; coutRevient: { toString(): string } | null } & Record<string, unknown>,
+  produit: { prix: { toString(): string }; coutRevient: { toString(): string } | null } & Record<
+    string,
+    unknown
+  >,
 ) {
   return {
     ...produit,
@@ -253,7 +256,9 @@ gerantRouter.post('/produits', async (req, res) => {
   }
   const tempsPrepa = validerTempsPreparation(tempsPreparationMinutes);
   if (!tempsPrepa.ok) {
-    res.status(400).json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
+    res
+      .status(400)
+      .json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
     return;
   }
   const cout = validerCoutRevient(coutRevient);
@@ -320,7 +325,9 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
   if (tempsPreparationMinutes !== undefined) {
     const tempsPrepa = validerTempsPreparation(tempsPreparationMinutes);
     if (!tempsPrepa.ok) {
-      res.status(400).json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
+      res
+        .status(400)
+        .json({ error: 'Le temps de préparation doit être un nombre entier positif de minutes' });
       return;
     }
     nouveauTempsPrepa = tempsPrepa.valeur;
@@ -417,7 +424,8 @@ gerantRouter.post('/tables', async (req, res) => {
 });
 
 gerantRouter.patch('/tables/:id', async (req, res) => {
-  const { numero, forme, nombreCouverts, largeur, hauteur, positionX, positionY, statut } = req.body ?? {};
+  const { numero, forme, nombreCouverts, largeur, hauteur, positionX, positionY, statut } =
+    req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const table = await prisma.table.findUnique({ where: { id: req.params.id } });
@@ -789,7 +797,10 @@ gerantRouter.get('/rapports', async (req, res) => {
     { categorie: string; quantite: number; montant: number; cout: number; montantCoute: number }
   >();
   const parCategorieMap = new Map<string, { quantite: number; montant: number }>();
-  const parServeurMap = new Map<string, { nom: string; prenom: string; nbCommandes: number; montant: number }>();
+  const parServeurMap = new Map<
+    string,
+    { nom: string; prenom: string; nbCommandes: number; montant: number }
+  >();
   const parType = {
     NOURRITURE: { ventes: 0, ventesCoutees: 0, cout: 0 },
     BOISSON: { ventes: 0, ventesCoutees: 0, cout: 0 },
@@ -809,13 +820,18 @@ gerantRouter.get('/rapports', async (req, res) => {
       const quantite = ligne.quantite - ligne.quantiteAnnulee;
       if (quantite <= 0) continue;
       const montant = Number(ligne.prixUnitaire) * quantite;
-      const cout = ligne.coutRevientUnitaire !== null ? Number(ligne.coutRevientUnitaire) * quantite : null;
+      const cout =
+        ligne.coutRevientUnitaire !== null ? Number(ligne.coutRevientUnitaire) * quantite : null;
       const categorie = ligne.produit.categorie.nom;
       montantCommande += montant;
 
-      const prod =
-        parProduitMap.get(ligne.nomProduit) ??
-        { categorie, quantite: 0, montant: 0, cout: 0, montantCoute: 0 };
+      const prod = parProduitMap.get(ligne.nomProduit) ?? {
+        categorie,
+        quantite: 0,
+        montant: 0,
+        cout: 0,
+        montantCoute: 0,
+      };
       prod.quantite += quantite;
       prod.montant += montant;
       if (cout !== null) {
@@ -914,9 +930,7 @@ gerantRouter.get('/rapports', async (req, res) => {
         montant: arrondi(
           remises.filter((r) => r.type === 'OFFERT').reduce((s, r) => s + Number(r.montant), 0),
         ),
-        quantite: remises
-          .filter((r) => r.type === 'OFFERT')
-          .reduce((s, r) => s + (r.quantite ?? 0), 0),
+        quantite: remises.filter((r) => r.type === 'OFFERT').reduce((s, r) => s + (r.quantite ?? 0), 0),
       },
     },
     tva: calculerTva(
@@ -994,7 +1008,13 @@ gerantRouter.get('/reservations', async (req, res) => {
   // Clients à risque : regroupés par téléphone (à défaut par nom).
   const parClient = new Map<
     string,
-    { nomClient: string; telephone: string | null; email: string | null; noShows: number; venues: number }
+    {
+      nomClient: string;
+      telephone: string | null;
+      email: string | null;
+      noShows: number;
+      venues: number;
+    }
   >();
   for (const r of reservations) {
     if (r.statut !== 'ARRIVEE' && r.statut !== 'NO_SHOW') continue;
@@ -1056,7 +1076,10 @@ gerantRouter.get('/journees', async (req, res) => {
     _sum: { montant: true },
     _count: { _all: true },
   });
-  const totauxParJournee = new Map<string, Array<{ moyenPaiement: string; montant: number; nombre: number }>>();
+  const totauxParJournee = new Map<
+    string,
+    Array<{ moyenPaiement: string; montant: number; nombre: number }>
+  >();
   for (const t of totaux) {
     if (!t.journeeCaisseId) continue;
     const liste = totauxParJournee.get(t.journeeCaisseId) ?? [];

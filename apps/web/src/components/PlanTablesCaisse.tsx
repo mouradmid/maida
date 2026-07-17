@@ -96,7 +96,8 @@ export function PlanTablesCaisse({
           <span className="h-3 w-3 rounded-full border-2 border-stone-300 bg-white" /> libre
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full border-2 border-brand-300 bg-brand-100" /> addition en cours
+          <span className="h-3 w-3 rounded-full border-2 border-brand-300 bg-brand-100" /> addition en
+          cours
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full border-2 border-brand-700 bg-brand-600" /> sélectionnée

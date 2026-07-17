@@ -9,8 +9,7 @@ export const boutonPrimaire =
 export const boutonSecondaire =
   'rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 active:bg-stone-100';
 
-export const boutonDiscret =
-  'text-sm font-medium text-brand-700 transition-colors hover:text-brand-900';
+export const boutonDiscret = 'text-sm font-medium text-brand-700 transition-colors hover:text-brand-900';
 
 export const carte = 'rounded-xl border border-stone-200 bg-white p-5 shadow-sm';
 
@@ -23,8 +22,7 @@ export const badgeBrand =
 export const badgeVert =
   'inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800';
 
-export const messageErreur =
-  'rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700';
+export const messageErreur = 'rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700';
 
 export const messageSucces =
   'rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800';

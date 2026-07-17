@@ -60,8 +60,8 @@ export function JournalErreurs() {
 
       {erreurs.length === 0 && !probleme && (
         <p className="text-sm text-stone-400">
-          Aucune erreur serveur enregistrée — tout roule. Les erreurs inattendues de l'API
-          apparaîtront ici avec leur détail technique.
+          Aucune erreur serveur enregistrée — tout roule. Les erreurs inattendues de l'API apparaîtront
+          ici avec leur détail technique.
         </p>
       )}
 

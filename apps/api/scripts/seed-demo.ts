@@ -25,11 +25,34 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
   {
     categorie: 'Entrées',
     produits: [
-      { nom: 'Chorba frik', description: 'Soupe traditionnelle au blé vert et agneau', prix: 300, cout: 90, tempsPreparationMinutes: 5 },
-      { nom: 'Bourek viande (2 pièces)', description: 'Feuilles de brick croustillantes à la viande hachée', prix: 250, cout: 80, tempsPreparationMinutes: 8 },
-      { nom: 'Salade variée', description: 'Tomates, concombre, oignons, olives', prix: 350, cout: 100, tempsPreparationMinutes: 5 },
+      {
+        nom: 'Chorba frik',
+        description: 'Soupe traditionnelle au blé vert et agneau',
+        prix: 300,
+        cout: 90,
+        tempsPreparationMinutes: 5,
+      },
+      {
+        nom: 'Bourek viande (2 pièces)',
+        description: 'Feuilles de brick croustillantes à la viande hachée',
+        prix: 250,
+        cout: 80,
+        tempsPreparationMinutes: 8,
+      },
+      {
+        nom: 'Salade variée',
+        description: 'Tomates, concombre, oignons, olives',
+        prix: 350,
+        cout: 100,
+        tempsPreparationMinutes: 5,
+      },
       // Volontairement sans coût de revient : montre l'alerte de couverture dans les rapports.
-      { nom: 'Salade César', description: 'Poulet grillé, parmesan, croûtons', prix: 550, tempsPreparationMinutes: 8 },
+      {
+        nom: 'Salade César',
+        description: 'Poulet grillé, parmesan, croûtons',
+        prix: 550,
+        tempsPreparationMinutes: 8,
+      },
     ],
   },
   {
@@ -43,17 +66,53 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         tempsPreparationMinutes: 20,
         options: [{ nom: 'Cuisson', obligatoire: true, valeurs: CUISSONS }],
       },
-      { nom: "Côtelettes d'agneau", description: 'Grillées au charbon de bois, garniture', prix: 1400, cout: 480, tempsPreparationMinutes: 18 },
-      { nom: 'Brochettes de poulet', description: '3 brochettes marinées, frites et salade', prix: 900, cout: 280, tempsPreparationMinutes: 15 },
-      { nom: 'Brochettes kefta', description: '3 brochettes de viande hachée épicée', prix: 850, cout: 260, tempsPreparationMinutes: 15 },
-      { nom: 'Merguez grillées', description: '5 merguez, frites maison', prix: 700, cout: 210, tempsPreparationMinutes: 12 },
-      { nom: 'Demi-poulet braisé', description: 'Mariné aux épices, riz ou frites', prix: 950, cout: 300, tempsPreparationMinutes: 20 },
+      {
+        nom: "Côtelettes d'agneau",
+        description: 'Grillées au charbon de bois, garniture',
+        prix: 1400,
+        cout: 480,
+        tempsPreparationMinutes: 18,
+      },
+      {
+        nom: 'Brochettes de poulet',
+        description: '3 brochettes marinées, frites et salade',
+        prix: 900,
+        cout: 280,
+        tempsPreparationMinutes: 15,
+      },
+      {
+        nom: 'Brochettes kefta',
+        description: '3 brochettes de viande hachée épicée',
+        prix: 850,
+        cout: 260,
+        tempsPreparationMinutes: 15,
+      },
+      {
+        nom: 'Merguez grillées',
+        description: '5 merguez, frites maison',
+        prix: 700,
+        cout: 210,
+        tempsPreparationMinutes: 12,
+      },
+      {
+        nom: 'Demi-poulet braisé',
+        description: 'Mariné aux épices, riz ou frites',
+        prix: 950,
+        cout: 300,
+        tempsPreparationMinutes: 20,
+      },
     ],
   },
   {
     categorie: 'Burgers & Tacos',
     produits: [
-      { nom: 'Burger maison', description: 'Steak haché frais 150 g, cheddar, sauce secrète', prix: 750, cout: 230, tempsPreparationMinutes: 12 },
+      {
+        nom: 'Burger maison',
+        description: 'Steak haché frais 150 g, cheddar, sauce secrète',
+        prix: 750,
+        cout: 230,
+        tempsPreparationMinutes: 12,
+      },
       {
         nom: 'Tacos poulet',
         description: 'Poulet mariné, frites, fromage fondu',
@@ -124,7 +183,13 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
   },
 ];
 
-const TABLES: { numero: string; forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE'; couverts: number; x: number; y: number }[] = [
+const TABLES: {
+  numero: string;
+  forme: 'RONDE' | 'CARREE' | 'RECTANGULAIRE';
+  couverts: number;
+  x: number;
+  y: number;
+}[] = [
   { numero: '1', forme: 'RONDE', couverts: 2, x: 40, y: 40 },
   { numero: '2', forme: 'RONDE', couverts: 2, x: 160, y: 40 },
   { numero: '3', forme: 'CARREE', couverts: 4, x: 290, y: 35 },
@@ -146,7 +211,9 @@ const TAILLES_PAR_FORME = {
 };
 
 async function main() {
-  const etablissement = await prisma.etablissement.findFirst({ where: { nom: { contains: 'Bon Grill' } } });
+  const etablissement = await prisma.etablissement.findFirst({
+    where: { nom: { contains: 'Bon Grill' } },
+  });
   if (!etablissement) throw new Error('Établissement « Le Bon Grill - Hydra » introuvable');
   const etablissementId = etablissement.id;
 
@@ -175,7 +242,9 @@ async function main() {
     data: { codePinHash: await bcrypt.hash('5678', 12), droits: [] },
   });
   console.log(`Gérant : ${gerant.email} / demo1234 — PIN validation 9999`);
-  console.log(`Serveur ${serveurs[0].prenom} : PIN 1234 (droit annuler) — Serveur ${serveurs[1].prenom} : PIN 5678`);
+  console.log(
+    `Serveur ${serveurs[0].prenom} : PIN 1234 (droit annuler) — Serveur ${serveurs[1].prenom} : PIN 5678`,
+  );
 
   // Le compte de démo est toujours remis actif (au cas où il a été suspendu en test).
   await prisma.compteClient.update({
@@ -307,7 +376,14 @@ async function main() {
     creeLe?: Date,
   ) {
     const commande = await prisma.commande.create({
-      data: { canal: 'SUR_PLACE', etablissementId, serveurId, additionId, noteCuisine, ...(creeLe ? { creeLe } : {}) },
+      data: {
+        canal: 'SUR_PLACE',
+        etablissementId,
+        serveurId,
+        additionId,
+        noteCuisine,
+        ...(creeLe ? { creeLe } : {}),
+      },
     });
     for (const l of lignes) {
       const produit = produitsParNom.get(l.produit);
@@ -556,9 +632,27 @@ async function main() {
     },
   });
   // Historique pour les statistiques gérant : un habitué fiable, un habitué des lapins.
-  const historiques: Array<{ nom: string; tel: string; email?: string; jours: number; statut: 'ARRIVEE' | 'NO_SHOW' }> = [
-    { nom: 'M. Slimani', tel: '0770 11 22 33', email: 'slimani.dz@gmail.com', jours: 7, statut: 'NO_SHOW' },
-    { nom: 'M. Slimani', tel: '0770 11 22 33', email: 'slimani.dz@gmail.com', jours: 15, statut: 'NO_SHOW' },
+  const historiques: Array<{
+    nom: string;
+    tel: string;
+    email?: string;
+    jours: number;
+    statut: 'ARRIVEE' | 'NO_SHOW';
+  }> = [
+    {
+      nom: 'M. Slimani',
+      tel: '0770 11 22 33',
+      email: 'slimani.dz@gmail.com',
+      jours: 7,
+      statut: 'NO_SHOW',
+    },
+    {
+      nom: 'M. Slimani',
+      tel: '0770 11 22 33',
+      email: 'slimani.dz@gmail.com',
+      jours: 15,
+      statut: 'NO_SHOW',
+    },
     { nom: 'M. Slimani', tel: '0770 11 22 33', jours: 30, statut: 'ARRIVEE' },
     { nom: 'Mme Haddad', tel: '0555 44 33 22', jours: 3, statut: 'ARRIVEE' },
     { nom: 'Famille Benaissa', tel: '0661 98 76 54', jours: 21, statut: 'ARRIVEE' },
@@ -581,7 +675,7 @@ async function main() {
   console.log('Réservations de démo : 2 à venir (badge plan sur table 2) + historique avec no-shows.');
 
   console.log('Commandes de démo créées : tables 3, 5 et 8 ouvertes, table 1 payée (historique).');
-  console.log('Journées de caisse : hier clôturée (écart -100 DA), aujourd\'hui ouverte (fond 5000 DA).');
+  console.log("Journées de caisse : hier clôturée (écart -100 DA), aujourd'hui ouverte (fond 5000 DA).");
   console.log('Seed de démo terminé.');
 }
 

@@ -171,7 +171,9 @@ describe('Authentification', () => {
   });
 
   it('connecte les serveurs par PIN', async () => {
-    const res1 = await serveur.post('/api/auth/login-pin').send({ etablissementId, codePin: PIN_SERVEUR_DROITS });
+    const res1 = await serveur
+      .post('/api/auth/login-pin')
+      .send({ etablissementId, codePin: PIN_SERVEUR_DROITS });
     expect(res1.status).toBe(200);
     expect(res1.body.droits).toContain('CLOTURER');
     expect(res1.body.droits).toContain('REMISER');
@@ -203,14 +205,16 @@ describe('Isolation multi-tenant', () => {
   it('le menu caisse ne contient que les produits du resto', async () => {
     const res = await serveur.get('/api/caisse/menu');
     expect(res.status).toBe(200);
-    const noms = res.body.flatMap((c: { produits: Array<{ nom: string }> }) => c.produits.map((p) => p.nom));
+    const noms = res.body.flatMap((c: { produits: Array<{ nom: string }> }) =>
+      c.produits.map((p) => p.nom),
+    );
     expect(noms).toContain('Plat T');
     expect(noms).not.toContain('Burger maison');
   });
 });
 
 describe('Commandes', () => {
-  it("refuse une commande sur place sans table", async () => {
+  it('refuse une commande sur place sans table', async () => {
     const res = await serveur
       .post('/api/caisse/commandes')
       .send({ canal: 'SUR_PLACE', lignes: [{ produitId: produitPlatId, quantite: 1 }] });
@@ -567,10 +571,14 @@ describe('Réservations', () => {
   });
 
   it("marque l'arrivée du client, une seule fois", async () => {
-    const arrivee = await serveur.patch(`/api/caisse/reservations/${reservationId}`).send({ statut: 'ARRIVEE' });
+    const arrivee = await serveur
+      .patch(`/api/caisse/reservations/${reservationId}`)
+      .send({ statut: 'ARRIVEE' });
     expect(arrivee.status).toBe(200);
     expect(arrivee.body.statut).toBe('ARRIVEE');
-    const rejeu = await serveur.patch(`/api/caisse/reservations/${reservationId}`).send({ statut: 'NO_SHOW' });
+    const rejeu = await serveur
+      .patch(`/api/caisse/reservations/${reservationId}`)
+      .send({ statut: 'NO_SHOW' });
     expect(rejeu.status).toBe(409);
   });
 

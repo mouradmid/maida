@@ -9,7 +9,17 @@ import {
   type Utilisateur,
 } from '../lib/api';
 import { lireCache, mettreEnAttente, sauvegarderCache } from '../lib/horsLigne';
-import { badgeBrand, badgeNeutre, badgeVert, boutonPrimaire, boutonSecondaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
+import {
+  badgeBrand,
+  badgeNeutre,
+  badgeVert,
+  boutonPrimaire,
+  boutonSecondaire,
+  carte,
+  champ,
+  messageErreur,
+  messageSucces,
+} from '../lib/ui';
 import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
@@ -125,7 +135,12 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       .filter((g) => choixEnCours[g.id])
       .map((g) => {
         const valeur = g.valeurs.find((v) => v.id === choixEnCours[g.id])!;
-        return { groupeOptionId: g.id, optionValeurId: valeur.id, nomGroupe: g.nom, valeur: valeur.valeur };
+        return {
+          groupeOptionId: g.id,
+          optionValeurId: valeur.id,
+          nomGroupe: g.nom,
+          valeur: valeur.valeur,
+        };
       });
     ajouterAuPanierDirect(produitEnSelection, options);
     setProduitEnSelection(null);
@@ -165,7 +180,10 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       lignes: lignesPanier.map((l) => ({
         produitId: l.produit.id,
         quantite: l.quantite,
-        options: l.options.map((o) => ({ groupeOptionId: o.groupeOptionId, optionValeurId: o.optionValeurId })),
+        options: l.options.map((o) => ({
+          groupeOptionId: o.groupeOptionId,
+          optionValeurId: o.optionValeurId,
+        })),
       })),
     };
 
@@ -325,7 +343,11 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
         <div className={`${carte} sticky top-20 flex flex-col gap-4`}>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-stone-900">Commande</h2>
-            {nbArticles > 0 && <span className={badgeNeutre}>{nbArticles} article{nbArticles > 1 ? 's' : ''}</span>}
+            {nbArticles > 0 && (
+              <span className={badgeNeutre}>
+                {nbArticles} article{nbArticles > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
 
           <div>
@@ -357,7 +379,9 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                       {ligne.options.map((o) => `${o.nomGroupe} : ${o.valeur}`).join(' · ')}
                     </p>
                   )}
-                  <p className="mt-0.5 text-xs text-stone-500">{ligne.produit.prix * ligne.quantite} DA</p>
+                  <p className="mt-0.5 text-xs text-stone-500">
+                    {ligne.produit.prix * ligne.quantite} DA
+                  </p>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -451,10 +475,18 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             {erreurOptions && <p className={`${messageErreur} mt-4`}>{erreurOptions}</p>}
 
             <div className="mt-5 flex gap-2">
-              <button type="button" onClick={handleConfirmerSelection} className={`${boutonPrimaire} flex-1`}>
+              <button
+                type="button"
+                onClick={handleConfirmerSelection}
+                className={`${boutonPrimaire} flex-1`}
+              >
                 Ajouter à la commande
               </button>
-              <button type="button" onClick={() => setProduitEnSelection(null)} className={boutonSecondaire}>
+              <button
+                type="button"
+                onClick={() => setProduitEnSelection(null)}
+                className={boutonSecondaire}
+              >
                 Annuler
               </button>
             </div>
@@ -505,7 +537,8 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                 <p className="text-xs text-stone-500">
                   {c.lignes.map((l, i) => {
                     const active = l.quantite - l.quantiteAnnulee;
-                    const opts = l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
+                    const opts =
+                      l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
                     return (
                       <span key={l.id}>
                         {i > 0 && ' · '}
@@ -521,11 +554,15 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                     );
                   })}
                 </p>
-                {c.noteCuisine && <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>}
+                {c.noteCuisine && (
+                  <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>
+                )}
               </li>
             );
           })}
-          {commandes.length === 0 && <li className="text-sm text-stone-400">Aucune commande pour l'instant.</li>}
+          {commandes.length === 0 && (
+            <li className="text-sm text-stone-400">Aucune commande pour l'instant.</li>
+          )}
         </ul>
       </div>
 

@@ -57,7 +57,13 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
           derniereCommande = derniere;
         }
       }
-      return { ...compte, gerants: compte.utilisateurs, utilisateurs: undefined, commandes7Jours, derniereCommande };
+      return {
+        ...compte,
+        gerants: compte.utilisateurs,
+        utilisateurs: undefined,
+        commandes7Jours,
+        derniereCommande,
+      };
     }),
   );
 });

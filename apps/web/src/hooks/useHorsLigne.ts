@@ -4,8 +4,8 @@ import { nombreEnAttente, sAbonnerFileAttente } from '../lib/horsLigne';
 // État réseau du navigateur + nombre d'opérations (commandes et paiements)
 // en attente de synchronisation.
 export function useHorsLigne() {
-  const [horsLigne, setHorsLigne] = useState(!navigator.onLine);
-  const [enAttente, setEnAttente] = useState(nombreEnAttente());
+  const [horsLigne, setHorsLigne] = useState(() => !navigator.onLine);
+  const [enAttente, setEnAttente] = useState(() => nombreEnAttente());
 
   useEffect(() => {
     const surReseau = () => setHorsLigne(!navigator.onLine);

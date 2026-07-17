@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { api, type ModePaiement, type ParametresGerant, type RapportVentes, type ResumeCout } from '../lib/api';
+import {
+  api,
+  type ModePaiement,
+  type ParametresGerant,
+  type RapportVentes,
+  type ResumeCout,
+} from '../lib/api';
 import { carte, champ, messageErreur } from '../lib/ui';
 
 const LIBELLES_MOYEN: Record<ModePaiement, string> = {
@@ -51,11 +57,23 @@ function bornes(periode: Periode, persoDebut: string, persoFin: string): [Date, 
   return [debutDeJour(debut), finDeJour(fin)];
 }
 
-function Tuile({ libelle, valeur, detail, accent }: { libelle: string; valeur: string; detail?: string; accent?: 'perte' }) {
+function Tuile({
+  libelle,
+  valeur,
+  detail,
+  accent,
+}: {
+  libelle: string;
+  valeur: string;
+  detail?: string;
+  accent?: 'perte';
+}) {
   return (
     <div className={`${carte} flex flex-col gap-1`}>
       <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{libelle}</p>
-      <p className={`text-2xl font-bold ${accent === 'perte' ? 'text-red-700' : 'text-stone-900'}`}>{valeur}</p>
+      <p className={`text-2xl font-bold ${accent === 'perte' ? 'text-red-700' : 'text-stone-900'}`}>
+        {valeur}
+      </p>
       {detail && <p className="text-xs text-stone-500">{detail}</p>}
     </div>
   );
@@ -114,7 +132,9 @@ function LigneBarre({
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="min-w-0 truncate font-medium text-stone-900">
           {libelle}
-          {sousLibelle && <span className="ml-1.5 text-xs font-normal text-stone-400">{sousLibelle}</span>}
+          {sousLibelle && (
+            <span className="ml-1.5 text-xs font-normal text-stone-400">{sousLibelle}</span>
+          )}
         </span>
         <span className="shrink-0 text-xs text-stone-500">
           {quantite} — <span className="text-sm font-semibold text-stone-900">{montant} DA</span>
@@ -141,7 +161,10 @@ export function RapportsGerant() {
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getParametres().then(setParametres).catch(() => setParametres(null));
+    api
+      .getParametres()
+      .then(setParametres)
+      .catch(() => setParametres(null));
   }, []);
 
   async function handleToggleSuiviCouts() {
@@ -285,7 +308,9 @@ export function RapportsGerant() {
                     libelle={p.nom}
                     sousLibelle={p.categorie}
                     quantite={`${p.quantite} vendu${p.quantite > 1 ? 's' : ''}${
-                      voirCouts && p.marge !== null ? ` · marge ${p.marge} DA (FC ${p.foodCostPct} %)` : ''
+                      voirCouts && p.marge !== null
+                        ? ` · marge ${p.marge} DA (FC ${p.foodCostPct} %)`
+                        : ''
                     }`}
                     montant={p.montant}
                     max={maxProduit}
@@ -322,7 +347,9 @@ export function RapportsGerant() {
               </div>
 
               <div className={carte}>
-                <h3 className="mb-2 font-semibold text-stone-900">Encaissements par moyen de paiement</h3>
+                <h3 className="mb-2 font-semibold text-stone-900">
+                  Encaissements par moyen de paiement
+                </h3>
                 <ul className="flex flex-col divide-y divide-stone-100 text-sm">
                   {rapport.parMoyen.map((m) => (
                     <li key={m.moyenPaiement} className="flex items-center justify-between py-2">

@@ -93,7 +93,10 @@ export function GestionServeurs() {
           <h3 className="mb-3 font-semibold text-stone-900">Serveurs ({serveurs.length})</h3>
           <ul className="flex flex-col divide-y divide-stone-100">
             {serveurs.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm"
+              >
                 <span className="flex items-center gap-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-800">
                     {s.prenom.charAt(0)}

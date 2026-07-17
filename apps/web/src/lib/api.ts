@@ -341,8 +341,10 @@ export const api = {
   createCategorie: (nom: string) =>
     apiFetch<Categorie>('/gerant/categories', { method: 'POST', body: JSON.stringify({ nom }) }),
 
-  updateCategorie: (id: string, data: { nom?: string; statut?: 'ACTIF' | 'INACTIF'; type?: TypeCategorie }) =>
-    apiFetch<Categorie>(`/gerant/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  updateCategorie: (
+    id: string,
+    data: { nom?: string; statut?: 'ACTIF' | 'INACTIF'; type?: TypeCategorie },
+  ) => apiFetch<Categorie>(`/gerant/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   listProduits: () => apiFetch<Produit[]>('/gerant/produits'),
 
@@ -431,7 +433,11 @@ export const api = {
           commentaire?: string;
           codeGerant?: string;
         },
-  ) => apiFetch<Commande>(`/caisse/commandes/${id}/annulation`, { method: 'POST', body: JSON.stringify(data) }),
+  ) =>
+    apiFetch<Commande>(`/caisse/commandes/${id}/annulation`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   creerCommande: (data: {
     canal: 'SUR_PLACE' | 'EMPORTER';
@@ -640,10 +646,7 @@ export const api = {
     gerant: { nom: string; prenom: string; email: string; motDePasse: string };
   }) => apiFetch('/admin/comptes-clients', { method: 'POST', body: JSON.stringify(data) }),
 
-  updateCompteClient: (
-    id: string,
-    data: { statut?: 'ACTIF' | 'SUSPENDU'; modules?: ModuleCompte[] },
-  ) =>
+  updateCompteClient: (id: string, data: { statut?: 'ACTIF' | 'SUSPENDU'; modules?: ModuleCompte[] }) =>
     apiFetch<{ id: string; statut: string; modules: ModuleCompte[] }>(`/admin/comptes-clients/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

@@ -29,9 +29,7 @@ interface AdditionHorsLigne {
 
 // Reconstruit la liste encaissable à partir du cache et des files locales.
 function construireAdditionsHorsLigne(): AdditionHorsLigne[] {
-  const cachees = (lireCache<AdditionResume[]>('additions') ?? []).filter(
-    (a) => a.statut === 'OUVERTE',
-  );
+  const cachees = (lireCache<AdditionResume[]>('additions') ?? []).filter((a) => a.statut === 'OUVERTE');
   const tables = lireCache<TableCaisse[]>('tables') ?? [];
   const numeroParTableId = new Map(tables.map((t) => [t.id, t.numero]));
 
@@ -122,7 +120,7 @@ function PanneauHorsLigne({
 }) {
   const [selectionCle, setSelectionCle] = useState<string | null>(null);
   const [moyen, setMoyen] = useState<ModePaiement>(
-    moyens.includes('ESPECES') ? 'ESPECES' : moyens[0] ?? 'ESPECES',
+    moyens.includes('ESPECES') ? 'ESPECES' : (moyens[0] ?? 'ESPECES'),
   );
   const [recu, setRecu] = useState('');
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -184,7 +182,9 @@ function PanneauHorsLigne({
               setConfirmation(null);
             }}
             className={`flex flex-col gap-2 rounded-xl border p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 ${
-              selectionCle === e.cle ? 'border-brand-500 bg-brand-50' : 'border-stone-200 bg-white hover:border-brand-300'
+              selectionCle === e.cle
+                ? 'border-brand-500 bg-brand-50'
+                : 'border-stone-200 bg-white hover:border-brand-300'
             }`}
           >
             <span className="text-lg font-semibold text-stone-900">{e.libelle}</span>
@@ -552,7 +552,9 @@ export function Encaissement({ droitRemiser }: { droitRemiser: boolean }) {
                       </span>
                     )}
                     {l.quantitePayee > 0 && (
-                      <span className={`${badgeVert} ml-2`}>{l.quantitePayee} payé{l.quantitePayee > 1 ? 's' : ''}</span>
+                      <span className={`${badgeVert} ml-2`}>
+                        {l.quantitePayee} payé{l.quantitePayee > 1 ? 's' : ''}
+                      </span>
                     )}
                     {l.quantiteOfferte > 0 && (
                       <span className="ml-2 inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800">
@@ -656,7 +658,8 @@ export function Encaissement({ droitRemiser }: { droitRemiser: boolean }) {
                           className="h-4 w-4 accent-brand-600"
                         />
                         <span>
-                          {l.nomProduit} <span className="text-xs text-stone-400">(reste {restant})</span>
+                          {l.nomProduit}{' '}
+                          <span className="text-xs text-stone-400">(reste {restant})</span>
                         </span>
                       </label>
                       {qteChoisie > 0 && restant > 1 && (

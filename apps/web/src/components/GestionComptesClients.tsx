@@ -110,7 +110,9 @@ export function GestionComptesClients() {
     const actif = compte.modules.includes('FOOD_COST');
     try {
       await api.updateCompteClient(compte.id, {
-        modules: actif ? compte.modules.filter((m) => m !== 'FOOD_COST') : [...compte.modules, 'FOOD_COST'],
+        modules: actif
+          ? compte.modules.filter((m) => m !== 'FOOD_COST')
+          : [...compte.modules, 'FOOD_COST'],
       });
       setMessage(
         actif
@@ -157,7 +159,13 @@ export function GestionComptesClients() {
                 <div>
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-stone-900">
                     {compte.nomEnseigne}
-                    <span className={compte.statut === 'ACTIF' ? badgeVert : 'inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800'}>
+                    <span
+                      className={
+                        compte.statut === 'ACTIF'
+                          ? badgeVert
+                          : 'inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800'
+                      }
+                    >
                       {compte.statut === 'ACTIF' ? 'actif' : 'suspendu'}
                     </span>
                   </h3>
@@ -166,7 +174,8 @@ export function GestionComptesClients() {
                     {compte.commandes7Jours > 0
                       ? `${compte.commandes7Jours} commande${compte.commandes7Jours > 1 ? 's' : ''} sur 7 jours`
                       : 'aucune commande sur 7 jours'}
-                    {compte.derniereCommande && ` · dernière activité ${depuis(compte.derniereCommande)}`}
+                    {compte.derniereCommande &&
+                      ` · dernière activité ${depuis(compte.derniereCommande)}`}
                   </p>
                 </div>
                 <span className="flex items-center gap-2">
@@ -252,7 +261,9 @@ export function GestionComptesClients() {
             required
             className={champ}
           />
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-stone-400">Établissement</p>
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-stone-400">
+            Établissement
+          </p>
           <div className="flex gap-2">
             <input
               type="text"

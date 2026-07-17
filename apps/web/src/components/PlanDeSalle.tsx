@@ -191,7 +191,9 @@ export function PlanDeSalle() {
                 </button>
               </li>
             ))}
-            {tables.length === 0 && <li className="py-2 text-sm text-stone-400">Aucune table pour l'instant.</li>}
+            {tables.length === 0 && (
+              <li className="py-2 text-sm text-stone-400">Aucune table pour l'instant.</li>
+            )}
           </ul>
         </div>
 
@@ -206,7 +208,11 @@ export function PlanDeSalle() {
               required
               className={`${champ} w-24`}
             />
-            <select value={forme} onChange={(e) => setForme(e.target.value as TablePlan['forme'])} className={champ}>
+            <select
+              value={forme}
+              onChange={(e) => setForme(e.target.value as TablePlan['forme'])}
+              className={champ}
+            >
               <option value="RONDE">Ronde</option>
               <option value="CARREE">Carrée</option>
               <option value="RECTANGULAIRE">Rectangulaire</option>

@@ -72,9 +72,7 @@ export function Reservations() {
         note: note.trim() || undefined,
         tableId,
       });
-      setMessage(
-        `Table ${reservation.table.numero} réservée pour ${reservation.nomClient} à ${heure}.`,
-      );
+      setMessage(`Table ${reservation.table.numero} réservée pour ${reservation.nomClient} à ${heure}.`);
       setNomClient('');
       setTelephone('');
       setEmail('');
@@ -116,7 +114,12 @@ export function Reservations() {
                 month: 'long',
               })}
             </h3>
-            <input type="date" value={jour} onChange={(e) => setJour(e.target.value)} className={`${champ} w-auto`} />
+            <input
+              type="date"
+              value={jour}
+              onChange={(e) => setJour(e.target.value)}
+              className={`${champ} w-auto`}
+            />
           </div>
 
           {reservations.length === 0 && (
@@ -133,7 +136,10 @@ export function Reservations() {
                   <div className="flex min-w-0 flex-col gap-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold text-stone-900">
-                        {new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(r.date).toLocaleTimeString('fr-FR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </span>
                       <span className="font-medium text-stone-900">{r.nomClient}</span>
                       <span className={badgeNeutre}>Table {r.table.numero}</span>
@@ -225,7 +231,12 @@ export function Reservations() {
               className={`${champ} w-20`}
             />
           </div>
-          <select value={tableId} onChange={(e) => setTableId(e.target.value)} required className={champ}>
+          <select
+            value={tableId}
+            onChange={(e) => setTableId(e.target.value)}
+            required
+            className={champ}
+          >
             <option value="">Choisir une table</option>
             {tables.map((t) => (
               <option key={t.id} value={t.id}>

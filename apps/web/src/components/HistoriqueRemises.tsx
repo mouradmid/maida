@@ -41,7 +41,9 @@ export function HistoriqueRemises() {
         {remises.length > 0 && (
           <span className="text-sm text-stone-500">
             {remises.length} geste{remises.length > 1 ? 's' : ''} —{' '}
-            <span className="font-semibold text-brand-800">{Math.round(totalPeriode * 100) / 100} DA</span>
+            <span className="font-semibold text-brand-800">
+              {Math.round(totalPeriode * 100) / 100} DA
+            </span>
           </span>
         )}
       </div>
