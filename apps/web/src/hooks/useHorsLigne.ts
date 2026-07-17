@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import { lireFileAttente, sAbonnerFileAttente } from '../lib/horsLigne';
+import { nombreEnAttente, sAbonnerFileAttente } from '../lib/horsLigne';
 
-// État réseau du navigateur + nombre de commandes en attente de synchronisation.
+// État réseau du navigateur + nombre d'opérations (commandes et paiements)
+// en attente de synchronisation.
 export function useHorsLigne() {
   const [horsLigne, setHorsLigne] = useState(!navigator.onLine);
-  const [enAttente, setEnAttente] = useState(lireFileAttente().length);
+  const [enAttente, setEnAttente] = useState(nombreEnAttente());
 
   useEffect(() => {
     const surReseau = () => setHorsLigne(!navigator.onLine);
     window.addEventListener('online', surReseau);
     window.addEventListener('offline', surReseau);
-    const desabonner = sAbonnerFileAttente(() => setEnAttente(lireFileAttente().length));
+    const desabonner = sAbonnerFileAttente(() => setEnAttente(nombreEnAttente()));
     return () => {
       window.removeEventListener('online', surReseau);
       window.removeEventListener('offline', surReseau);

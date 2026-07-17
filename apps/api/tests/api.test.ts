@@ -557,6 +557,55 @@ describe('Idempotence des commandes hors ligne', () => {
 
 const identifiantsAdmin = process.env.SEED_SUPER_ADMIN_EMAIL && process.env.SEED_SUPER_ADMIN_PASSWORD;
 
+describe('Idempotence des paiements hors ligne', () => {
+  const clePaiement = `test-idem-paiement-${Date.now()}`;
+  let additionId = '';
+  let premierId = '';
+
+  it('prépare une nouvelle journée et une addition', async () => {
+    const journee = await serveur.post('/api/caisse/journee/ouverture').send({ fondDeCaisse: 500 });
+    expect(journee.status).toBe(201);
+    const commande = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitBoissonId, quantite: 2 }],
+    });
+    expect(commande.status).toBe(201);
+    additionId = commande.body.additionId;
+  });
+
+  it('encaisse avec clé et heure hors ligne', async () => {
+    const creeLe = new Date(Date.now() - 20 * 60_000).toISOString();
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/paiements`).send({
+      mode: 'MONTANT',
+      montant: 400,
+      moyenPaiement: 'ESPECES',
+      montantRecu: 500,
+      cleIdempotence: clePaiement,
+      creeLeHorsLigne: creeLe,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.rendu).toBe(100);
+    expect(res.body.additionCloturee).toBe(true);
+    premierId = res.body.id;
+  });
+
+  it("rejouer le même paiement ne double pas l'encaissement", async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/paiements`).send({
+      mode: 'MONTANT',
+      montant: 400,
+      moyenPaiement: 'ESPECES',
+      montantRecu: 500,
+      cleIdempotence: clePaiement,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(premierId);
+    expect(res.body.additionCloturee).toBe(true);
+
+    const nombre = await prisma.paiement.count({ where: { cleIdempotence: clePaiement } });
+    expect(nombre).toBe(1);
+  });
+});
+
 describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
   const admin = request.agent(app);
 

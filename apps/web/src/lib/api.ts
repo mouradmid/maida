@@ -476,7 +476,14 @@ export const api = {
   creerPaiement: (
     additionId: string,
     data:
-      | { mode: 'MONTANT'; montant: number; moyenPaiement: ModePaiement; montantRecu?: number }
+      | {
+          mode: 'MONTANT';
+          montant: number;
+          moyenPaiement: ModePaiement;
+          montantRecu?: number;
+          cleIdempotence?: string;
+          creeLeHorsLigne?: string;
+        }
       | {
           mode: 'ARTICLES';
           lignes: Array<{ ligneCommandeId: string; quantite: number }>;

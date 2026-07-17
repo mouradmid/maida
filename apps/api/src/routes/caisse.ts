@@ -1188,7 +1188,37 @@ interface LigneAPayer {
 
 caisseRouter.post('/additions/:id/paiements', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
-  const { mode, montant, moyenPaiement, montantRecu, lignes } = req.body ?? {};
+  const { mode, montant, moyenPaiement, montantRecu, lignes, cleIdempotence, creeLeHorsLigne } =
+    req.body ?? {};
+
+  if (
+    cleIdempotence !== undefined &&
+    (typeof cleIdempotence !== 'string' || !cleIdempotence.trim() || cleIdempotence.length > 100)
+  ) {
+    res.status(400).json({ error: "Clé d'idempotence invalide" });
+    return;
+  }
+  let creeLeFinal: Date | undefined;
+  if (creeLeHorsLigne !== undefined) {
+    const date = typeof creeLeHorsLigne === 'string' ? new Date(creeLeHorsLigne) : null;
+    const maintenant = Date.now();
+    if (
+      !date ||
+      Number.isNaN(date.getTime()) ||
+      date.getTime() > maintenant + 5 * 60_000 ||
+      date.getTime() < maintenant - 48 * 60 * 60_000
+    ) {
+      res.status(400).json({ error: "Date d'encaissement hors ligne invalide" });
+      return;
+    }
+    creeLeFinal = date;
+  }
+
+  // Rejeu d'un paiement déjà synchronisé : on renvoie l'existant, sans double.
+  if (typeof cleIdempotence === 'string') {
+    const rejoue = await repondrePaiementExistant(cleIdempotence.trim(), etablissementId, res);
+    if (rejoue) return;
+  }
 
   const MOYENS_VALIDES: ModePaiement[] = ['ESPECES', 'CARTE', 'CHEQUE', 'AUTRE'];
   if (typeof moyenPaiement !== 'string' || !MOYENS_VALIDES.includes(moyenPaiement as ModePaiement)) {
@@ -1285,52 +1315,99 @@ caisseRouter.post('/additions/:id/paiements', async (req, res) => {
     return;
   }
 
-  const resultat = await prisma.$transaction(async (tx) => {
-    const paiement = await tx.paiement.create({
-      data: {
-        additionId: addition.id,
-        journeeCaisseId: journee.id,
-        montant: montantFinal,
-        moyenPaiement: moyenPaiementValide,
-        montantRecu: moyenPaiementValide === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
-        lignes: {
-          create: lignesAPayer.map((l) => ({
-            ligneCommandeId: l.ligneCommandeId,
-            quantite: l.quantite,
-            montant: l.montant,
-          })),
+  try {
+    const resultat = await prisma.$transaction(async (tx) => {
+      const paiement = await tx.paiement.create({
+        data: {
+          additionId: addition.id,
+          journeeCaisseId: journee.id,
+          cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
+          creeLe: creeLeFinal,
+          montant: montantFinal,
+          moyenPaiement: moyenPaiementValide,
+          montantRecu: moyenPaiementValide === 'ESPECES' && montantRecu !== undefined ? montantRecu : null,
+          lignes: {
+            create: lignesAPayer.map((l) => ({
+              ligneCommandeId: l.ligneCommandeId,
+              quantite: l.quantite,
+              montant: l.montant,
+            })),
+          },
         },
-      },
+      });
+
+      for (const l of lignesAPayer) {
+        await tx.ligneCommande.update({
+          where: { id: l.ligneCommandeId },
+          data: { quantitePayee: { increment: l.quantite } },
+        });
+      }
+
+      const soldeRestant = Math.max(0, Math.round((solde - montantFinal) * 100) / 100);
+      if (soldeRestant <= 0.01) {
+        await tx.addition.update({
+          where: { id: addition.id },
+          data: { statut: 'PAYEE', fermeeLe: new Date() },
+        });
+      }
+
+      return { paiement, soldeRestant, cloturee: soldeRestant <= 0.01 };
     });
 
-    for (const l of lignesAPayer) {
-      await tx.ligneCommande.update({
-        where: { id: l.ligneCommandeId },
-        data: { quantitePayee: { increment: l.quantite } },
-      });
+    res.status(201).json({
+      id: resultat.paiement.id,
+      montant: Number(resultat.paiement.montant),
+      moyenPaiement: resultat.paiement.moyenPaiement,
+      montantRecu: resultat.paiement.montantRecu !== null ? Number(resultat.paiement.montantRecu) : null,
+      rendu:
+        resultat.paiement.montantRecu !== null
+          ? Math.round((Number(resultat.paiement.montantRecu) - Number(resultat.paiement.montant)) * 100) / 100
+          : null,
+      soldeRestant: resultat.soldeRestant,
+      additionCloturee: resultat.cloturee,
+    });
+  } catch (error) {
+    // Deux synchronisations simultanées du même paiement hors ligne.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      typeof cleIdempotence === 'string'
+    ) {
+      const rejoue = await repondrePaiementExistant(cleIdempotence.trim(), etablissementId, res);
+      if (rejoue) return;
     }
-
-    const soldeRestant = Math.max(0, Math.round((solde - montantFinal) * 100) / 100);
-    if (soldeRestant <= 0.01) {
-      await tx.addition.update({
-        where: { id: addition.id },
-        data: { statut: 'PAYEE', fermeeLe: new Date() },
-      });
-    }
-
-    return { paiement, soldeRestant, cloturee: soldeRestant <= 0.01 };
-  });
-
-  res.status(201).json({
-    id: resultat.paiement.id,
-    montant: Number(resultat.paiement.montant),
-    moyenPaiement: resultat.paiement.moyenPaiement,
-    montantRecu: resultat.paiement.montantRecu !== null ? Number(resultat.paiement.montantRecu) : null,
-    rendu:
-      resultat.paiement.montantRecu !== null
-        ? Math.round((Number(resultat.paiement.montantRecu) - Number(resultat.paiement.montant)) * 100) / 100
-        : null,
-    soldeRestant: resultat.soldeRestant,
-    additionCloturee: resultat.cloturee,
-  });
+    throw error;
+  }
 });
+
+// Renvoie le paiement déjà enregistré pour cette clé (réponse 200, même forme
+// que la création). Retourne false si la clé est inconnue.
+async function repondrePaiementExistant(
+  cleIdempotence: string,
+  etablissementId: string,
+  res: import('express').Response,
+): Promise<boolean> {
+  const existant = await prisma.paiement.findUnique({
+    where: { cleIdempotence },
+    include: { addition: { include: INCLUDE_ADDITION } },
+  });
+  if (!existant) return false;
+  if (existant.addition.etablissementId !== etablissementId) {
+    res.status(409).json({ error: "Clé d'idempotence déjà utilisée" });
+    return true;
+  }
+  const { solde } = calculerTotaux(existant.addition);
+  res.status(200).json({
+    id: existant.id,
+    montant: Number(existant.montant),
+    moyenPaiement: existant.moyenPaiement,
+    montantRecu: existant.montantRecu !== null ? Number(existant.montantRecu) : null,
+    rendu:
+      existant.montantRecu !== null
+        ? Math.round((Number(existant.montantRecu) - Number(existant.montant)) * 100) / 100
+        : null,
+    soldeRestant: solde,
+    additionCloturee: existant.addition.statut === 'PAYEE',
+  });
+  return true;
+}

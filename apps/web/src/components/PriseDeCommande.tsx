@@ -182,6 +182,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
         // Coupure réseau : la commande part dans la file locale, le service continue.
         const entree = mettreEnAttente({
           description: `${tableSelectionnee ? `Table ${tableSelectionnee.numero}` : 'À emporter'} — ${total} DA`,
+          total,
           donnees,
         });
         const utilisateurLocal = lireCache<Utilisateur>('utilisateur');

@@ -361,6 +361,9 @@ model Paiement {
   montant       Decimal      @db.Decimal(10, 2)
   moyenPaiement ModePaiement
   montantRecu   Decimal?     @db.Decimal(10, 2)
+  // Générée par la caisse pour les encaissements hors ligne : garantit
+  // qu'une resynchronisation répétée ne crée jamais de double paiement.
+  cleIdempotence String?     @unique
   creeLe        DateTime     @default(now())
 
   additionId String

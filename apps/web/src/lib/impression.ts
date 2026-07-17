@@ -161,6 +161,34 @@ export function htmlTicketClient(
   return envelopper(corps, `Ticket ${detail.table ? `table ${detail.table.numero}` : 'à emporter'}`);
 }
 
+// Reçu simplifié pour un encaissement hors ligne : pas de détail des lignes
+// (l'addition complète vit sur le serveur), mais le client repart avec une preuve.
+export function htmlRecuHorsLigne(
+  etablissement: { nom: string; adresse: string | null; ville: string | null },
+  libelle: string,
+  montant: number,
+  moyen: ModePaiement,
+  montantRecu: number | null,
+): string {
+  const rendu =
+    montantRecu !== null && montantRecu > montant
+      ? Math.round((montantRecu - montant) * 100) / 100
+      : null;
+  const adresse = [etablissement.adresse, etablissement.ville].filter(Boolean).join(', ');
+  const corps = `
+    <div class="centre grand">${echapper(etablissement.nom)}</div>
+    ${adresse ? `<div class="centre petit">${echapper(adresse)}</div>` : ''}
+    <div class="sep"></div>
+    <div class="centre petit">${dateHeure(new Date())} · ${echapper(libelle)}</div>
+    <div class="sep"></div>
+    <div class="ligne gras"><span>PAYÉ</span><span>${montant} DA</span></div>
+    <div class="ligne petit"><span class="lib">${LIBELLES_MOYEN[moyen]}${montantRecu !== null ? ` (reçu ${montantRecu}${rendu !== null ? `, rendu ${rendu}` : ''})` : ''}</span><span></span></div>
+    <div class="sep"></div>
+    <div class="centre">Merci de votre visite !</div>
+  `;
+  return envelopper(corps, `Reçu ${libelle}`);
+}
+
 // Imprime un HTML de ticket via une iframe cachée (compatible imprimantes
 // thermiques installées comme imprimantes système).
 export function imprimerHtml(html: string) {
