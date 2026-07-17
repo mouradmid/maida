@@ -50,15 +50,19 @@ export function Accueil() {
         ))}
       </div>
 
-      <div className="w-full max-w-4xl rounded-xl border border-dashed border-stone-300 bg-white/60 px-5 py-4 text-sm text-stone-500">
-        <p className="font-medium text-stone-600">Accès démo — Le Bon Grill (Hydra)</p>
-        <p className="mt-1">
-          Gérant : <code className="rounded bg-stone-100 px-1.5 py-0.5">karim@lebongrill.dz</code> /{' '}
-          <code className="rounded bg-stone-100 px-1.5 py-0.5">demo1234</code> · Caisse : PIN{' '}
-          <code className="rounded bg-stone-100 px-1.5 py-0.5">1234</code> (Sofiane) ou{' '}
-          <code className="rounded bg-stone-100 px-1.5 py-0.5">5678</code> (Yacine)
-        </p>
-      </div>
+      {/* Bloc démo : masqué sur un déploiement client en définissant
+          VITE_MASQUER_DEMO=true au moment du build. */}
+      {import.meta.env.VITE_MASQUER_DEMO !== 'true' && (
+        <div className="w-full max-w-4xl rounded-xl border border-dashed border-stone-300 bg-white/60 px-5 py-4 text-sm text-stone-500">
+          <p className="font-medium text-stone-600">Accès démo — Le Bon Grill (Hydra)</p>
+          <p className="mt-1">
+            Gérant : <code className="rounded bg-stone-100 px-1.5 py-0.5">karim@lebongrill.dz</code> /{' '}
+            <code className="rounded bg-stone-100 px-1.5 py-0.5">demo1234</code> · Caisse : PIN{' '}
+            <code className="rounded bg-stone-100 px-1.5 py-0.5">1234</code> (Sofiane) ou{' '}
+            <code className="rounded bg-stone-100 px-1.5 py-0.5">5678</code> (Yacine)
+          </p>
+        </div>
+      )}
     </div>
   );
 }

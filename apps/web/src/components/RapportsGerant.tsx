@@ -6,7 +6,7 @@ import {
   type RapportVentes,
   type ResumeCout,
 } from '../lib/api';
-import { carte, champ, messageErreur } from '../lib/ui';
+import { carte, champ, da, messageErreur } from '../lib/ui';
 
 const LIBELLES_MOYEN: Record<ModePaiement, string> = {
   ESPECES: 'Espèces',
@@ -89,7 +89,7 @@ function CarteCout({ titre, resume }: { titre: string; resume: ResumeCout }) {
         <>
           <p className="text-2xl font-bold text-stone-900">{resume.pct} %</p>
           <p className="text-xs text-stone-500">
-            coût {resume.cout} DA · marge brute {resume.marge} DA
+            coût {da(resume.cout ?? 0)} · marge brute {da(resume.marge ?? 0)}
           </p>
           {resume.couverturePct !== null && resume.couverturePct < 100 && (
             <p className="text-xs text-amber-700">
@@ -137,14 +137,14 @@ function LigneBarre({
           )}
         </span>
         <span className="shrink-0 text-xs text-stone-500">
-          {quantite} — <span className="text-sm font-semibold text-stone-900">{montant} DA</span>
+          {quantite} — <span className="text-sm font-semibold text-stone-900">{da(montant)}</span>
         </span>
       </div>
       <div className="h-2 w-full">
         <div
           className="h-2 rounded-full bg-brand-600"
           style={{ width: `${largeur}%` }}
-          title={`${libelle} : ${montant} DA`}
+          title={`${libelle} : ${da(montant)}`}
         />
       </div>
     </li>
@@ -261,28 +261,28 @@ export function RapportsGerant() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Tuile
               libelle="CA encaissé"
-              valeur={`${rapport.caEncaisse} DA`}
+              valeur={da(rapport.caEncaisse)}
               detail={`${rapport.nbPaiements} paiement${rapport.nbPaiements > 1 ? 's' : ''}`}
             />
             <Tuile
               libelle="Commandes"
               valeur={String(rapport.nbCommandes)}
-              detail={`${rapport.caCommande} DA commandés`}
+              detail={`${da(rapport.caCommande)} commandés`}
             />
-            <Tuile libelle="Ticket moyen" valeur={`${rapport.ticketMoyen} DA`} detail="par commande" />
+            <Tuile libelle="Ticket moyen" valeur={da(rapport.ticketMoyen)} detail="par commande" />
             <Tuile
               libelle="Pertes (annulations)"
-              valeur={`${rapport.pertes.montant} DA`}
+              valeur={da(rapport.pertes.montant)}
               detail={
                 rapport.pertes.apresPreparation.quantite > 0
-                  ? `dont ${rapport.pertes.apresPreparation.montant} DA de perte sèche après préparation`
+                  ? `dont ${da(rapport.pertes.apresPreparation.montant)} de perte sèche après préparation`
                   : `${rapport.pertes.quantite} article${rapport.pertes.quantite > 1 ? 's' : ''} annulé${rapport.pertes.quantite > 1 ? 's' : ''}`
               }
               accent={rapport.pertes.montant > 0 ? 'perte' : undefined}
             />
             <Tuile
               libelle="Remises & offerts"
-              valeur={`${rapport.remises.montant} DA`}
+              valeur={da(rapport.remises.montant)}
               detail={
                 rapport.remises.offerts.quantite > 0
                   ? `${rapport.remises.nombre} geste${rapport.remises.nombre > 1 ? 's' : ''}, dont ${rapport.remises.offerts.quantite} article${rapport.remises.offerts.quantite > 1 ? 's' : ''} offert${rapport.remises.offerts.quantite > 1 ? 's' : ''}`
@@ -309,7 +309,7 @@ export function RapportsGerant() {
                     sousLibelle={p.categorie}
                     quantite={`${p.quantite} vendu${p.quantite > 1 ? 's' : ''}${
                       voirCouts && p.marge !== null
-                        ? ` · marge ${p.marge} DA (FC ${p.foodCostPct} %)`
+                        ? ` · marge ${da(p.marge)} (FC ${p.foodCostPct} %)`
                         : ''
                     }`}
                     montant={p.montant}
@@ -359,7 +359,7 @@ export function RapportsGerant() {
                           ({m.nombre} paiement{m.nombre > 1 ? 's' : ''})
                         </span>
                       </span>
-                      <span className="font-semibold text-stone-900">{m.montant} DA</span>
+                      <span className="font-semibold text-stone-900">{da(m.montant)}</span>
                     </li>
                   ))}
                   {rapport.parMoyen.length === 0 && (
@@ -376,10 +376,10 @@ export function RapportsGerant() {
                       <span className="text-stone-600">
                         TVA {t.taux} %{' '}
                         <span className="text-xs text-stone-400">
-                          (HT {t.ht} DA · TTC {t.ttc} DA)
+                          (HT {da(t.ht)} · TTC {da(t.ttc)})
                         </span>
                       </span>
-                      <span className="font-semibold text-stone-900">{t.tva} DA</span>
+                      <span className="font-semibold text-stone-900">{da(t.tva)}</span>
                     </li>
                   ))}
                   {rapport.tva.parTaux.length === 0 && (
@@ -388,13 +388,13 @@ export function RapportsGerant() {
                   {rapport.tva.parTaux.length > 1 && (
                     <li className="flex items-center justify-between py-2">
                       <span className="font-medium text-brand-900">Total TVA</span>
-                      <span className="font-bold text-brand-800">{rapport.tva.totalTva} DA</span>
+                      <span className="font-bold text-brand-800">{da(rapport.tva.totalTva)}</span>
                     </li>
                   )}
                 </ul>
                 {rapport.tva.nonVentile > 0 && (
                   <p className="mt-2 text-xs text-amber-700">
-                    {rapport.tva.nonVentile} DA de ventes antérieures à la TVA ne sont pas ventilés.
+                    {da(rapport.tva.nonVentile)} de ventes antérieures à la TVA ne sont pas ventilés.
                   </p>
                 )}
               </div>

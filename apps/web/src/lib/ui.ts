@@ -26,3 +26,9 @@ export const messageErreur = 'rounded-lg border border-red-200 bg-red-50 px-3 py
 
 export const messageSucces =
   'rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800';
+
+// Formate un montant en dinars pour l'affichage : séparateur de milliers
+// français et deux décimales maximum (ex. 12500.5 → « 12 500,5 DA »).
+export function da(montant: number): string {
+  return `${montant.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DA`;
+}

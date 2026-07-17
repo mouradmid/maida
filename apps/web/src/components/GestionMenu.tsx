@@ -125,9 +125,17 @@ export function GestionMenu() {
   }
 
   async function handleToggleTypeCategorie(categorie: Categorie) {
-    await api.updateCategorie(categorie.id, {
-      type: categorie.type === 'NOURRITURE' ? 'BOISSON' : 'NOURRITURE',
-    });
+    const nouveauType = categorie.type === 'NOURRITURE' ? 'BOISSON' : 'NOURRITURE';
+    // Ce type pilote la séparation food cost / beverage cost : on confirme
+    // pour éviter les bascules accidentelles d'un simple clic.
+    if (
+      !window.confirm(
+        `Classer « ${categorie.nom} » comme ${nouveauType === 'BOISSON' ? 'Boisson' : 'Nourriture'} ? Cela déplace ses ventes vers le ${nouveauType === 'BOISSON' ? 'beverage' : 'food'} cost dans les rapports.`,
+      )
+    ) {
+      return;
+    }
+    await api.updateCategorie(categorie.id, { type: nouveauType });
     await chargerTout();
   }
 
