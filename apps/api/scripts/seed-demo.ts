@@ -246,10 +246,15 @@ async function main() {
     `Serveur ${serveurs[0].prenom} : PIN 1234 (droit annuler) — Serveur ${serveurs[1].prenom} : PIN 5678`,
   );
 
-  // Le compte de démo est toujours remis actif (au cas où il a été suspendu en test).
+  // Le compte de démo est toujours remis actif (au cas où il a été suspendu en test),
+  // et les coordonnées sont normalisées (l'adresse d'origine avait un encodage cassé).
   await prisma.compteClient.update({
     where: { id: etablissement.compteClientId },
     data: { statut: 'ACTIF' },
+  });
+  await prisma.etablissement.update({
+    where: { id: etablissementId },
+    data: { adresse: '12 rue des Frères Boudjema, Hydra', ville: 'Alger' },
   });
 
   // Deuxième compte client, suspendu : donne de la matière à l'espace super-admin.

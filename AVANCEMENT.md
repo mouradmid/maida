@@ -21,6 +21,8 @@
 - **Réservations** : prise au téléphone, anti-conflit de créneau, badge sur le plan de salle,
   arrivée / annulation / no-show
 - **Tickets d'impression** (thermique 80 mm) : ticket cuisine et ticket client avec TVA et remises
+- **QR code à table** : menu public consultable par le client sur son téléphone (sans connexion),
+  QR par table et planche imprimable dans l'espace gérant
 
 ### Mode hors ligne — le différenciateur
 
@@ -59,7 +61,7 @@
 
 ## 🔜 Prochaines étapes envisagées
 
-- [ ] **Multi-canal** : QR code à table (menu consultable par le client, puis commande)
+- [ ] **Commande par le client** depuis le QR à table (le menu consultable est en place)
 - [ ] **Premier restaurant pilote** (le produit est prêt)
 - [ ] Réservation en ligne par le client + email de confirmation
 - [ ] Hors-ligne : paiement par article et remises

@@ -580,6 +580,22 @@ export const api = {
       }>
     >('/gerant/remises'),
 
+  menuPublic: (etablissementId: string) =>
+    apiFetch<{
+      etablissement: { nom: string; adresse: string | null; ville: string | null };
+      categories: Array<{
+        id: string;
+        nom: string;
+        produits: Array<{
+          id: string;
+          nom: string;
+          description: string | null;
+          prix: number;
+          options: Array<{ nom: string; valeurs: string[] }>;
+        }>;
+      }>;
+    }>(`/public/menu/${etablissementId}`),
+
   listReservations: (debut: Date, fin: Date) =>
     apiFetch<Reservation[]>(
       `/caisse/reservations?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`,

@@ -6,6 +6,7 @@ import { adminRouter } from './routes/admin';
 import { authRouter } from './routes/auth';
 import { caisseRouter } from './routes/caisse';
 import { gerantRouter } from './routes/gerant';
+import { publicRouter } from './routes/public';
 
 export const app = express();
 
@@ -26,6 +27,7 @@ app.get('/health', (_req, res) => {
 
 // Tout est sous /api : même origine que le front en production,
 // et le proxy Vite transmet tel quel en développement.
+app.use('/api/public', publicRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/gerant', gerantRouter);

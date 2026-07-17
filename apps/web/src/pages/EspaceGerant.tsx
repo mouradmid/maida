@@ -9,6 +9,7 @@ import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
 import { HistoriqueAnnulations } from '../components/HistoriqueAnnulations';
 import { HistoriqueJournees } from '../components/HistoriqueJournees';
 import { HistoriqueRemises } from '../components/HistoriqueRemises';
+import { QrCodes } from '../components/QrCodes';
 import { RapportsGerant } from '../components/RapportsGerant';
 import { ReservationsGerant } from '../components/ReservationsGerant';
 import { useMe } from '../hooks/useMe';
@@ -21,6 +22,7 @@ const ONGLETS = [
   { id: 'equipe', libelle: 'Équipe' },
   { id: 'paiements', libelle: 'Paiements' },
   { id: 'annulations', libelle: 'Annulations & remises' },
+  { id: 'qrcodes', libelle: 'QR codes' },
   { id: 'journees', libelle: 'Journées de caisse' },
 ] as const;
 
@@ -69,6 +71,9 @@ export function EspaceGerant() {
             </div>
           )}
           {onglet === 'journees' && <HistoriqueJournees />}
+          {onglet === 'qrcodes' && user.etablissementId && (
+            <QrCodes etablissementId={user.etablissementId} />
+          )}
         </main>
       </div>
     );

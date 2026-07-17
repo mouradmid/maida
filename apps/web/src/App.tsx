@@ -3,6 +3,7 @@ import { Accueil } from './pages/Accueil';
 import { EspaceSuperAdmin } from './pages/EspaceSuperAdmin';
 import { EspaceGerant } from './pages/EspaceGerant';
 import { EspaceCaisse } from './pages/EspaceCaisse';
+import { MenuPublic } from './pages/MenuPublic';
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
       <Route path="/admin" element={<EspaceSuperAdmin />} />
       <Route path="/gerant" element={<EspaceGerant />} />
       <Route path="/caisse" element={<EspaceCaisse />} />
+      <Route path="/menu/:etablissementId" element={<MenuPublic />} />
     </Routes>
   );
 }

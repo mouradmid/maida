@@ -723,6 +723,43 @@ describe('Idempotence des paiements hors ligne', () => {
   });
 });
 
+describe('Menu public (QR code)', () => {
+  it('sert le menu sans authentification, sans données sensibles', async () => {
+    const res = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.etablissement.nom).toBe('Resto Test');
+    const noms = res.body.categories.flatMap((c: { produits: Array<{ nom: string }> }) =>
+      c.produits.map((p) => p.nom),
+    );
+    expect(noms).toContain('Plat T');
+    // Jamais de coût de revient ni de TVA détaillée côté client final.
+    expect(JSON.stringify(res.body)).not.toContain('coutRevient');
+    expect(JSON.stringify(res.body)).not.toContain('tauxTva');
+  });
+
+  it('masque les produits désactivés', async () => {
+    const inactif = await prisma.produit.create({
+      data: {
+        nom: 'Produit Retiré',
+        prix: 100,
+        statut: 'INACTIF',
+        categorieId: (await prisma.categorie.findFirst({
+          where: { etablissementId, nom: 'Plats Test' },
+        }))!.id,
+        etablissementId,
+      },
+    });
+    const res = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(JSON.stringify(res.body)).not.toContain('Produit Retiré');
+    await prisma.produit.delete({ where: { id: inactif.id } });
+  });
+
+  it('renvoie 404 pour un établissement inconnu', async () => {
+    const res = await request(app).get('/api/public/menu/inconnu-xyz');
+    expect(res.status).toBe(404);
+  });
+});
+
 describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
   const admin = request.agent(app);
 
@@ -801,6 +838,9 @@ describe.skipIf(!identifiantsAdmin)('Suspension par le super-admin', () => {
     // Établissement retiré de la liste publique
     const etabs = await request(app).get('/api/auth/etablissements');
     expect(etabs.body.map((e: { id: string }) => e.id)).not.toContain(etablissementId);
+    // Et le menu public (QR) est coupé aussi
+    const menuPublic = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(menuPublic.status).toBe(404);
   });
 
   it('la réactivation rétablit les accès', async () => {
