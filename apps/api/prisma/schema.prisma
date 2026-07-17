@@ -24,6 +24,7 @@ enum StatutCompteClient {
 // (base des futures offres commerciales — extensible).
 enum ModuleCompte {
   FOOD_COST
+  QR_MENU
 }
 
 enum StatutEtablissement {
@@ -114,7 +115,7 @@ model CompteClient {
   id          String             @id @default(cuid())
   nomEnseigne String
   statut      StatutCompteClient @default(ACTIF)
-  modules     ModuleCompte[]     @default([FOOD_COST])
+  modules     ModuleCompte[]     @default([FOOD_COST, QR_MENU])
   creeLe      DateTime           @default(now())
 
   etablissements Etablissement[]

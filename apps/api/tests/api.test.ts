@@ -767,6 +767,7 @@ describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
     const res = await gerant.get('/api/gerant/parametres');
     expect(res.status).toBe(200);
     expect(res.body.moduleFoodCost).toBe(true);
+    expect(res.body.moduleQrMenu).toBe(true);
     expect(res.body.suiviCoutsActive).toBe(true);
   });
 
@@ -806,6 +807,22 @@ describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
     const rapport = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
     expect(rapport.body.foodCost).not.toBeNull();
     expect(rapport.body.foodCost.nourriture.pct).toBe(30);
+  });
+
+  it('module QR menu : retiré → menu public coupé, réaccordé → rétabli', async () => {
+    // À ce stade le compte n'a que FOOD_COST (retiré au test précédent) : menu coupé.
+    const coupe = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(coupe.status).toBe(404);
+    const parametres = await gerant.get('/api/gerant/parametres');
+    expect(parametres.body.moduleQrMenu).toBe(false);
+
+    await admin
+      .patch(`/api/admin/comptes-clients/${compteClientId}`)
+      .send({ modules: ['FOOD_COST', 'QR_MENU'] });
+    const retabli = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(retabli.status).toBe(200);
+    const parametresApres = await gerant.get('/api/gerant/parametres');
+    expect(parametresApres.body.moduleQrMenu).toBe(true);
   });
 });
 

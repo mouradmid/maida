@@ -266,10 +266,11 @@ export interface ResultatPaiement {
   additionCloturee: boolean;
 }
 
-export type ModuleCompte = 'FOOD_COST';
+export type ModuleCompte = 'FOOD_COST' | 'QR_MENU';
 
 export interface ParametresGerant {
   moduleFoodCost: boolean;
+  moduleQrMenu: boolean;
   suiviCoutsActive: boolean;
 }
 

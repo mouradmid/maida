@@ -22,7 +22,8 @@
   arrivée / annulation / no-show
 - **Tickets d'impression** (thermique 80 mm) : ticket cuisine et ticket client avec TVA et remises
 - **QR code à table** : menu public consultable par le client sur son téléphone (sans connexion),
-  QR par table et planche imprimable dans l'espace gérant
+  QR par table et planche imprimable dans l'espace gérant — **module optionnel par compte client**,
+  comme le food cost
 
 ### Mode hors ligne — le différenciateur
 

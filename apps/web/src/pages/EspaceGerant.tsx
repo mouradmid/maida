@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api, type ParametresGerant } from '../lib/api';
 import { LoginMotDePasse } from '../components/LoginMotDePasse';
 import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
@@ -31,10 +32,23 @@ type Onglet = (typeof ONGLETS)[number]['id'];
 export function EspaceGerant() {
   const { user, loading, refresh } = useMe();
   const [onglet, setOnglet] = useState<Onglet>('rapports');
+  const [parametres, setParametres] = useState<ParametresGerant | null>(null);
+
+  useEffect(() => {
+    if (user?.role === 'GERANT') {
+      api
+        .getParametres()
+        .then(setParametres)
+        .catch(() => setParametres(null));
+    }
+  }, [user?.role]);
 
   if (loading) {
     return <p className="p-8 text-center text-stone-500">Chargement...</p>;
   }
+
+  // L'onglet QR codes n'apparaît que si le module est accordé au compte.
+  const onglets = ONGLETS.filter((o) => o.id !== 'qrcodes' || parametres?.moduleQrMenu);
 
   if (user?.role === 'GERANT') {
     return (
@@ -42,7 +56,7 @@ export function EspaceGerant() {
         <EnTeteEspace espace="Espace gérant" user={user} onLogout={refresh} />
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
           <nav className="flex flex-wrap gap-2">
-            {ONGLETS.map((o) => (
+            {onglets.map((o) => (
               <button
                 key={o.id}
                 type="button"

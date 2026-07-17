@@ -68,7 +68,7 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
   );
 });
 
-const MODULES_VALIDES = ['FOOD_COST'] as const;
+const MODULES_VALIDES = ['FOOD_COST', 'QR_MENU'] as const;
 
 adminRouter.patch('/comptes-clients/:id', async (req, res) => {
   const { statut, modules } = req.body ?? {};

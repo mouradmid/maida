@@ -14,15 +14,17 @@ publicRouter.get('/menu/:etablissementId', async (req, res) => {
       adresse: true,
       ville: true,
       statut: true,
-      compteClient: { select: { statut: true } },
+      compteClient: { select: { statut: true, modules: true } },
     },
   });
 
-  // Un établissement inconnu, inactif ou au compte suspendu n'expose rien.
+  // Un établissement inconnu, inactif, au compte suspendu ou sans le module
+  // QR menu n'expose rien.
   if (
     !etablissement ||
     etablissement.statut !== 'ACTIF' ||
-    etablissement.compteClient.statut !== 'ACTIF'
+    etablissement.compteClient.statut !== 'ACTIF' ||
+    !etablissement.compteClient.modules.includes('QR_MENU')
   ) {
     res.status(404).json({ error: 'Menu indisponible' });
     return;

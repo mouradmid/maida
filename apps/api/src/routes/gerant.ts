@@ -650,6 +650,7 @@ gerantRouter.get('/parametres', async (req, res) => {
 
   res.json({
     moduleFoodCost: compte?.modules.includes('FOOD_COST') ?? false,
+    moduleQrMenu: compte?.modules.includes('QR_MENU') ?? false,
     suiviCoutsActive: etablissement?.suiviCoutsActive ?? true,
   });
 });
@@ -675,6 +676,7 @@ gerantRouter.patch('/parametres', async (req, res) => {
 
   res.json({
     moduleFoodCost: compte?.modules.includes('FOOD_COST') ?? false,
+    moduleQrMenu: compte?.modules.includes('QR_MENU') ?? false,
     suiviCoutsActive: etablissement.suiviCoutsActive,
   });
 });

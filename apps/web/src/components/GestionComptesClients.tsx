@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type CompteClient } from '../lib/api';
+import { api, type CompteClient, type ModuleCompte } from '../lib/api';
 import {
   badgeNeutre,
   badgeVert,
@@ -104,20 +104,35 @@ export function GestionComptesClients() {
     }
   }
 
-  async function handleToggleModuleFoodCost(compte: CompteClient) {
+  // Modules optionnels accordables compte par compte (offres commerciales).
+  const MODULES_UI: Array<{ module: ModuleCompte; libelle: string; titre: string; retrait: string }> = [
+    {
+      module: 'FOOD_COST',
+      libelle: 'Food cost',
+      titre: "Suivi des coûts de revient, marges et food cost dans l'espace gérant",
+      retrait: 'les coûts et marges disparaissent de son espace',
+    },
+    {
+      module: 'QR_MENU',
+      libelle: 'QR menu',
+      titre: 'Menu public consultable par QR code à table',
+      retrait: 'son menu public et ses QR codes sont désactivés',
+    },
+  ];
+
+  async function handleToggleModule(compte: CompteClient, module: ModuleCompte, retrait: string) {
     setErreur(null);
     setMessage(null);
-    const actif = compte.modules.includes('FOOD_COST');
+    const actif = compte.modules.includes(module);
+    const libelle = MODULES_UI.find((m) => m.module === module)?.libelle ?? module;
     try {
       await api.updateCompteClient(compte.id, {
-        modules: actif
-          ? compte.modules.filter((m) => m !== 'FOOD_COST')
-          : [...compte.modules, 'FOOD_COST'],
+        modules: actif ? compte.modules.filter((m) => m !== module) : [...compte.modules, module],
       });
       setMessage(
         actif
-          ? `Module food cost retiré pour « ${compte.nomEnseigne} » : les coûts et marges disparaissent de son espace.`
-          : `Module food cost accordé à « ${compte.nomEnseigne} ».`,
+          ? `Module ${libelle} retiré pour « ${compte.nomEnseigne} » : ${retrait}.`
+          : `Module ${libelle} accordé à « ${compte.nomEnseigne} ».`,
       );
       await charger();
     } catch (err) {
@@ -179,18 +194,21 @@ export function GestionComptesClients() {
                   </p>
                 </div>
                 <span className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleModuleFoodCost(compte)}
-                    title="Module optionnel : suivi des coûts de revient, marges et food cost dans l'espace gérant"
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                      compte.modules.includes('FOOD_COST')
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
-                    }`}
-                  >
-                    {compte.modules.includes('FOOD_COST') ? '✓ Food cost' : 'Food cost désactivé'}
-                  </button>
+                  {MODULES_UI.map(({ module, libelle, titre, retrait }) => (
+                    <button
+                      key={module}
+                      type="button"
+                      onClick={() => handleToggleModule(compte, module, retrait)}
+                      title={`Module optionnel : ${titre}`}
+                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                        compte.modules.includes(module)
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                      }`}
+                    >
+                      {compte.modules.includes(module) ? `✓ ${libelle}` : `${libelle} désactivé`}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     onClick={() => handleToggleStatut(compte)}
