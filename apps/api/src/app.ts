@@ -1,6 +1,7 @@
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import { prisma } from './lib/prisma';
 import { adminRouter } from './routes/admin';
 import { authRouter } from './routes/auth';
 import { caisseRouter } from './routes/caisse';
@@ -41,9 +42,19 @@ if (production) {
 }
 
 // Filet de sécurité : toute erreur non gérée (y compris dans les routes async,
-// qu'Express 5 transmet ici) est journalisée et renvoie un 500 propre.
+// qu'Express 5 transmet ici) est journalisée — console ET base de données,
+// pour être visible dans l'espace super-admin — puis renvoie un 500 propre.
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   console.error(`[erreur] ${req.method} ${req.path}`, err);
+  const message = err instanceof Error ? err.message : String(err);
+  const detail = err instanceof Error ? (err.stack ?? null) : null;
+  prisma.erreurServeur
+    .create({
+      data: { methode: req.method, chemin: req.path, message: message.slice(0, 500), detail },
+    })
+    .catch(() => {
+      // Si la base est injoignable, la console reste le dernier témoin.
+    });
   if (res.headersSent) {
     next(err);
     return;

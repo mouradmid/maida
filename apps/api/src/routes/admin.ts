@@ -103,6 +103,21 @@ adminRouter.patch('/comptes-clients/:id', async (req, res) => {
   res.json(compteMaj);
 });
 
+// Journal des erreurs serveur : les 100 dernières, pour voir les problèmes
+// avant que les clients n'appellent.
+adminRouter.get('/erreurs', async (_req, res) => {
+  const erreurs = await prisma.erreurServeur.findMany({
+    orderBy: { creeLe: 'desc' },
+    take: 100,
+  });
+  res.json(erreurs);
+});
+
+adminRouter.delete('/erreurs', async (_req, res) => {
+  await prisma.erreurServeur.deleteMany({});
+  res.status(204).send();
+});
+
 // Dépannage client : l'éditeur redéfinit le mot de passe d'un gérant qui l'a perdu.
 adminRouter.post('/gerants/:id/mot-de-passe', async (req, res) => {
   const { motDePasse } = req.body ?? {};

@@ -2,6 +2,7 @@ import { LoginMotDePasse } from '../components/LoginMotDePasse';
 import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
 import { GestionComptesClients } from '../components/GestionComptesClients';
+import { JournalErreurs } from '../components/JournalErreurs';
 import { useMe } from '../hooks/useMe';
 
 export function EspaceSuperAdmin() {
@@ -17,6 +18,7 @@ export function EspaceSuperAdmin() {
         <EnTeteEspace espace="Super-admin" user={user} onLogout={refresh} />
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
           <GestionComptesClients />
+          <JournalErreurs />
         </main>
       </div>
     );

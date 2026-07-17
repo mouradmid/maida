@@ -472,6 +472,19 @@ model Annulation {
   @@map("annulations")
 }
 
+// Journal des erreurs serveur : consultable par l'éditeur dans l'espace
+// super-admin, pour détecter les problèmes avant que les clients n'appellent.
+model ErreurServeur {
+  id      String   @id @default(cuid())
+  methode String
+  chemin  String
+  message String
+  detail  String?
+  creeLe  DateTime @default(now())
+
+  @@map("erreurs_serveur")
+}
+
 enum StatutReservation {
   A_VENIR
   ARRIVEE

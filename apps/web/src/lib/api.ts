@@ -649,6 +649,20 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  listErreurs: () =>
+    apiFetch<
+      Array<{
+        id: string;
+        methode: string;
+        chemin: string;
+        message: string;
+        detail: string | null;
+        creeLe: string;
+      }>
+    >('/admin/erreurs'),
+
+  viderErreurs: () => apiFetch<void>('/admin/erreurs', { method: 'DELETE' }),
+
   getParametres: () => apiFetch<ParametresGerant>('/gerant/parametres'),
 
   updateParametres: (data: { suiviCoutsActive: boolean }) =>
