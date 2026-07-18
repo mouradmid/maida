@@ -2,7 +2,12 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { Prisma } from '../generated/prisma/client';
 import type { DroitUtilisateur, ModePaiement } from '../generated/prisma/client';
-import { erreurLignesEntree, resoudreLignesCommande, type LigneEntree } from '../lib/commandes';
+import {
+  erreurLignesEntree,
+  resoudreLignesCommande,
+  type LigneEntree,
+  type LigneSourceEntree,
+} from '../lib/commandes';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireCompteActif } from '../middleware/requireCompteActif';
@@ -453,35 +458,47 @@ caisseRouter.get('/cuisine/commandes', async (req, res) => {
   res.json(commandes.map(toPublicCommande));
 });
 
-// Le serveur réclame la suite suivante : la cuisine peut alors la préparer.
-caisseRouter.post('/commandes/:id/reclamer', async (req, res) => {
+// Le serveur réclame la suite suivante pour toute la table : la cuisine peut
+// alors la préparer. Porte sur l'addition (une table = une addition ouverte),
+// donc toutes les commandes en préparation avancent ensemble.
+caisseRouter.post('/additions/:id/reclamer', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
-  const commande = await prisma.commande.findFirst({
+  const addition = await prisma.addition.findFirst({
     where: { id: req.params.id, etablissementId },
-    include: { lignes: { select: { suite: true } } },
+    include: {
+      commandes: {
+        where: { statut: 'ENVOYEE' },
+        include: { lignes: { select: { suite: true } } },
+      },
+    },
   });
-  if (!commande) {
-    res.status(404).json({ error: 'Commande introuvable' });
+  if (!addition) {
+    res.status(404).json({ error: 'Addition introuvable' });
     return;
   }
-  if (commande.statut !== 'ENVOYEE') {
-    res.status(409).json({ error: "Cette commande n'est plus en préparation" });
+  if (addition.commandes.length === 0) {
+    res.status(409).json({ error: 'Aucune commande en préparation sur cette addition' });
     return;
   }
-  const suiteMax = Math.max(1, ...commande.lignes.map((l) => l.suite));
-  if (commande.suiteReclamee >= suiteMax) {
-    res.status(409).json({ error: 'Toutes les suites de cette commande sont déjà réclamées' });
+  const suiteMax = Math.max(1, ...addition.commandes.flatMap((c) => c.lignes.map((l) => l.suite)));
+  const suiteActuelle = Math.max(1, ...addition.commandes.map((c) => c.suiteReclamee));
+  if (suiteActuelle >= suiteMax) {
+    res.status(409).json({ error: 'Toutes les suites de cette table sont déjà réclamées' });
     return;
   }
 
-  const majApres = await prisma.commande.update({
-    where: { id: commande.id },
-    data: { suiteReclamee: commande.suiteReclamee + 1 },
+  await prisma.commande.updateMany({
+    where: { additionId: addition.id, statut: 'ENVOYEE' },
+    data: { suiteReclamee: suiteActuelle + 1 },
+  });
+
+  const commandes = await prisma.commande.findMany({
+    where: { additionId: addition.id },
     include: INCLUDE_COMMANDE,
+    orderBy: { creeLe: 'asc' },
   });
-
-  res.json(toPublicCommande(majApres));
+  res.json({ suiteReclamee: suiteActuelle + 1, commandes: commandes.map(toPublicCommande) });
 });
 
 // Corrige la suite d'un article (une salade partie en plat par erreur…).
@@ -515,103 +532,6 @@ caisseRouter.patch('/lignes/:id/suite', async (req, res) => {
     include: INCLUDE_COMMANDE,
   });
   res.json(toPublicCommande(commande));
-});
-
-// « La même chose en plus » : ajoute des quantités à des articles déjà
-// commandés (un 2e Hamoud…). Crée une NOUVELLE commande sur la même addition,
-// pour que la cuisine reçoive un ticket clair avec uniquement les ajouts.
-caisseRouter.post('/commandes/:id/complement', async (req, res) => {
-  const { ajouts } = req.body ?? {};
-
-  if (!Array.isArray(ajouts) || ajouts.length === 0 || ajouts.length > 30) {
-    res.status(400).json({ error: 'Ajouts invalides' });
-    return;
-  }
-  for (const ajout of ajouts) {
-    if (
-      typeof ajout?.ligneId !== 'string' ||
-      !Number.isInteger(ajout?.quantite) ||
-      ajout.quantite <= 0 ||
-      ajout.quantite > 50
-    ) {
-      res
-        .status(400)
-        .json({ error: 'Chaque ajout doit viser un article avec une quantité entière positive' });
-      return;
-    }
-  }
-
-  const { etablissementId } = await getContexteServeur(req.user!.id);
-
-  const commande = await prisma.commande.findFirst({
-    where: { id: req.params.id, etablissementId },
-    include: { addition: true, lignes: { include: { options: true, produit: true } } },
-  });
-  if (!commande) {
-    res.status(404).json({ error: 'Commande introuvable' });
-    return;
-  }
-  if (commande.statut === 'ANNULEE') {
-    res.status(409).json({ error: 'Cette commande est annulée' });
-    return;
-  }
-  if (commande.addition.statut !== 'OUVERTE') {
-    res.status(409).json({ error: "L'addition est déjà encaissée" });
-    return;
-  }
-
-  // Plusieurs « + » sur le même article se cumulent en une seule ligne.
-  const quantitesParLigne = new Map<string, number>();
-  for (const ajout of ajouts as Array<{ ligneId: string; quantite: number }>) {
-    quantitesParLigne.set(ajout.ligneId, (quantitesParLigne.get(ajout.ligneId) ?? 0) + ajout.quantite);
-  }
-
-  const lignesACreer = [];
-  for (const [ligneId, quantite] of quantitesParLigne) {
-    const source = commande.lignes.find((l) => l.id === ligneId);
-    if (!source) {
-      res.status(400).json({ error: 'Article introuvable dans cette commande' });
-      return;
-    }
-    if (source.produit.statut !== 'ACTIF') {
-      res.status(409).json({ error: `« ${source.produit.nom} » n'est plus au menu` });
-      return;
-    }
-    // Mêmes produit, options et suite que l'article d'origine ; prix, coût et
-    // TVA figés à aujourd'hui (comme toute nouvelle commande).
-    lignesACreer.push({
-      produitId: source.produitId,
-      nomProduit: source.produit.nom,
-      prixUnitaire: source.produit.prix,
-      coutRevientUnitaire: source.produit.coutRevient,
-      tauxTva: source.produit.tauxTva,
-      suite: source.suite,
-      quantite: Math.min(quantite, 50),
-      options: {
-        create: source.options.map((o) => ({
-          optionValeurId: o.optionValeurId,
-          nomGroupe: o.nomGroupe,
-          valeur: o.valeur,
-        })),
-      },
-    });
-  }
-
-  const complement = await prisma.commande.create({
-    data: {
-      canal: commande.canal,
-      additionId: commande.additionId,
-      etablissementId,
-      serveurId: req.user!.id,
-      // La table garde sa progression : un plat ajouté pendant les plats part
-      // en préparation tout de suite, sans re-réclamer les suites déjà servies.
-      suiteReclamee: commande.suiteReclamee,
-      lignes: { create: lignesACreer },
-    },
-    include: INCLUDE_COMMANDE,
-  });
-
-  res.status(201).json(toPublicCommande(complement));
 });
 
 caisseRouter.patch('/commandes/:id/prete', async (req, res) => {
@@ -1010,7 +930,9 @@ caisseRouter.post('/commandes', async (req, res) => {
     res.status(400).json({ error: 'La note cuisine doit être du texte' });
     return;
   }
-  const erreurLignes = erreurLignesEntree(lignes);
+  // La caisse peut mélanger nouveaux produits et « la même chose en plus »
+  // (lignes { ligneSourceId, quantite } dupliquant un article déjà envoyé).
+  const erreurLignes = erreurLignesEntree(lignes, true);
   if (erreurLignes) {
     res.status(400).json({ error: erreurLignes });
     return;
@@ -1051,12 +973,84 @@ caisseRouter.post('/commandes', async (req, res) => {
     additionId = (await prisma.addition.create({ data: { etablissementId, tableId: null } })).id;
   }
 
-  const resolution = await resoudreLignesCommande(etablissementId, lignes as LigneEntree[]);
+  const lignesProduits = (lignes as Array<LigneEntree | LigneSourceEntree>).filter(
+    (l): l is LigneEntree => !('ligneSourceId' in l),
+  );
+  const lignesSources = (lignes as Array<LigneEntree | LigneSourceEntree>).filter(
+    (l): l is LigneSourceEntree => 'ligneSourceId' in l,
+  );
+
+  const resolution = await resoudreLignesCommande(etablissementId, lignesProduits);
   if (!resolution.ok) {
     res.status(400).json({ error: resolution.erreur });
     return;
   }
   const lignesAvecOptions = resolution.lignes;
+
+  // Duplication des articles existants : mêmes produit, options et suite que
+  // la ligne d'origine (qui doit appartenir à la même addition, encore ouverte) ;
+  // prix, coût et TVA figés à aujourd'hui, comme toute nouvelle ligne.
+  const duplicats: Array<{
+    produitId: string;
+    nomProduit: string;
+    prixUnitaire: Prisma.Decimal;
+    coutRevientUnitaire: Prisma.Decimal | null;
+    tauxTva: number;
+    suite: number;
+    quantite: number;
+    options: Array<{ optionValeurId: string | null; nomGroupe: string; valeur: string }>;
+  }> = [];
+  if (lignesSources.length > 0) {
+    // Plusieurs « + » sur le même article se cumulent en une seule ligne.
+    const quantitesParSource = new Map<string, number>();
+    for (const l of lignesSources) {
+      quantitesParSource.set(
+        l.ligneSourceId,
+        Math.min((quantitesParSource.get(l.ligneSourceId) ?? 0) + l.quantite, 50),
+      );
+    }
+    const sources = await prisma.ligneCommande.findMany({
+      where: {
+        id: { in: [...quantitesParSource.keys()] },
+        commande: { etablissementId, additionId, statut: { not: 'ANNULEE' } },
+      },
+      include: { options: true, produit: true },
+    });
+    const sourcesParId = new Map(sources.map((s) => [s.id, s]));
+    for (const [ligneSourceId, quantite] of quantitesParSource) {
+      const source = sourcesParId.get(ligneSourceId);
+      if (!source) {
+        res.status(400).json({ error: 'Article à dupliquer introuvable sur cette addition' });
+        return;
+      }
+      if (source.produit.statut !== 'ACTIF') {
+        res.status(409).json({ error: `« ${source.produit.nom} » n'est plus au menu` });
+        return;
+      }
+      duplicats.push({
+        produitId: source.produitId,
+        nomProduit: source.produit.nom,
+        prixUnitaire: source.produit.prix,
+        coutRevientUnitaire: source.produit.coutRevient,
+        tauxTva: source.produit.tauxTva,
+        suite: source.suite,
+        quantite,
+        options: source.options.map((o) => ({
+          optionValeurId: o.optionValeurId,
+          nomGroupe: o.nomGroupe,
+          valeur: o.valeur,
+        })),
+      });
+    }
+  }
+
+  // La table garde sa progression : une commande ajoutée pendant les plats
+  // part en préparation tout de suite, sans re-réclamer les suites servies.
+  const progression = await prisma.commande.aggregate({
+    where: { additionId, statut: { not: 'ANNULEE' } },
+    _max: { suiteReclamee: true },
+  });
+  const suiteReclamee = progression._max.suiteReclamee ?? 1;
 
   try {
     const commande = await prisma.commande.create({
@@ -1068,8 +1062,9 @@ caisseRouter.post('/commandes', async (req, res) => {
         noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
         etablissementId,
         serveurId: req.user!.id,
+        suiteReclamee,
         lignes: {
-          create: lignesAvecOptions.map((l) => ({
+          create: [...lignesAvecOptions, ...duplicats].map((l) => ({
             produitId: l.produitId,
             nomProduit: l.nomProduit,
             prixUnitaire: l.prixUnitaire,

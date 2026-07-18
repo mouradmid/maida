@@ -5,6 +5,7 @@ import {
   type CategorieMenu,
   type Commande,
   type DemandeClient,
+  type LigneCommande,
   type ProduitMenu,
   type TableCaisse,
   type Utilisateur,
@@ -25,7 +26,6 @@ import {
 import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
-import { GestionCommandes } from './GestionCommandes';
 
 interface ChoixOption {
   groupeOptionId: string;
@@ -49,6 +49,8 @@ function cleLigne(produitId: string, options: ChoixOption[]): string {
   return `${produitId}::${suffixe}`;
 }
 
+const SUITES = [1, 2, 3];
+
 export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [categories, setCategories] = useState<CategorieMenu[]>([]);
   const [tables, setTables] = useState<TableCaisse[]>([]);
@@ -61,7 +63,10 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [tableId, setTableId] = useState('');
   const [noteCuisine, setNoteCuisine] = useState('');
   const [panier, setPanier] = useState<Record<string, LignePanier>>({});
+  // « La même chose en plus » : quantités à rajouter, par article déjà envoyé.
+  const [rajouts, setRajouts] = useState<Record<string, number>>({});
   const [categorieActiveId, setCategorieActiveId] = useState<string | null>(null);
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
 
   const [produitEnSelection, setProduitEnSelection] = useState<ProduitMenu | null>(null);
   const [choixEnCours, setChoixEnCours] = useState<Record<string, string>>({});
@@ -69,6 +74,8 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [commandeAAnnuler, setCommandeAAnnuler] = useState<Commande | null>(null);
   const [derniereCommande, setDerniereCommande] = useState<Commande | null>(null);
   const [demandes, setDemandes] = useState<DemandeClient[]>([]);
+  // Article en cours de déplacement vers une autre suite (toucher-toucher).
+  const [ligneEnDeplacement, setLigneEnDeplacement] = useState<string | null>(null);
 
   async function chargerDemandes() {
     try {
@@ -78,9 +85,28 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     }
   }
 
+  // Rafraîchit l'état des commandes et des tables sans toucher au menu :
+  // le panneau de commande reste fidèle à ce que voit la cuisine.
+  async function rafraichirCommandes() {
+    try {
+      const [tablesActives, commandesRecentes] = await Promise.all([
+        api.caisseTables(),
+        api.listCommandes(),
+      ]);
+      setTables(tablesActives);
+      setCommandes(commandesRecentes);
+      sauvegarderCache('tables', tablesActives);
+    } catch {
+      // hors ligne : on garde le dernier état connu
+    }
+  }
+
   useEffect(() => {
     chargerDemandes();
-    const minuterie = setInterval(chargerDemandes, 15_000);
+    const minuterie = setInterval(() => {
+      chargerDemandes();
+      rafraichirCommandes();
+    }, 15_000);
     return () => clearInterval(minuterie);
   }, []);
 
@@ -106,36 +132,6 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
     }
-  }
-
-  // --- Gestion des commandes en cours (suites, ajouts) ---
-  // Ouvre l'écran de gestion soit pour une table (toutes ses commandes),
-  // soit pour une commande précise (à emporter depuis les commandes récentes).
-  const [gestion, setGestion] = useState<{ tableId?: string; commandeId?: string } | null>(null);
-
-  async function handleReclamer(c: Commande) {
-    const maj = await api.reclamerSuite(c.id);
-    setConfirmation(
-      `Suite ${maj.suiteReclamee} réclamée en cuisine — ${
-        c.canal === 'SUR_PLACE' ? `table ${c.table?.numero}` : 'à emporter'
-      }.`,
-    );
-    await chargerTout();
-  }
-
-  async function handleComplementEnvoye(complement: Commande) {
-    setConfirmation(
-      `Ajout envoyé en cuisine — ${complement.total} DA${
-        complement.table ? ` (table ${complement.table.numero})` : ''
-      }`,
-    );
-    setDerniereCommande(complement);
-    await chargerTout();
-  }
-
-  function ouvrirGestionPour(c: Commande) {
-    const table = c.canal === 'SUR_PLACE' ? tables.find((t) => t.numero === c.table?.numero) : undefined;
-    setGestion(table ? { tableId: table.id } : { commandeId: c.id });
   }
 
   async function chargerTout() {
@@ -231,35 +227,99 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     });
   }
 
+  function changerRajout(ligneId: string, delta: number) {
+    setRajouts((r) => {
+      const quantite = Math.min((r[ligneId] ?? 0) + delta, 50);
+      if (quantite <= 0) {
+        const { [ligneId]: _retire, ...reste } = r;
+        return reste;
+      }
+      return { ...r, [ligneId]: quantite };
+    });
+  }
+
   const lignesPanier = Object.values(panier);
-  const total = lignesPanier.reduce((s, l) => s + l.produit.prix * l.quantite, 0);
-  const nbArticles = lignesPanier.reduce((s, l) => s + l.quantite, 0);
   const categorieActive = categories.find((c) => c.id === categorieActiveId) ?? categories[0];
   const tableSelectionnee = tables.find((t) => t.id === tableId) ?? null;
 
-  const tableGestion = gestion?.tableId ? (tables.find((t) => t.id === gestion.tableId) ?? null) : null;
-  const commandesGestion = gestion
+  // Commandes en cours de l'addition de la table sélectionnée : la partie
+  // « déjà envoyé » du panneau de commande.
+  const commandesTable = tableSelectionnee
     ? commandes
-        .filter((c) =>
-          gestion.commandeId
-            ? c.id === gestion.commandeId
-            : c.canal === 'SUR_PLACE' &&
-              c.table?.numero === tableGestion?.numero &&
-              c.additionStatut === 'OUVERTE' &&
-              c.statut !== 'ANNULEE',
+        .filter(
+          (c) =>
+            c.canal === 'SUR_PLACE' &&
+            c.table?.numero === tableSelectionnee.numero &&
+            c.additionStatut === 'OUVERTE' &&
+            c.statut !== 'ANNULEE',
         )
         .sort((a, b) => new Date(a.creeLe).getTime() - new Date(b.creeLe).getTime())
     : [];
+  const additionIdTable = commandesTable[0]?.additionId ?? null;
+  const lignesEnvoyees: Array<{ ligne: LigneCommande; commande: Commande }> = commandesTable.flatMap(
+    (c) => c.lignes.map((ligne) => ({ ligne, commande: c })),
+  );
+  const lignesParId = new Map(lignesEnvoyees.map((e) => [e.ligne.id, e]));
+  const commandesEnvoyees = commandesTable.filter((c) => c.statut === 'ENVOYEE');
+  const suiteMaxTable = Math.max(1, ...commandesEnvoyees.flatMap((c) => c.lignes.map((l) => l.suite)));
+  const suiteReclameeTable = Math.max(1, ...commandesEnvoyees.map((c) => c.suiteReclamee));
+  const totalEnvoye = commandesTable.reduce((s, c) => s + c.total, 0);
 
-  // Toucher une table occupée (panier vide) ouvre la gestion de ses commandes ;
-  // sinon, sélection normale pour la commande en cours de saisie.
+  // À emporter en préparation : gestion minimale (réclame, annulation).
+  const commandesEmporter = commandes.filter(
+    (c) => c.canal === 'EMPORTER' && c.additionStatut === 'OUVERTE' && c.statut !== 'ANNULEE',
+  );
+
+  const lignesRajouts = Object.entries(rajouts)
+    .map(([ligneId, quantite]) => ({ entree: lignesParId.get(ligneId), ligneId, quantite }))
+    .filter(
+      (
+        r,
+      ): r is {
+        entree: { ligne: LigneCommande; commande: Commande };
+        ligneId: string;
+        quantite: number;
+      } => Boolean(r.entree),
+    );
+  const totalRajouts = lignesRajouts.reduce((s, r) => s + r.entree.ligne.prixUnitaire * r.quantite, 0);
+  const totalPanier = lignesPanier.reduce((s, l) => s + l.produit.prix * l.quantite, 0);
+  const totalAEnvoyer = totalPanier + totalRajouts;
+  const nbArticles =
+    lignesPanier.reduce((s, l) => s + l.quantite, 0) + lignesRajouts.reduce((s, r) => s + r.quantite, 0);
+
   function handleChoisirTable(id: string) {
-    const table = tables.find((t) => t.id === id);
-    if (table?.occupee && lignesPanier.length === 0) {
-      setGestion({ tableId: id });
-      return;
+    if (id !== tableId) {
+      // Les rajouts visent les articles de la table précédente : on repart à zéro.
+      setRajouts({});
+      setLigneEnDeplacement(null);
     }
     setTableId(id);
+  }
+
+  async function handleReclamerTable(additionId: string) {
+    setErreur(null);
+    try {
+      const res = await api.reclamerSuiteTable(additionId);
+      setConfirmation(`Suite ${res.suiteReclamee} réclamée en cuisine.`);
+      await rafraichirCommandes();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleDeposerDansSuite(suite: number) {
+    const ligneId = ligneEnDeplacement;
+    setLigneEnDeplacement(null);
+    if (!ligneId) return;
+    const entree = lignesParId.get(ligneId);
+    if (!entree || entree.ligne.suite === suite || entree.commande.statut !== 'ENVOYEE') return;
+    setErreur(null);
+    try {
+      await api.updateSuiteLigne(ligneId, suite);
+      await rafraichirCommandes();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
   }
 
   async function handleEnvoyerCommande() {
@@ -269,35 +329,55 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       setErreur('Choisissez une table');
       return;
     }
+    const lignesProduits = lignesPanier.map((l) => ({
+      produitId: l.produit.id,
+      quantite: l.quantite,
+      options: l.options.map((o) => ({
+        groupeOptionId: o.groupeOptionId,
+        optionValeurId: o.optionValeurId,
+      })),
+    }));
+    const lignesSources = lignesRajouts.map((r) => ({
+      ligneSourceId: r.ligneId,
+      quantite: r.quantite,
+    }));
     const donnees = {
       canal,
       tableId: canal === 'SUR_PLACE' ? tableId : undefined,
       noteCuisine: noteCuisine.trim() || undefined,
-      lignes: lignesPanier.map((l) => ({
-        produitId: l.produit.id,
-        quantite: l.quantite,
-        options: l.options.map((o) => ({
-          groupeOptionId: o.groupeOptionId,
-          optionValeurId: o.optionValeurId,
-        })),
-      })),
+      lignes: [...lignesProduits, ...lignesSources],
     };
 
+    setEnvoiEnCours(true);
     try {
       const commande = await api.creerCommande(donnees);
       setConfirmation(`Commande envoyée — total ${commande.total} DA`);
       setDerniereCommande(commande);
       setPanier({});
-      setTableId('');
+      setRajouts({});
       setNoteCuisine('');
+      if (canal === 'EMPORTER') setTableId('');
       await chargerTout();
     } catch (err) {
       if (err instanceof ErreurReseau) {
+        if (lignesSources.length > 0) {
+          // La duplication d'articles existants se résout côté serveur : elle
+          // ne peut pas partir dans la file locale.
+          setErreur(
+            'Hors ligne : les rajouts d’articles déjà envoyés nécessitent du réseau. Retirez-les pour envoyer le reste, puis rajoutez-les à la reconnexion.',
+          );
+          return;
+        }
         // Coupure réseau : la commande part dans la file locale, le service continue.
         const entree = mettreEnAttente({
-          description: `${tableSelectionnee ? `Table ${tableSelectionnee.numero}` : 'À emporter'} — ${total} DA`,
-          total,
-          donnees,
+          description: `${tableSelectionnee ? `Table ${tableSelectionnee.numero}` : 'À emporter'} — ${totalPanier} DA`,
+          total: totalPanier,
+          donnees: {
+            canal,
+            tableId: donnees.tableId,
+            noteCuisine: donnees.noteCuisine,
+            lignes: lignesProduits,
+          },
         });
         const utilisateurLocal = lireCache<Utilisateur>('utilisateur');
         // Reconstitution locale de la commande : permet d'imprimer le ticket
@@ -329,21 +409,58 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             quantiteOfferte: 0,
             options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
           })),
-          total,
+          total: totalPanier,
         });
         setConfirmation(
-          `Hors ligne — commande enregistrée (${total} DA), elle sera envoyée au retour du réseau`,
+          `Hors ligne — commande enregistrée (${totalPanier} DA), elle sera envoyée au retour du réseau`,
         );
         if (canal === 'SUR_PLACE' && tableId) {
           setTables((liste) => liste.map((t) => (t.id === tableId ? { ...t, occupee: true } : t)));
         }
         setPanier({});
-        setTableId('');
         setNoteCuisine('');
+        if (canal === 'EMPORTER') setTableId('');
         return;
       }
       setErreur(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setEnvoiEnCours(false);
     }
+  }
+
+  function boutonRajout(ligne: LigneCommande) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          changerRajout(ligne.id, 1);
+        }}
+        aria-label={`Ajouter un ${ligne.nomProduit}`}
+        title="En rajouter un (part en cuisine avec le prochain envoi)"
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold leading-none text-white hover:bg-brand-700"
+      >
+        +
+      </button>
+    );
+  }
+
+  // Petit « ✕ » sur un article envoyé : ouvre l'annulation de sa commande.
+  function boutonAnnulerCommande(commande: Commande) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setCommandeAAnnuler(commande);
+        }}
+        aria-label="Annuler des articles de cette commande"
+        title="Annuler des articles de cette commande"
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-red-200 bg-white text-xs font-bold leading-none text-red-600 hover:bg-red-50"
+      >
+        ✕
+      </button>
+    );
   }
 
   if (chargement) return <p className="text-center text-stone-500">Chargement du menu...</p>;
@@ -428,7 +545,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
         </div>
       )}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_380px]">
         {/* Colonne menu */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -456,6 +573,70 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
 
           {canal === 'SUR_PLACE' && (
             <PlanTablesCaisse tables={tables} tableId={tableId} onSelect={handleChoisirTable} />
+          )}
+
+          {canal === 'EMPORTER' && commandesEmporter.length > 0 && (
+            <div className={carte}>
+              <h3 className="mb-2 text-sm font-semibold text-stone-900">À emporter en préparation</h3>
+              <ul className="flex flex-col divide-y divide-stone-100">
+                {commandesEmporter.map((c) => {
+                  const annulable =
+                    c.statut !== 'ANNULEE' &&
+                    c.lignes.some((l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0);
+                  const suiteMax = Math.max(1, ...c.lignes.map((l) => l.suite));
+                  return (
+                    <li
+                      key={c.id}
+                      className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-medium text-stone-900">
+                          {new Date(c.creeLe).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                        {c.statut === 'PRETE' && <span className={`${badgeVert} ml-2`}>prête</span>}
+                        <span className="ml-2 text-xs text-stone-500">
+                          {c.lignes
+                            .filter((l) => l.quantite - l.quantiteAnnulee > 0)
+                            .map(
+                              (l) =>
+                                `${l.quantite - l.quantiteAnnulee}× ${l.nomProduit}${
+                                  l.options.length
+                                    ? ` (${l.options.map((o) => o.valeur).join(', ')})`
+                                    : ''
+                                }`,
+                            )
+                            .join(' · ')}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="font-semibold text-stone-900">{da(c.total)}</span>
+                        {c.statut === 'ENVOYEE' && c.suiteReclamee < suiteMax && (
+                          <button
+                            type="button"
+                            onClick={() => handleReclamerTable(c.additionId)}
+                            className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+                          >
+                            Réclamer la suite {c.suiteReclamee + 1}
+                          </button>
+                        )}
+                        {annulable && (
+                          <button
+                            type="button"
+                            onClick={() => setCommandeAAnnuler(c)}
+                            className="text-xs font-medium text-red-600 transition-colors hover:text-red-800"
+                          >
+                            Annuler
+                          </button>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
 
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -499,13 +680,13 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           </div>
         </div>
 
-        {/* Colonne panier */}
+        {/* Panneau de commande : tout ce qui concerne la table sélectionnée */}
         <div className={`${carte} sticky top-20 flex flex-col gap-4`}>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-stone-900">Commande</h2>
             {nbArticles > 0 && (
               <span className={badgeNeutre}>
-                {nbArticles} article{nbArticles > 1 ? 's' : ''}
+                {nbArticles} article{nbArticles > 1 ? 's' : ''} à envoyer
               </span>
             )}
           </div>
@@ -514,18 +695,156 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             {canal === 'EMPORTER' ? (
               <span className={badgeBrand}>À emporter</span>
             ) : tableSelectionnee ? (
-              <span className={badgeBrand}>
-                Table {tableSelectionnee.numero}
-                {tableSelectionnee.occupee && ' — s’ajoute à l’addition en cours'}
-              </span>
+              <span className={badgeBrand}>Table {tableSelectionnee.numero}</span>
             ) : (
               <span className={badgeNeutre}>Touchez une table sur le plan</span>
             )}
           </div>
 
-          {lignesPanier.length === 0 && (
-            <p className="py-6 text-center text-sm text-stone-400">
-              Touchez un produit pour l'ajouter à la commande.
+          {/* Déjà envoyé : les articles en cuisine, groupés par suite */}
+          {commandesTable.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                  Déjà envoyé — {da(totalEnvoye)}
+                </span>
+                {commandesEnvoyees.length > 0 && suiteReclameeTable < suiteMaxTable && (
+                  <button
+                    type="button"
+                    onClick={() => additionIdTable && handleReclamerTable(additionIdTable)}
+                    title="La table est prête pour la suite : la cuisine peut la préparer"
+                    className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+                  >
+                    Réclamer la suite {suiteReclameeTable + 1}
+                  </button>
+                )}
+              </div>
+
+              {SUITES.filter(
+                (suite) =>
+                  lignesEnvoyees.some((e) => e.ligne.suite === suite) || ligneEnDeplacement !== null,
+              ).map((suite) => (
+                <div
+                  key={suite}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDeposerDansSuite(suite)}
+                  onClick={() => {
+                    // Équivalent tactile du glisser-déposer : on touche
+                    // l'article, puis la suite de destination.
+                    if (ligneEnDeplacement) handleDeposerDansSuite(suite);
+                  }}
+                  className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
+                    ligneEnDeplacement
+                      ? 'cursor-pointer border-dashed border-sky-400 bg-sky-50'
+                      : 'border-stone-200 bg-white'
+                  }`}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                    Suite {suite}
+                    {suite <= suiteReclameeTable ? ' · en cuisine' : ' · en attente'}
+                  </span>
+                  {lignesEnvoyees
+                    .filter((e) => e.ligne.suite === suite)
+                    .map(({ ligne, commande }) => {
+                      const active = ligne.quantite - ligne.quantiteAnnulee;
+                      const deplacable = commande.statut === 'ENVOYEE';
+                      return (
+                        <span
+                          key={ligne.id}
+                          draggable={deplacable}
+                          onDragStart={() => deplacable && setLigneEnDeplacement(ligne.id)}
+                          onDragEnd={() => setLigneEnDeplacement(null)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!deplacable) return;
+                            setLigneEnDeplacement(ligneEnDeplacement === ligne.id ? null : ligne.id);
+                          }}
+                          title={
+                            deplacable
+                              ? 'Glissez (ou touchez puis touchez la suite de destination) pour changer de suite'
+                              : undefined
+                          }
+                          className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 text-xs shadow-sm ring-1 ${
+                            deplacable ? 'cursor-grab active:cursor-grabbing' : ''
+                          } ${
+                            ligneEnDeplacement === ligne.id
+                              ? 'bg-sky-600 text-white ring-sky-600'
+                              : `bg-white ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            {active === 0 ? ligne.quantite : active}× {ligne.nomProduit}
+                            {ligne.options.length > 0 &&
+                              ` (${ligne.options.map((o) => o.valeur).join(', ')})`}
+                            {commande.statut === 'PRETE' && (
+                              <span className="ml-1 font-semibold text-green-700">✓ prête</span>
+                            )}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            {active > 0 && boutonRajout(ligne)}
+                            {active > 0 && boutonAnnulerCommande(commande)}
+                          </span>
+                        </span>
+                      );
+                    })}
+                </div>
+              ))}
+
+              {commandesTable.some((c) => c.noteCuisine) && (
+                <p className="text-xs italic text-brand-700">
+                  Cuisine :{' '}
+                  {commandesTable
+                    .filter((c) => c.noteCuisine)
+                    .map((c) => c.noteCuisine)
+                    .join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* À envoyer : rajouts + nouveaux articles */}
+          {lignesRajouts.length > 0 && (
+            <ul className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 p-2.5">
+              {lignesRajouts.map(({ entree, ligneId, quantite }) => (
+                <li key={ligneId} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 text-stone-800">
+                    {entree.ligne.nomProduit}
+                    {entree.ligne.options.length > 0 && (
+                      <span className="text-stone-500">
+                        {' '}
+                        ({entree.ligne.options.map((o) => o.valeur).join(', ')})
+                      </span>
+                    )}
+                    <span className="ml-1 text-xs text-stone-500">— rajout</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => changerRajout(ligneId, -1)}
+                      aria-label={`Retirer un ${entree.ligne.nomProduit}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center font-semibold">+{quantite}</span>
+                    <button
+                      type="button"
+                      onClick={() => changerRajout(ligneId, 1)}
+                      aria-label={`Ajouter un ${entree.ligne.nomProduit}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                    >
+                      +
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {lignesPanier.length === 0 && lignesRajouts.length === 0 && (
+            <p className="py-4 text-center text-sm text-stone-400">
+              Touchez un produit pour l'ajouter à la commande
+              {commandesTable.length > 0 ? ', ou « + » sur un article envoyé pour en rajouter un' : ''}.
             </p>
           )}
 
@@ -566,10 +885,10 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             ))}
           </ul>
 
-          {lignesPanier.length > 0 && (
+          {nbArticles > 0 && (
             <div className="flex items-center justify-between border-t border-stone-100 pt-3">
-              <span className="text-sm font-medium text-stone-600">Total</span>
-              <span className="text-xl font-bold text-stone-900">{total} DA</span>
+              <span className="text-sm font-medium text-stone-600">À envoyer</span>
+              <span className="text-xl font-bold text-stone-900">{totalAEnvoyer} DA</span>
             </div>
           )}
 
@@ -589,11 +908,11 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
 
           <button
             type="button"
-            disabled={lignesPanier.length === 0}
+            disabled={nbArticles === 0 || envoiEnCours}
             onClick={handleEnvoyerCommande}
             className={`${boutonPrimaire} py-3 text-base`}
           >
-            Envoyer la commande
+            Envoyer en cuisine
           </button>
         </div>
       </div>
@@ -652,112 +971,6 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Commandes récentes */}
-      <div className={carte}>
-        <h2 className="mb-3 text-lg font-semibold text-stone-900">Commandes récentes</h2>
-        <ul className="flex flex-col divide-y divide-stone-100">
-          {commandes.map((c) => {
-            const annulable =
-              c.statut !== 'ANNULEE' &&
-              c.lignes.some((l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0);
-            return (
-              <li key={c.id} className="flex flex-col gap-1 py-3 text-sm first:pt-0 last:pb-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-stone-900">
-                    {c.canal === 'SUR_PLACE' ? `Table ${c.table?.numero ?? '?'}` : 'À emporter'}
-                    <span className="ml-2 font-normal text-stone-500">
-                      {c.serveur.prenom} {c.serveur.nom}
-                    </span>
-                    {c.statut === 'PRETE' && <span className={`${badgeVert} ml-2`}>prête</span>}
-                    {c.statut === 'ANNULEE' && (
-                      <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
-                        annulée
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-3">
-                    <span
-                      className={`font-semibold ${c.statut === 'ANNULEE' ? 'text-stone-400 line-through' : 'text-stone-900'}`}
-                    >
-                      {c.total} DA
-                    </span>
-                    {c.statut !== 'ANNULEE' && c.additionStatut === 'OUVERTE' && (
-                      <button
-                        type="button"
-                        onClick={() => ouvrirGestionPour(c)}
-                        title="Suites de service, ajouts, annulation"
-                        className="rounded-lg border border-stone-200 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50"
-                      >
-                        Gérer
-                      </button>
-                    )}
-                    {annulable && (
-                      <button
-                        type="button"
-                        onClick={() => setCommandeAAnnuler(c)}
-                        className="text-xs font-medium text-red-600 transition-colors hover:text-red-800"
-                      >
-                        Annuler
-                      </button>
-                    )}
-                  </span>
-                </div>
-                <p className="text-xs text-stone-500">
-                  {c.lignes.map((l, i) => {
-                    const active = l.quantite - l.quantiteAnnulee;
-                    const opts =
-                      l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
-                    return (
-                      <span key={l.id}>
-                        {i > 0 && ' · '}
-                        {active > 0 && `${active}× ${l.nomProduit}${opts}`}
-                        {l.quantiteAnnulee > 0 && (
-                          <span className="text-red-400 line-through">
-                            {active > 0 && ' '}
-                            {l.quantiteAnnulee}× {l.nomProduit}
-                            {opts}
-                          </span>
-                        )}
-                      </span>
-                    );
-                  })}
-                </p>
-                {c.noteCuisine && (
-                  <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>
-                )}
-              </li>
-            );
-          })}
-          {commandes.length === 0 && (
-            <li className="text-sm text-stone-400">Aucune commande pour l'instant.</li>
-          )}
-        </ul>
-      </div>
-
-      {gestion && (
-        <GestionCommandes
-          titre={tableGestion ? `Table ${tableGestion.numero}` : 'À emporter'}
-          commandes={commandesGestion}
-          onFermer={() => setGestion(null)}
-          onAjouterArticles={
-            gestion.tableId
-              ? () => {
-                  setCanal('SUR_PLACE');
-                  setTableId(gestion.tableId!);
-                  setGestion(null);
-                }
-              : null
-          }
-          onAnnuler={(c) => {
-            setGestion(null);
-            setCommandeAAnnuler(c);
-          }}
-          onReclamer={handleReclamer}
-          onComplementEnvoye={handleComplementEnvoye}
-          onMaj={chargerTout}
-        />
       )}
 
       {commandeAAnnuler && (

@@ -11,6 +11,14 @@ export interface LigneEntree {
   options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
 }
 
+// « La même chose en plus » : référence un article déjà envoyé de la même
+// addition, dupliqué côté serveur (mêmes produit, options et suite).
+// Réservé à la caisse — jamais accepté sur la route publique.
+export interface LigneSourceEntree {
+  ligneSourceId: string;
+  quantite: number;
+}
+
 export interface LigneResolue {
   produitId: string;
   nomProduit: string;
@@ -24,8 +32,9 @@ export interface LigneResolue {
 }
 
 // Vérifie la forme brute des lignes reçues. Renvoie un message d'erreur, ou
-// null si tout est valide.
-export function erreurLignesEntree(lignes: unknown): string | null {
+// null si tout est valide. `autoriserSources` (caisse uniquement) accepte en
+// plus les lignes { ligneSourceId, quantite } qui dupliquent un article envoyé.
+export function erreurLignesEntree(lignes: unknown, autoriserSources = false): string | null {
   if (!Array.isArray(lignes) || lignes.length === 0) {
     return 'La commande doit contenir au moins un produit';
   }
@@ -33,12 +42,13 @@ export function erreurLignesEntree(lignes: unknown): string | null {
     return 'La commande contient trop de lignes';
   }
   for (const ligne of lignes) {
-    if (
-      typeof ligne?.produitId !== 'string' ||
-      !Number.isInteger(ligne?.quantite) ||
-      ligne.quantite <= 0 ||
-      ligne.quantite > 50
-    ) {
+    if (!Number.isInteger(ligne?.quantite) || ligne.quantite <= 0 || ligne.quantite > 50) {
+      return 'Chaque ligne doit avoir une quantité entière positive';
+    }
+    if (autoriserSources && typeof ligne?.ligneSourceId === 'string') {
+      continue;
+    }
+    if (typeof ligne?.produitId !== 'string') {
       return 'Chaque ligne doit avoir un produitId et une quantité entière positive';
     }
     if (

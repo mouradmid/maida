@@ -28,11 +28,12 @@
   arrive à la caisse et un serveur la valide avant l'envoi en cuisine (anti-abus) ; activable
   par chaque gérant
 - **Suites de service** : entrée / plat / dessert hérités des catégories (commandes caisse et
-  QR client), cuisine par suites avec « en attente de réclame », bouton **Réclamer la suite**,
+  QR client), cuisine par suites avec « en attente de réclame », réclame **par table**,
   correction d'un article par glisser-déposer ou toucher-toucher (tablette)
-- **Écran de gestion de commande** : toucher une table occupée ouvre ses commandes en cours —
-  suites, réclame, annulation, et **ajout rapide de quantités** (« un 2e Hamoud ») envoyé en
-  cuisine comme complément sur la même addition
+- **Panneau de commande unifié** (style Lightspeed) : tout se passe dans un seul cadre par
+  table — articles déjà en cuisine groupés par suite, rajout rapide (« un 2e Hamoud »),
+  nouveaux articles du menu, annulation, réclame — un seul bouton « Envoyer en cuisine »,
+  un seul ticket ; les commandes ajoutées héritent de la progression des suites de la table
 
 ### Mode hors ligne — le différenciateur
 

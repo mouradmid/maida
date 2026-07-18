@@ -24,8 +24,9 @@ script échoue (timeouts) même sur localhost.
   Sofiane, droits ANNULER/CLOTURER/REMISER). Sélectionner l'établissement par le
   texte « Bon Grill », jamais par position.
 - Plan de salle : boutons `button.absolute` ; une table libre a la classe
-  `bg-white`, une occupée `bg-brand-100`. Toucher une table occupée avec panier
-  vide ouvre l'écran de gestion de commande.
+  `bg-white`, une occupée `bg-brand-100`. Sélectionner une table affiche son
+  panneau de commande unifié à droite (« Déjà envoyé » + « à envoyer », bouton
+  « Envoyer en cuisine »).
 - Cliquer un élément par texte : filtrer `document.querySelectorAll('button')`
   sur `textContent` en EXCLUANT les conteneurs (`!b.querySelector('button')`).
 

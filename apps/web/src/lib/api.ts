@@ -447,19 +447,16 @@ export const api = {
   marquerCommandePrete: (id: string) =>
     apiFetch<Commande>(`/caisse/commandes/${id}/prete`, { method: 'PATCH' }),
 
-  reclamerSuite: (id: string) =>
-    apiFetch<Commande>(`/caisse/commandes/${id}/reclamer`, { method: 'POST' }),
+  reclamerSuiteTable: (additionId: string) =>
+    apiFetch<{ suiteReclamee: number; commandes: Commande[] }>(
+      `/caisse/additions/${additionId}/reclamer`,
+      { method: 'POST' },
+    ),
 
   updateSuiteLigne: (ligneId: string, suite: number) =>
     apiFetch<Commande>(`/caisse/lignes/${ligneId}/suite`, {
       method: 'PATCH',
       body: JSON.stringify({ suite }),
-    }),
-
-  complementCommande: (commandeId: string, ajouts: Array<{ ligneId: string; quantite: number }>) =>
-    apiFetch<Commande>(`/caisse/commandes/${commandeId}/complement`, {
-      method: 'POST',
-      body: JSON.stringify({ ajouts }),
     }),
 
   annulerCommande: (
@@ -483,11 +480,15 @@ export const api = {
     canal: 'SUR_PLACE' | 'EMPORTER';
     tableId?: string;
     noteCuisine?: string;
-    lignes: Array<{
-      produitId: string;
-      quantite: number;
-      options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
-    }>;
+    lignes: Array<
+      | {
+          produitId: string;
+          quantite: number;
+          options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
+        }
+      // « La même chose en plus » : duplique un article déjà envoyé de l'addition.
+      | { ligneSourceId: string; quantite: number }
+    >;
     cleIdempotence?: string;
     creeLeHorsLigne?: string;
   }) => apiFetch<Commande>('/caisse/commandes', { method: 'POST', body: JSON.stringify(data) }),
