@@ -299,6 +299,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             nomProduit: l.produit.nom,
             prixUnitaire: l.produit.prix,
             tauxTva: null,
+            suite: 1,
             quantite: l.quantite,
             quantitePayee: 0,
             quantiteAnnulee: 0,
