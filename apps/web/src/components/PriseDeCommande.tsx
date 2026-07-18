@@ -288,6 +288,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           additionStatut: 'OUVERTE',
           table: tableSelectionnee ? { numero: tableSelectionnee.numero } : null,
           statut: 'ENVOYEE',
+          suiteReclamee: 1,
           creeLe: entree.creeLe,
           preteLe: null,
           serveur: {
