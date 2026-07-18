@@ -25,6 +25,7 @@ import {
 import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
+import { GestionCommandes } from './GestionCommandes';
 
 interface ChoixOption {
   groupeOptionId: string;
@@ -107,41 +108,37 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     }
   }
 
-  // --- Suites de service ---
-  const [ligneEnDeplacement, setLigneEnDeplacement] = useState<string | null>(null);
+  // --- Gestion des commandes en cours (suites, ajouts) ---
+  // Ouvre l'écran de gestion soit pour une table (toutes ses commandes),
+  // soit pour une commande précise (à emporter depuis les commandes récentes).
+  const [gestion, setGestion] = useState<{ tableId?: string; commandeId?: string } | null>(null);
 
   async function handleReclamer(c: Commande) {
-    setErreur(null);
-    try {
-      const maj = await api.reclamerSuite(c.id);
-      setConfirmation(
-        `Suite ${maj.suiteReclamee} réclamée en cuisine — ${
-          c.canal === 'SUR_PLACE' ? `table ${c.table?.numero}` : 'à emporter'
-        }.`,
-      );
-      await chargerTout();
-    } catch (err) {
-      setErreur(err instanceof Error ? err.message : 'Erreur');
-    }
+    const maj = await api.reclamerSuite(c.id);
+    setConfirmation(
+      `Suite ${maj.suiteReclamee} réclamée en cuisine — ${
+        c.canal === 'SUR_PLACE' ? `table ${c.table?.numero}` : 'à emporter'
+      }.`,
+    );
+    await chargerTout();
   }
 
-  async function handleDeposerDansSuite(c: Commande, suite: number) {
-    const ligneId = ligneEnDeplacement;
-    setLigneEnDeplacement(null);
-    if (!ligneId) return;
-    const ligne = c.lignes.find((l) => l.id === ligneId);
-    if (!ligne || ligne.suite === suite) return;
-    setErreur(null);
-    try {
-      await api.updateSuiteLigne(ligneId, suite);
-      await chargerTout();
-    } catch (err) {
-      setErreur(err instanceof Error ? err.message : 'Erreur');
-    }
+  async function handleComplementEnvoye(complement: Commande) {
+    setConfirmation(
+      `Ajout envoyé en cuisine — ${complement.total} DA${
+        complement.table ? ` (table ${complement.table.numero})` : ''
+      }`,
+    );
+    setDerniereCommande(complement);
+    await chargerTout();
+  }
+
+  function ouvrirGestionPour(c: Commande) {
+    const table = c.canal === 'SUR_PLACE' ? tables.find((t) => t.numero === c.table?.numero) : undefined;
+    setGestion(table ? { tableId: table.id } : { commandeId: c.id });
   }
 
   async function chargerTout() {
-    setChargement(true);
     try {
       const [menu, tablesActives, commandesRecentes] = await Promise.all([
         api.caisseMenu(),
@@ -239,6 +236,31 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const nbArticles = lignesPanier.reduce((s, l) => s + l.quantite, 0);
   const categorieActive = categories.find((c) => c.id === categorieActiveId) ?? categories[0];
   const tableSelectionnee = tables.find((t) => t.id === tableId) ?? null;
+
+  const tableGestion = gestion?.tableId ? (tables.find((t) => t.id === gestion.tableId) ?? null) : null;
+  const commandesGestion = gestion
+    ? commandes
+        .filter((c) =>
+          gestion.commandeId
+            ? c.id === gestion.commandeId
+            : c.canal === 'SUR_PLACE' &&
+              c.table?.numero === tableGestion?.numero &&
+              c.additionStatut === 'OUVERTE' &&
+              c.statut !== 'ANNULEE',
+        )
+        .sort((a, b) => new Date(a.creeLe).getTime() - new Date(b.creeLe).getTime())
+    : [];
+
+  // Toucher une table occupée (panier vide) ouvre la gestion de ses commandes ;
+  // sinon, sélection normale pour la commande en cours de saisie.
+  function handleChoisirTable(id: string) {
+    const table = tables.find((t) => t.id === id);
+    if (table?.occupee && lignesPanier.length === 0) {
+      setGestion({ tableId: id });
+      return;
+    }
+    setTableId(id);
+  }
 
   async function handleEnvoyerCommande() {
     setErreur(null);
@@ -433,7 +455,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           </div>
 
           {canal === 'SUR_PLACE' && (
-            <PlanTablesCaisse tables={tables} tableId={tableId} onSelect={setTableId} />
+            <PlanTablesCaisse tables={tables} tableId={tableId} onSelect={handleChoisirTable} />
           )}
 
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -661,17 +683,16 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                     >
                       {c.total} DA
                     </span>
-                    {c.statut === 'ENVOYEE' &&
-                      c.suiteReclamee < Math.max(1, ...c.lignes.map((l) => l.suite)) && (
-                        <button
-                          type="button"
-                          onClick={() => handleReclamer(c)}
-                          title="La table est prête pour la suite : la cuisine peut la préparer"
-                          className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
-                        >
-                          Réclamer la suite {c.suiteReclamee + 1}
-                        </button>
-                      )}
+                    {c.statut !== 'ANNULEE' && c.additionStatut === 'OUVERTE' && (
+                      <button
+                        type="button"
+                        onClick={() => ouvrirGestionPour(c)}
+                        title="Suites de service, ajouts, annulation"
+                        className="rounded-lg border border-stone-200 bg-white px-3 py-1 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50"
+                      >
+                        Gérer
+                      </button>
+                    )}
                     {annulable && (
                       <button
                         type="button"
@@ -683,91 +704,26 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
                     )}
                   </span>
                 </div>
-                {c.statut === 'ENVOYEE' ? (
-                  // Lignes groupées par suite : glisser un article vers une autre
-                  // suite pour corriger (une salade partie en plat, par exemple).
-                  <div className="flex flex-wrap gap-2">
-                    {[1, 2, 3]
-                      .filter(
-                        (suite) =>
-                          c.lignes.some((l) => l.suite === suite) ||
-                          new Set(c.lignes.map((l) => l.suite)).size > 1 ||
-                          ligneEnDeplacement !== null,
-                      )
-                      .map((suite) => (
-                        <div
-                          key={suite}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => handleDeposerDansSuite(c, suite)}
-                          onClick={() => {
-                            // Équivalent tactile du glisser-déposer : on touche
-                            // l'article, puis la suite de destination.
-                            if (ligneEnDeplacement) handleDeposerDansSuite(c, suite);
-                          }}
-                          className={`flex min-w-28 flex-1 flex-col gap-1 rounded-lg border px-2 py-1.5 ${
-                            ligneEnDeplacement
-                              ? 'cursor-pointer border-dashed border-sky-400 bg-sky-50'
-                              : suite <= c.suiteReclamee
-                                ? 'border-stone-200 bg-stone-50'
-                                : 'border-stone-200 bg-white'
-                          }`}
-                        >
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                            Suite {suite}
-                            {suite <= c.suiteReclamee ? ' · en cuisine' : ' · en attente'}
+                <p className="text-xs text-stone-500">
+                  {c.lignes.map((l, i) => {
+                    const active = l.quantite - l.quantiteAnnulee;
+                    const opts =
+                      l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
+                    return (
+                      <span key={l.id}>
+                        {i > 0 && ' · '}
+                        {active > 0 && `${active}× ${l.nomProduit}${opts}`}
+                        {l.quantiteAnnulee > 0 && (
+                          <span className="text-red-400 line-through">
+                            {active > 0 && ' '}
+                            {l.quantiteAnnulee}× {l.nomProduit}
+                            {opts}
                           </span>
-                          {c.lignes
-                            .filter((l) => l.suite === suite)
-                            .map((l) => {
-                              const active = l.quantite - l.quantiteAnnulee;
-                              return (
-                                <span
-                                  key={l.id}
-                                  draggable
-                                  onDragStart={() => setLigneEnDeplacement(l.id)}
-                                  onDragEnd={() => setLigneEnDeplacement(null)}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setLigneEnDeplacement(ligneEnDeplacement === l.id ? null : l.id);
-                                  }}
-                                  title="Glissez (ou touchez puis touchez la suite de destination) pour corriger"
-                                  className={`cursor-grab rounded px-1.5 py-0.5 text-xs shadow-sm ring-1 active:cursor-grabbing ${
-                                    ligneEnDeplacement === l.id
-                                      ? 'bg-sky-600 text-white ring-sky-600'
-                                      : `bg-white ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
-                                  }`}
-                                >
-                                  {active === 0 ? l.quantite : active}× {l.nomProduit}
-                                  {l.options.length > 0 &&
-                                    ` (${l.options.map((o) => o.valeur).join(', ')})`}
-                                </span>
-                              );
-                            })}
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-stone-500">
-                    {c.lignes.map((l, i) => {
-                      const active = l.quantite - l.quantiteAnnulee;
-                      const opts =
-                        l.options.length > 0 ? ` (${l.options.map((o) => o.valeur).join(', ')})` : '';
-                      return (
-                        <span key={l.id}>
-                          {i > 0 && ' · '}
-                          {active > 0 && `${active}× ${l.nomProduit}${opts}`}
-                          {l.quantiteAnnulee > 0 && (
-                            <span className="text-red-400 line-through">
-                              {active > 0 && ' '}
-                              {l.quantiteAnnulee}× {l.nomProduit}
-                              {opts}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </p>
-                )}
+                        )}
+                      </span>
+                    );
+                  })}
+                </p>
                 {c.noteCuisine && (
                   <p className="text-xs italic text-brand-700">Cuisine : {c.noteCuisine}</p>
                 )}
@@ -779,6 +735,30 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           )}
         </ul>
       </div>
+
+      {gestion && (
+        <GestionCommandes
+          titre={tableGestion ? `Table ${tableGestion.numero}` : 'À emporter'}
+          commandes={commandesGestion}
+          onFermer={() => setGestion(null)}
+          onAjouterArticles={
+            gestion.tableId
+              ? () => {
+                  setCanal('SUR_PLACE');
+                  setTableId(gestion.tableId!);
+                  setGestion(null);
+                }
+              : null
+          }
+          onAnnuler={(c) => {
+            setGestion(null);
+            setCommandeAAnnuler(c);
+          }}
+          onReclamer={handleReclamer}
+          onComplementEnvoye={handleComplementEnvoye}
+          onMaj={chargerTout}
+        />
+      )}
 
       {commandeAAnnuler && (
         <ModalAnnulation

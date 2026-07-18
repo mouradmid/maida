@@ -456,6 +456,12 @@ export const api = {
       body: JSON.stringify({ suite }),
     }),
 
+  complementCommande: (commandeId: string, ajouts: Array<{ ligneId: string; quantite: number }>) =>
+    apiFetch<Commande>(`/caisse/commandes/${commandeId}/complement`, {
+      method: 'POST',
+      body: JSON.stringify({ ajouts }),
+    }),
+
   annulerCommande: (
     id: string,
     data:

@@ -30,6 +30,9 @@
 - **Suites de service** : entrée / plat / dessert hérités des catégories (commandes caisse et
   QR client), cuisine par suites avec « en attente de réclame », bouton **Réclamer la suite**,
   correction d'un article par glisser-déposer ou toucher-toucher (tablette)
+- **Écran de gestion de commande** : toucher une table occupée ouvre ses commandes en cours —
+  suites, réclame, annulation, et **ajout rapide de quantités** (« un 2e Hamoud ») envoyé en
+  cuisine comme complément sur la même addition
 
 ### Mode hors ligne — le différenciateur
 
@@ -62,7 +65,7 @@
 
 - Hébergement Railway avec déploiement automatique à chaque push
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter et 51 tests d'intégration à chaque push
+- **CI GitHub Actions** : compilation, linter et 72 tests d'intégration à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
 

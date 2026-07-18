@@ -708,6 +708,97 @@ describe('Suites de service', () => {
   });
 });
 
+describe('Complément de commande (« la même chose en plus »)', () => {
+  let commandeId = '';
+  let additionId = '';
+  let lignePlatId = '';
+  let ligneBoissonId = '';
+
+  it('prépare une commande sur table et réclame la suite 2', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'SUR_PLACE',
+      tableId,
+      lignes: [
+        { produitId: produitPlatId, quantite: 1 },
+        { produitId: produitBoissonId, quantite: 2 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    commandeId = res.body.id;
+    additionId = res.body.additionId;
+    lignePlatId = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Plat T').id;
+    ligneBoissonId = res.body.lignes.find(
+      (l: { nomProduit: string }) => l.nomProduit === 'Boisson T',
+    ).id;
+    const reclame = await serveur.post(`/api/caisse/commandes/${commandeId}/reclamer`);
+    expect(reclame.body.suiteReclamee).toBe(2);
+  });
+
+  it('cumule les ajouts en une nouvelle commande sur la même addition', async () => {
+    const res = await serveur.post(`/api/caisse/commandes/${commandeId}/complement`).send({
+      ajouts: [
+        { ligneId: lignePlatId, quantite: 2 },
+        { ligneId: lignePlatId, quantite: 1 }, // trois « + » successifs se cumulent
+        { ligneId: ligneBoissonId, quantite: 1 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.id).not.toBe(commandeId);
+    expect(res.body.additionId).toBe(additionId);
+    expect(res.body.statut).toBe('ENVOYEE');
+    // La table garde sa progression : pas besoin de re-réclamer la suite 2.
+    expect(res.body.suiteReclamee).toBe(2);
+    const plat = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Plat T');
+    const boisson = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Boisson T');
+    expect(plat.quantite).toBe(3);
+    expect(plat.suite).toBe(2); // héritée de l'article d'origine
+    expect(boisson.quantite).toBe(1);
+    expect(boisson.suite).toBe(1);
+
+    const cuisine = await serveur.get('/api/caisse/cuisine/commandes');
+    expect(cuisine.body.some((c: { id: string }) => c.id === res.body.id)).toBe(true);
+  });
+
+  it("refuse un ajout sur une ligne d'une autre commande", async () => {
+    const autre = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+    });
+    const res = await serveur.post(`/api/caisse/commandes/${commandeId}/complement`).send({
+      ajouts: [{ ligneId: autre.body.lignes[0].id, quantite: 1 }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuse un ajout dont le produit a été retiré du menu', async () => {
+    await gerant.patch(`/api/gerant/produits/${produitBoissonId}`).send({ statut: 'INACTIF' });
+    const res = await serveur.post(`/api/caisse/commandes/${commandeId}/complement`).send({
+      ajouts: [{ ligneId: ligneBoissonId, quantite: 1 }],
+    });
+    expect(res.status).toBe(409);
+    await gerant.patch(`/api/gerant/produits/${produitBoissonId}`).send({ statut: 'ACTIF' });
+  });
+
+  it("refuse un ajout quand l'addition est déjà encaissée", async () => {
+    const emporter = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+    });
+    expect(emporter.status).toBe(201);
+    // La remise totale clôt l'addition sans passer par un paiement.
+    const remise = await serveur
+      .post(`/api/caisse/additions/${emporter.body.additionId}/remise`)
+      .send({ mode: 'MONTANT', valeur: emporter.body.total, motif: 'Geste commercial' });
+    expect(remise.status).toBe(201);
+    expect(remise.body.additionCloturee).toBe(true);
+
+    const res = await serveur.post(`/api/caisse/commandes/${emporter.body.id}/complement`).send({
+      ajouts: [{ ligneId: emporter.body.lignes[0].id, quantite: 1 }],
+    });
+    expect(res.status).toBe(409);
+  });
+});
+
 describe('Idempotence des commandes hors ligne', () => {
   const cle = `test-idem-${Date.now()}`;
   let premiereId = '';

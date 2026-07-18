@@ -517,6 +517,103 @@ caisseRouter.patch('/lignes/:id/suite', async (req, res) => {
   res.json(toPublicCommande(commande));
 });
 
+// « La même chose en plus » : ajoute des quantités à des articles déjà
+// commandés (un 2e Hamoud…). Crée une NOUVELLE commande sur la même addition,
+// pour que la cuisine reçoive un ticket clair avec uniquement les ajouts.
+caisseRouter.post('/commandes/:id/complement', async (req, res) => {
+  const { ajouts } = req.body ?? {};
+
+  if (!Array.isArray(ajouts) || ajouts.length === 0 || ajouts.length > 30) {
+    res.status(400).json({ error: 'Ajouts invalides' });
+    return;
+  }
+  for (const ajout of ajouts) {
+    if (
+      typeof ajout?.ligneId !== 'string' ||
+      !Number.isInteger(ajout?.quantite) ||
+      ajout.quantite <= 0 ||
+      ajout.quantite > 50
+    ) {
+      res
+        .status(400)
+        .json({ error: 'Chaque ajout doit viser un article avec une quantité entière positive' });
+      return;
+    }
+  }
+
+  const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  const commande = await prisma.commande.findFirst({
+    where: { id: req.params.id, etablissementId },
+    include: { addition: true, lignes: { include: { options: true, produit: true } } },
+  });
+  if (!commande) {
+    res.status(404).json({ error: 'Commande introuvable' });
+    return;
+  }
+  if (commande.statut === 'ANNULEE') {
+    res.status(409).json({ error: 'Cette commande est annulée' });
+    return;
+  }
+  if (commande.addition.statut !== 'OUVERTE') {
+    res.status(409).json({ error: "L'addition est déjà encaissée" });
+    return;
+  }
+
+  // Plusieurs « + » sur le même article se cumulent en une seule ligne.
+  const quantitesParLigne = new Map<string, number>();
+  for (const ajout of ajouts as Array<{ ligneId: string; quantite: number }>) {
+    quantitesParLigne.set(ajout.ligneId, (quantitesParLigne.get(ajout.ligneId) ?? 0) + ajout.quantite);
+  }
+
+  const lignesACreer = [];
+  for (const [ligneId, quantite] of quantitesParLigne) {
+    const source = commande.lignes.find((l) => l.id === ligneId);
+    if (!source) {
+      res.status(400).json({ error: 'Article introuvable dans cette commande' });
+      return;
+    }
+    if (source.produit.statut !== 'ACTIF') {
+      res.status(409).json({ error: `« ${source.produit.nom} » n'est plus au menu` });
+      return;
+    }
+    // Mêmes produit, options et suite que l'article d'origine ; prix, coût et
+    // TVA figés à aujourd'hui (comme toute nouvelle commande).
+    lignesACreer.push({
+      produitId: source.produitId,
+      nomProduit: source.produit.nom,
+      prixUnitaire: source.produit.prix,
+      coutRevientUnitaire: source.produit.coutRevient,
+      tauxTva: source.produit.tauxTva,
+      suite: source.suite,
+      quantite: Math.min(quantite, 50),
+      options: {
+        create: source.options.map((o) => ({
+          optionValeurId: o.optionValeurId,
+          nomGroupe: o.nomGroupe,
+          valeur: o.valeur,
+        })),
+      },
+    });
+  }
+
+  const complement = await prisma.commande.create({
+    data: {
+      canal: commande.canal,
+      additionId: commande.additionId,
+      etablissementId,
+      serveurId: req.user!.id,
+      // La table garde sa progression : un plat ajouté pendant les plats part
+      // en préparation tout de suite, sans re-réclamer les suites déjà servies.
+      suiteReclamee: commande.suiteReclamee,
+      lignes: { create: lignesACreer },
+    },
+    include: INCLUDE_COMMANDE,
+  });
+
+  res.status(201).json(toPublicCommande(complement));
+});
+
 caisseRouter.patch('/commandes/:id/prete', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
