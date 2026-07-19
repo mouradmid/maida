@@ -45,24 +45,55 @@ const STYLE_TICKET = `
   .ligne .lib { flex: 1; word-break: break-word; }
   .option { padding-left: 14px; font-size: 11px; }
   .note { margin-top: 4px; font-weight: bold; }
+  .suite {
+    border: 2px solid #000;
+    margin: 5px 0 3px;
+    padding: 2px 4px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+  }
 `;
 
 function envelopper(corps: string, titre: string) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${echapper(titre)}</title><style>${STYLE_TICKET}</style></head><body>${corps}</body></html>`;
 }
 
-// Ticket destiné à la cuisine : lisible de loin, sans les prix.
+// Une ligne d'article façon cuisine : quantité et nom en gros, options dessous.
+function blocLigneCuisine(l: {
+  quantite: number;
+  quantiteAnnulee: number;
+  nomProduit: string;
+  options: Array<{ valeur: string }>;
+}): string {
+  const options = l.options.map((o) => `<div class="option">&gt; ${echapper(o.valeur)}</div>`).join('');
+  return `<div class="grand">${l.quantite - l.quantiteAnnulee} x ${echapper(l.nomProduit.toUpperCase())}</div>${options}`;
+}
+
+// Ticket destiné à la cuisine : lisible de loin, sans les prix. Quand la
+// commande couvre plusieurs services, chaque suite est encadrée avec son
+// état : « à préparer » maintenant, ou « À SUIVRE » en attendant la réclame.
 export function htmlTicketCuisine(commande: Commande): string {
   const destination = commande.table ? `TABLE ${commande.table.numero}` : 'À EMPORTER';
-  const lignes = commande.lignes
-    .filter((l) => l.quantite - l.quantiteAnnulee > 0)
-    .map((l) => {
-      const options = l.options
-        .map((o) => `<div class="option">&gt; ${echapper(o.valeur)}</div>`)
-        .join('');
-      return `<div class="grand">${l.quantite - l.quantiteAnnulee} x ${echapper(l.nomProduit.toUpperCase())}</div>${options}`;
-    })
-    .join('');
+  const actives = commande.lignes.filter((l) => l.quantite - l.quantiteAnnulee > 0);
+  const suites = [...new Set(actives.map((l) => l.suite))].sort((a, b) => a - b);
+
+  const lignes =
+    suites.length <= 1 && (suites[0] ?? 1) <= commande.suiteReclamee
+      ? actives.map(blocLigneCuisine).join('')
+      : suites
+          .map((suite) => {
+            const etat =
+              suite <= commande.suiteReclamee ? 'À PRÉPARER' : 'À SUIVRE — ATTENDRE LA RÉCLAME';
+            return (
+              `<div class="suite">SUITE ${suite} · ${etat}</div>` +
+              actives
+                .filter((l) => l.suite === suite)
+                .map(blocLigneCuisine)
+                .join('')
+            );
+          })
+          .join('');
 
   const corps = `
     <div class="centre petit">— CUISINE —</div>
@@ -73,6 +104,31 @@ export function htmlTicketCuisine(commande: Commande): string {
     ${commande.noteCuisine ? `<div class="sep"></div><div class="note">NOTE : ${echapper(commande.noteCuisine)}</div>` : ''}
   `;
   return envelopper(corps, `Cuisine ${destination}`);
+}
+
+// Bon de réclame : la table demande la suite N — la cuisine lance ces plats.
+export function htmlTicketReclame(
+  destination: string,
+  suite: number,
+  lignes: Array<{
+    quantite: number;
+    quantiteAnnulee: number;
+    nomProduit: string;
+    options: Array<{ valeur: string }>;
+  }>,
+): string {
+  const corps = `
+    <div class="centre petit">— CUISINE —</div>
+    <div class="centre enorme">RÉCLAME</div>
+    <div class="centre enorme">${echapper(destination.toUpperCase())}</div>
+    <div class="centre petit">${dateHeure(new Date())}</div>
+    <div class="suite">SUITE ${suite} · À PRÉPARER MAINTENANT</div>
+    ${lignes
+      .filter((l) => l.quantite - l.quantiteAnnulee > 0)
+      .map(blocLigneCuisine)
+      .join('')}
+  `;
+  return envelopper(corps, `Réclame ${destination}`);
 }
 
 // Ticket client : l'addition complète, avec paiements et reste à payer.

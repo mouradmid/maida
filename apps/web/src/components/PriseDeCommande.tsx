@@ -23,7 +23,7 @@ import {
   messageErreur,
   messageSucces,
 } from '../lib/ui';
-import { htmlTicketCuisine, imprimerHtml } from '../lib/impression';
+import { htmlTicketCuisine, htmlTicketReclame, imprimerHtml } from '../lib/impression';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
 
@@ -79,7 +79,9 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [choixEnCours, setChoixEnCours] = useState<Record<string, string>>({});
   const [erreurOptions, setErreurOptions] = useState<string | null>(null);
   const [commandeAAnnuler, setCommandeAAnnuler] = useState<Commande | null>(null);
-  const [derniereCommande, setDerniereCommande] = useState<Commande | null>(null);
+  // Dernier bon imprimable depuis le bandeau de confirmation : bon cuisine
+  // après un envoi, bon de réclame après une réclame.
+  const [ticketAImprimer, setTicketAImprimer] = useState<{ libelle: string; html: string } | null>(null);
   const [demandes, setDemandes] = useState<DemandeClient[]>([]);
   // Article en cours de déplacement vers une autre suite (toucher-toucher).
   const [ligneEnDeplacement, setLigneEnDeplacement] = useState<string | null>(null);
@@ -329,7 +331,20 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     setErreur(null);
     try {
       const res = await api.reclamerSuiteTable(additionId);
-      setConfirmation(`Suite ${res.suiteReclamee} réclamée en cuisine.`);
+      // Bon de réclame : les articles de la suite réclamée, toutes commandes
+      // en préparation de la table confondues.
+      const enPreparation = res.commandes.filter((c) => c.statut === 'ENVOYEE');
+      const destination = enPreparation[0]?.table
+        ? `Table ${enPreparation[0].table.numero}`
+        : 'À emporter';
+      const lignesSuite = enPreparation
+        .flatMap((c) => c.lignes)
+        .filter((l) => l.suite === res.suiteReclamee);
+      setConfirmation(`Suite ${res.suiteReclamee} réclamée en cuisine — ${destination}.`);
+      setTicketAImprimer({
+        libelle: '🖨 Bon de réclame',
+        html: htmlTicketReclame(destination, res.suiteReclamee, lignesSuite),
+      });
       await rafraichirCommandes();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -382,7 +397,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     try {
       const commande = await api.creerCommande(donnees);
       setConfirmation(`Commande envoyée — total ${commande.total} DA`);
-      setDerniereCommande(commande);
+      setTicketAImprimer({ libelle: '🖨 Bon cuisine', html: htmlTicketCuisine(commande) });
       setPanier({});
       setRajouts({});
       setSuiteSaisie(1);
@@ -413,7 +428,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
         const utilisateurLocal = lireCache<Utilisateur>('utilisateur');
         // Reconstitution locale de la commande : permet d'imprimer le ticket
         // cuisine même sans réseau.
-        setDerniereCommande({
+        const commandeLocale: Commande = {
           id: entree.cleIdempotence,
           canal,
           noteCuisine: noteCuisine.trim() || null,
@@ -441,7 +456,8 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             options: l.options.map((o) => ({ nomGroupe: o.nomGroupe, valeur: o.valeur })),
           })),
           total: totalPanier,
-        });
+        };
+        setTicketAImprimer({ libelle: '🖨 Bon cuisine', html: htmlTicketCuisine(commandeLocale) });
         setConfirmation(
           `Hors ligne — commande enregistrée (${totalPanier} DA), elle sera envoyée au retour du réseau`,
         );
@@ -565,13 +581,13 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       {confirmation && (
         <div className={`${messageSucces} flex items-center justify-between gap-3`}>
           <span>{confirmation}</span>
-          {derniereCommande && (
+          {ticketAImprimer && (
             <button
               type="button"
-              onClick={() => imprimerHtml(htmlTicketCuisine(derniereCommande))}
+              onClick={() => imprimerHtml(ticketAImprimer.html)}
               className="shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition-colors hover:bg-green-100"
             >
-              🖨 Ticket cuisine
+              {ticketAImprimer.libelle}
             </button>
           )}
         </div>
