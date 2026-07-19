@@ -810,6 +810,38 @@ describe('Rajouts (« la même chose en plus ») et réclame par table', () => {
       });
     expect(res.status).toBe(400);
   });
+
+  it('« à suivre » : la suite explicite de la caisse prime sur la catégorie', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [
+        { produitId: produitPlatId, quantite: 1, suite: 1 }, // plat servi en premier
+        { produitId: produitBoissonId, quantite: 1 }, // sans suite : celle de la catégorie
+      ],
+    });
+    expect(res.status).toBe(201);
+    const plat = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Plat T');
+    expect(plat.suite).toBe(1); // la catégorie dit 2, la saisie dit 1
+    const boisson = res.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === 'Boisson T');
+    expect(boisson.suite).toBe(1);
+
+    const invalide = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [{ produitId: produitPlatId, quantite: 1, suite: 9 }],
+    });
+    expect(invalide.status).toBe(400);
+  });
+
+  it('la route publique refuse aussi le champ suite', async () => {
+    const res = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T2',
+        lignes: [{ produitId: produitPlatId, quantite: 1, suite: 1 }],
+      });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('Idempotence des commandes hors ligne', () => {

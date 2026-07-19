@@ -39,14 +39,17 @@ interface LignePanier {
   produit: ProduitMenu;
   quantite: number;
   options: ChoixOption[];
+  // Suite de service de la ligne : celle de sa catégorie, ou celle choisie
+  // via « À suivre » / le badge de la ligne.
+  suite: number;
 }
 
-function cleLigne(produitId: string, options: ChoixOption[]): string {
+function cleLigne(produitId: string, options: ChoixOption[], suite: number): string {
   const suffixe = options
     .map((o) => `${o.groupeOptionId}=${o.optionValeurId}`)
     .sort()
     .join(',');
-  return `${produitId}::${suffixe}`;
+  return `${produitId}::${suite}::${suffixe}`;
 }
 
 const SUITES = [1, 2, 3];
@@ -63,6 +66,9 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [tableId, setTableId] = useState('');
   const [noteCuisine, setNoteCuisine] = useState('');
   const [panier, setPanier] = useState<Record<string, LignePanier>>({});
+  // « À suivre » : quand une suite est choisie manuellement, les prochains
+  // articles y partent, quelle que soit leur catégorie. null = automatique.
+  const [suiteManuelle, setSuiteManuelle] = useState<number | null>(null);
   // « La même chose en plus » : quantités à rajouter, par article déjà envoyé.
   const [rajouts, setRajouts] = useState<Record<string, number>>({});
   const [categorieActiveId, setCategorieActiveId] = useState<string | null>(null);
@@ -171,11 +177,41 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   }, []);
 
   function ajouterAuPanierDirect(produit: ProduitMenu, options: ChoixOption[]) {
-    const cle = cleLigne(produit.id, options);
+    const categorie = categories.find((c) => c.produits.some((p) => p.id === produit.id));
+    const suite = suiteManuelle ?? categorie?.suiteParDefaut ?? 1;
+    const cle = cleLigne(produit.id, options, suite);
     setPanier((p) => ({
       ...p,
-      [cle]: { cle, produit, options, quantite: (p[cle]?.quantite ?? 0) + 1 },
+      [cle]: { cle, produit, options, suite, quantite: (p[cle]?.quantite ?? 0) + 1 },
     }));
+  }
+
+  // « À suivre » : les prochains articles partent dans la suite qui suit ce
+  // qui est déjà saisi (deux appuis = deux services plus loin, plafonné à 3).
+  function handleASuivre() {
+    const suiteCourante = Math.max(suiteManuelle ?? 1, ...Object.values(panier).map((l) => l.suite));
+    setSuiteManuelle(Math.min(suiteCourante + 1, 3));
+  }
+
+  // Le badge « Suite N » d'une ligne du panier fait tourner sa suite (1→2→3→1).
+  function changerSuiteLignePanier(cle: string) {
+    setPanier((p) => {
+      const ligne = p[cle];
+      if (!ligne) return p;
+      const suite = (ligne.suite % 3) + 1;
+      const nouvelleCle = cleLigne(ligne.produit.id, ligne.options, suite);
+      const { [cle]: _retire, ...reste } = p;
+      const existante = reste[nouvelleCle];
+      return {
+        ...reste,
+        [nouvelleCle]: {
+          ...ligne,
+          cle: nouvelleCle,
+          suite,
+          quantite: ligne.quantite + (existante?.quantite ?? 0),
+        },
+      };
+    });
   }
 
   function handleClicProduit(produit: ProduitMenu) {
@@ -292,6 +328,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       // Les rajouts visent les articles de la table précédente : on repart à zéro.
       setRajouts({});
       setLigneEnDeplacement(null);
+      setSuiteManuelle(null);
     }
     setTableId(id);
   }
@@ -332,6 +369,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
     const lignesProduits = lignesPanier.map((l) => ({
       produitId: l.produit.id,
       quantite: l.quantite,
+      suite: l.suite,
       options: l.options.map((o) => ({
         groupeOptionId: o.groupeOptionId,
         optionValeurId: o.optionValeurId,
@@ -355,6 +393,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       setDerniereCommande(commande);
       setPanier({});
       setRajouts({});
+      setSuiteManuelle(null);
       setNoteCuisine('');
       if (canal === 'EMPORTER') setTableId('');
       await chargerTout();
@@ -402,7 +441,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
             nomProduit: l.produit.nom,
             prixUnitaire: l.produit.prix,
             tauxTva: null,
-            suite: 1,
+            suite: l.suite,
             quantite: l.quantite,
             quantitePayee: 0,
             quantiteAnnulee: 0,
@@ -418,6 +457,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           setTables((liste) => liste.map((t) => (t.id === tableId ? { ...t, occupee: true } : t)));
         }
         setPanier({});
+        setSuiteManuelle(null);
         setNoteCuisine('');
         if (canal === 'EMPORTER') setTableId('');
         return;
@@ -849,41 +889,86 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           )}
 
           <ul className="flex flex-col gap-3">
-            {lignesPanier.map((ligne) => (
-              <li key={ligne.cle} className="flex items-start justify-between gap-2 text-sm">
-                <div className="min-w-0">
-                  <p className="font-medium text-stone-900">{ligne.produit.nom}</p>
-                  {ligne.options.length > 0 && (
-                    <p className="text-xs text-stone-500">
-                      {ligne.options.map((o) => `${o.nomGroupe} : ${o.valeur}`).join(' · ')}
-                    </p>
-                  )}
-                  <p className="mt-0.5 text-xs text-stone-500">
-                    {ligne.produit.prix * ligne.quantite} DA
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => changerQuantite(ligne.cle, -1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
-                    aria-label="Retirer un"
-                  >
-                    −
-                  </button>
-                  <span className="w-6 text-center font-semibold">{ligne.quantite}</span>
-                  <button
-                    type="button"
-                    onClick={() => changerQuantite(ligne.cle, 1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
-                    aria-label="Ajouter un"
-                  >
-                    +
-                  </button>
-                </div>
-              </li>
-            ))}
+            {[...lignesPanier]
+              .sort((a, b) => a.suite - b.suite)
+              .map((ligne, index, triees) => (
+                <li key={ligne.cle} className="flex flex-col gap-1">
+                  {/* Séparateur de service quand le panier couvre plusieurs suites */}
+                  {new Set(triees.map((l) => l.suite)).size > 1 &&
+                    (index === 0 || triees[index - 1].suite !== ligne.suite) && (
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                        Suite {ligne.suite}
+                      </p>
+                    )}
+                  <div className="flex items-start justify-between gap-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-stone-900">{ligne.produit.nom}</p>
+                      {ligne.options.length > 0 && (
+                        <p className="text-xs text-stone-500">
+                          {ligne.options.map((o) => `${o.nomGroupe} : ${o.valeur}`).join(' · ')}
+                        </p>
+                      )}
+                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
+                        {ligne.produit.prix * ligne.quantite} DA
+                        <button
+                          type="button"
+                          onClick={() => changerSuiteLignePanier(ligne.cle)}
+                          title="Changer l'article de service (entrée / plat / dessert)"
+                          className="rounded-full border border-stone-300 bg-white px-2 py-px text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                        >
+                          Suite {ligne.suite}
+                        </button>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => changerQuantite(ligne.cle, -1)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                        aria-label="Retirer un"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center font-semibold">{ligne.quantite}</span>
+                      <button
+                        type="button"
+                        onClick={() => changerQuantite(ligne.cle, 1)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                        aria-label="Ajouter un"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
           </ul>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleASuivre}
+              disabled={suiteManuelle === 3 || Math.max(1, ...lignesPanier.map((l) => l.suite)) >= 3}
+              title="Les prochains articles partiront dans le service suivant"
+              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
+            >
+              À suivre →
+            </button>
+            {suiteManuelle !== null && (
+              <span className="flex items-center gap-1.5 text-xs text-sky-800">
+                les prochains articles partent en suite {suiteManuelle}
+                <button
+                  type="button"
+                  onClick={() => setSuiteManuelle(null)}
+                  aria-label="Revenir aux suites automatiques"
+                  title="Revenir aux suites automatiques (selon la catégorie)"
+                  className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
 
           {nbArticles > 0 && (
             <div className="flex items-center justify-between border-t border-stone-100 pt-3">

@@ -17,6 +17,7 @@ export interface CommandeEnAttente {
       produitId: string;
       quantite: number;
       options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
+      suite?: number;
     }>;
   };
 }

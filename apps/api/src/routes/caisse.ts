@@ -100,6 +100,8 @@ caisseRouter.get('/menu', async (req, res) => {
     select: {
       id: true,
       nom: true,
+      // Suite de service par défaut : le panier sépare la saisie par suites.
+      suiteParDefaut: true,
       produits: {
         where: { statut: 'ACTIF' },
         select: {

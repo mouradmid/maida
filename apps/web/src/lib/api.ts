@@ -63,6 +63,7 @@ export interface ProduitMenu {
 export interface CategorieMenu {
   id: string;
   nom: string;
+  suiteParDefaut: number;
   produits: ProduitMenu[];
 }
 
@@ -485,6 +486,8 @@ export const api = {
           produitId: string;
           quantite: number;
           options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
+          // Suite choisie à la saisie (« à suivre ») ; sinon celle de la catégorie.
+          suite?: number;
         }
       // « La même chose en plus » : duplique un article déjà envoyé de l'addition.
       | { ligneSourceId: string; quantite: number }

@@ -9,6 +9,9 @@ export interface LigneEntree {
   produitId: string;
   quantite: number;
   options?: Array<{ groupeOptionId: string; optionValeurId: string }>;
+  // Suite de service choisie à la saisie (« à suivre ») — caisse uniquement ;
+  // sans elle, l'article hérite de la suite par défaut de sa catégorie.
+  suite?: number;
 }
 
 // « La même chose en plus » : référence un article déjà envoyé de la même
@@ -32,9 +35,10 @@ export interface LigneResolue {
 }
 
 // Vérifie la forme brute des lignes reçues. Renvoie un message d'erreur, ou
-// null si tout est valide. `autoriserSources` (caisse uniquement) accepte en
-// plus les lignes { ligneSourceId, quantite } qui dupliquent un article envoyé.
-export function erreurLignesEntree(lignes: unknown, autoriserSources = false): string | null {
+// null si tout est valide. `caisse` débloque les capacités réservées à la
+// caisse : lignes { ligneSourceId, quantite } (rajouts d'articles envoyés) et
+// champ `suite` explicite (« à suivre » à la saisie).
+export function erreurLignesEntree(lignes: unknown, caisse = false): string | null {
   if (!Array.isArray(lignes) || lignes.length === 0) {
     return 'La commande doit contenir au moins un produit';
   }
@@ -45,11 +49,19 @@ export function erreurLignesEntree(lignes: unknown, autoriserSources = false): s
     if (!Number.isInteger(ligne?.quantite) || ligne.quantite <= 0 || ligne.quantite > 50) {
       return 'Chaque ligne doit avoir une quantité entière positive';
     }
-    if (autoriserSources && typeof ligne?.ligneSourceId === 'string') {
+    if (caisse && typeof ligne?.ligneSourceId === 'string') {
       continue;
     }
     if (typeof ligne?.produitId !== 'string') {
       return 'Chaque ligne doit avoir un produitId et une quantité entière positive';
+    }
+    if (ligne.suite !== undefined) {
+      if (!caisse) {
+        return 'Champ suite non autorisé';
+      }
+      if (!Number.isInteger(ligne.suite) || ligne.suite < 1 || ligne.suite > 5) {
+        return 'Suite invalide (1 à 5)';
+      }
     }
     if (
       ligne.options !== undefined &&
@@ -127,7 +139,7 @@ export async function resoudreLignesCommande(
       prixUnitaire: produit.prix,
       coutRevientUnitaire: produit.coutRevient,
       tauxTva: produit.tauxTva,
-      suite: produit.categorie.suiteParDefaut,
+      suite: ligne.suite ?? produit.categorie.suiteParDefaut,
       quantite: ligne.quantite,
       options: optionsResolues,
     });
