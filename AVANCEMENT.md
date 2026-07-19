@@ -34,10 +34,11 @@
   table — articles déjà en cuisine groupés par suite, rajout rapide (« un 2e Hamoud »),
   nouveaux articles du menu, annulation, réclame — un seul bouton « Envoyer en cuisine »,
   un seul ticket ; les commandes ajoutées héritent de la progression des suites de la table
-- **« À suivre » à la saisie** : le serveur tape toute la commande d'un coup, séparée en
-  services — les suites viennent des catégories automatiquement, le bouton « À suivre »
-  force le service suivant, et un badge « Suite N » par ligne permet de corriger avant
-  l'envoi ; la cuisine reçoit tout, prépare la suite 1 et attend la réclame pour le reste
+- **« À suivre » à la saisie** : le serveur tape toute la commande d'un coup et décide
+  lui-même des services — tout part dans le service en cours, le bouton « À suivre » passe
+  au suivant (une entrée peut servir de plat), et un badge « Suite N » par ligne permet de
+  corriger avant l'envoi ; la cuisine reçoit tout, prépare la suite 1 et attend la réclame
+  pour le reste (les commandes QR des clients restent triées par catégories)
 
 ### Mode hors ligne — le différenciateur
 

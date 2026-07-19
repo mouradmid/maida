@@ -63,7 +63,6 @@ export interface ProduitMenu {
 export interface CategorieMenu {
   id: string;
   nom: string;
-  suiteParDefaut: number;
   produits: ProduitMenu[];
 }
 

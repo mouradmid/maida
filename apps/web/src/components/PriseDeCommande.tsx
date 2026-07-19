@@ -39,8 +39,8 @@ interface LignePanier {
   produit: ProduitMenu;
   quantite: number;
   options: ChoixOption[];
-  // Suite de service de la ligne : celle de sa catégorie, ou celle choisie
-  // via « À suivre » / le badge de la ligne.
+  // Suite de service de la ligne : le service en cours à la saisie
+  // (« À suivre »), corrigeable via le badge de la ligne.
   suite: number;
 }
 
@@ -66,9 +66,10 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   const [tableId, setTableId] = useState('');
   const [noteCuisine, setNoteCuisine] = useState('');
   const [panier, setPanier] = useState<Record<string, LignePanier>>({});
-  // « À suivre » : quand une suite est choisie manuellement, les prochains
-  // articles y partent, quelle que soit leur catégorie. null = automatique.
-  const [suiteManuelle, setSuiteManuelle] = useState<number | null>(null);
+  // « À suivre » : le service en cours de saisie. Tout article tapé part dans
+  // cette suite ; le bouton « À suivre » passe au service suivant. C'est le
+  // serveur qui décide (une entrée peut servir de plat), pas la catégorie.
+  const [suiteSaisie, setSuiteSaisie] = useState(1);
   // « La même chose en plus » : quantités à rajouter, par article déjà envoyé.
   const [rajouts, setRajouts] = useState<Record<string, number>>({});
   const [categorieActiveId, setCategorieActiveId] = useState<string | null>(null);
@@ -177,20 +178,11 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
   }, []);
 
   function ajouterAuPanierDirect(produit: ProduitMenu, options: ChoixOption[]) {
-    const categorie = categories.find((c) => c.produits.some((p) => p.id === produit.id));
-    const suite = suiteManuelle ?? categorie?.suiteParDefaut ?? 1;
-    const cle = cleLigne(produit.id, options, suite);
+    const cle = cleLigne(produit.id, options, suiteSaisie);
     setPanier((p) => ({
       ...p,
-      [cle]: { cle, produit, options, suite, quantite: (p[cle]?.quantite ?? 0) + 1 },
+      [cle]: { cle, produit, options, suite: suiteSaisie, quantite: (p[cle]?.quantite ?? 0) + 1 },
     }));
-  }
-
-  // « À suivre » : les prochains articles partent dans la suite qui suit ce
-  // qui est déjà saisi (deux appuis = deux services plus loin, plafonné à 3).
-  function handleASuivre() {
-    const suiteCourante = Math.max(suiteManuelle ?? 1, ...Object.values(panier).map((l) => l.suite));
-    setSuiteManuelle(Math.min(suiteCourante + 1, 3));
   }
 
   // Le badge « Suite N » d'une ligne du panier fait tourner sa suite (1→2→3→1).
@@ -328,7 +320,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       // Les rajouts visent les articles de la table précédente : on repart à zéro.
       setRajouts({});
       setLigneEnDeplacement(null);
-      setSuiteManuelle(null);
+      setSuiteSaisie(1);
     }
     setTableId(id);
   }
@@ -393,7 +385,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
       setDerniereCommande(commande);
       setPanier({});
       setRajouts({});
-      setSuiteManuelle(null);
+      setSuiteSaisie(1);
       setNoteCuisine('');
       if (canal === 'EMPORTER') setTableId('');
       await chargerTout();
@@ -457,7 +449,7 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           setTables((liste) => liste.map((t) => (t.id === tableId ? { ...t, occupee: true } : t)));
         }
         setPanier({});
-        setSuiteManuelle(null);
+        setSuiteSaisie(1);
         setNoteCuisine('');
         if (canal === 'EMPORTER') setTableId('');
         return;
@@ -947,21 +939,21 @@ export function PriseDeCommande({ droitAnnuler }: { droitAnnuler: boolean }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleASuivre}
-              disabled={suiteManuelle === 3 || Math.max(1, ...lignesPanier.map((l) => l.suite)) >= 3}
-              title="Les prochains articles partiront dans le service suivant"
+              onClick={() => setSuiteSaisie((s) => Math.min(s + 1, 3))}
+              disabled={suiteSaisie >= 3}
+              title="Passer au service suivant : les prochains articles partiront à suivre"
               className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
             >
               À suivre →
             </button>
-            {suiteManuelle !== null && (
+            {suiteSaisie > 1 && (
               <span className="flex items-center gap-1.5 text-xs text-sky-800">
-                les prochains articles partent en suite {suiteManuelle}
+                saisie en suite {suiteSaisie}
                 <button
                   type="button"
-                  onClick={() => setSuiteManuelle(null)}
-                  aria-label="Revenir aux suites automatiques"
-                  title="Revenir aux suites automatiques (selon la catégorie)"
+                  onClick={() => setSuiteSaisie(1)}
+                  aria-label="Revenir à la suite 1"
+                  title="Revenir à la suite 1"
                   className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
                 >
                   ✕
