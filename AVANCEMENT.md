@@ -20,7 +20,10 @@
 - **Remises & offerts** : % ou montant, article offert, motifs, droit REMISER, tout tracé
 - **Réservations** : prise au téléphone, anti-conflit de créneau, badge sur le plan de salle,
   arrivée / annulation / no-show
-- **Tickets d'impression** (thermique 80 mm) : ticket cuisine et ticket client avec TVA et remises
+- **Tickets d'impression** (thermique 80 mm) : ticket cuisine et ticket client avec TVA et
+  remises ; le bon cuisine encadre chaque service (« SUITE 1 · À PRÉPARER » / « SUITE 2 ·
+  À SUIVRE — ATTENDRE LA RÉCLAME ») et chaque réclame imprime un **bon de réclame** dédié
+  (« RÉCLAME — TABLE N — SUITE 2 · À PRÉPARER MAINTENANT » avec les articles à lancer)
 - **QR code à table** : menu public consultable par le client sur son téléphone (sans connexion),
   QR par table et planche imprimable dans l'espace gérant — **module optionnel par compte client**,
   comme le food cost
