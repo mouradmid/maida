@@ -70,6 +70,12 @@
 - Activité par client (commandes 7 jours, dernière activité)
 - **Journal des erreurs serveur**
 
+### Identité visuelle
+
+- **Charte graphique** : vert « thé à la menthe » + safran sur fond crème, motif zellige en
+  filigrane de fond, polices Inter / Bricolage Grotesque / Spline Sans Mono ; tous les écrans
+  pilotés par des design tokens (aucune couleur en dur), motif d'intensité réglable
+
 ### Infrastructure & qualité
 
 - Hébergement Railway avec déploiement automatique à chaque push
