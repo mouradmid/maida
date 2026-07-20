@@ -25,7 +25,7 @@ export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
       <div>
-        <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="email">
+        <label className="mb-1 block text-sm font-medium text-ink-soft" htmlFor="email">
           Email
         </label>
         <input
@@ -39,7 +39,7 @@ export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) 
         />
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="password">
+        <label className="mb-1 block text-sm font-medium text-ink-soft" htmlFor="password">
           Mot de passe
         </label>
         <input

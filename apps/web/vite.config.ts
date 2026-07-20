@@ -17,8 +17,8 @@ export default defineConfig({
         short_name: 'Maïda',
         description: 'Le point de vente pensé pour la restauration algérienne.',
         lang: 'fr',
-        theme_color: '#c2551c',
-        background_color: '#faf8f5',
+        theme_color: '#0e5a4a',
+        background_color: '#ece7da',
         display: 'standalone',
         start_url: '/caisse',
         icons: [

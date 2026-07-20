@@ -4,16 +4,21 @@ import { EspaceSuperAdmin } from './pages/EspaceSuperAdmin';
 import { EspaceGerant } from './pages/EspaceGerant';
 import { EspaceCaisse } from './pages/EspaceCaisse';
 import { MenuPublic } from './pages/MenuPublic';
+import { MotifZellige } from './components/MotifZellige';
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Accueil />} />
-      <Route path="/admin" element={<EspaceSuperAdmin />} />
-      <Route path="/gerant" element={<EspaceGerant />} />
-      <Route path="/caisse" element={<EspaceCaisse />} />
-      <Route path="/menu/:etablissementId" element={<MenuPublic />} />
-    </Routes>
+    <>
+      {/* Filigrane zellige safran en fond de toute l'application */}
+      <MotifZellige />
+      <Routes>
+        <Route path="/" element={<Accueil />} />
+        <Route path="/admin" element={<EspaceSuperAdmin />} />
+        <Route path="/gerant" element={<EspaceGerant />} />
+        <Route path="/caisse" element={<EspaceCaisse />} />
+        <Route path="/menu/:etablissementId" element={<MenuPublic />} />
+      </Routes>
+    </>
   );
 }
 

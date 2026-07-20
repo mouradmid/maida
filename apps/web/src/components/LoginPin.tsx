@@ -75,7 +75,7 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
   return (
     <div className="flex w-full flex-col gap-5">
       <div>
-        <label className="mb-1 block text-sm font-medium text-stone-700" htmlFor="etablissementId">
+        <label className="mb-1 block text-sm font-medium text-ink-soft" htmlFor="etablissementId">
           Établissement
         </label>
         <select
@@ -99,14 +99,14 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
           <span
             key={i}
             className={`h-4 w-4 rounded-full border-2 transition-colors ${
-              i < codePin.length ? 'border-brand-600 bg-brand-600' : 'border-stone-300 bg-white'
+              i < codePin.length ? 'border-brand-600 bg-brand-600' : 'border-line bg-card'
             }`}
           />
         ))}
       </div>
 
       {erreur && <p className={messageErreur}>{erreur}</p>}
-      {enCours && <p className="text-center text-sm text-stone-500">Connexion...</p>}
+      {enCours && <p className="text-center text-sm text-ink-faint">Connexion...</p>}
 
       <div className="grid grid-cols-3 gap-2">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((chiffre) => (
@@ -114,7 +114,7 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
             key={chiffre}
             type="button"
             onClick={() => appuyerChiffre(chiffre)}
-            className="rounded-xl border border-stone-200 bg-white py-4 text-xl font-semibold text-stone-800 transition-colors hover:bg-stone-50 active:bg-brand-50"
+            className="rounded-xl border border-line bg-card py-4 text-xl font-semibold text-ink transition-colors hover:bg-surface active:bg-brand-50"
           >
             {chiffre}
           </button>
@@ -123,7 +123,7 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
         <button
           type="button"
           onClick={() => appuyerChiffre('0')}
-          className="rounded-xl border border-stone-200 bg-white py-4 text-xl font-semibold text-stone-800 transition-colors hover:bg-stone-50 active:bg-brand-50"
+          className="rounded-xl border border-line bg-card py-4 text-xl font-semibold text-ink transition-colors hover:bg-surface active:bg-brand-50"
         >
           0
         </button>
@@ -131,7 +131,7 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
           type="button"
           onClick={effacer}
           aria-label="Effacer"
-          className="rounded-xl border border-stone-200 bg-white py-4 text-xl text-stone-500 transition-colors hover:bg-stone-50 active:bg-brand-50"
+          className="rounded-xl border border-line bg-card py-4 text-xl text-ink-faint transition-colors hover:bg-surface active:bg-brand-50"
         >
           ⌫
         </button>

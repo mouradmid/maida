@@ -18,8 +18,8 @@ export function PageConnexion({
         <Logo grand />
       </Link>
       <div className={`${carte} w-full max-w-sm p-6`}>
-        <h1 className="text-lg font-semibold text-stone-900">{titre}</h1>
-        {sousTitre && <p className="mt-1 text-sm text-stone-500">{sousTitre}</p>}
+        <h1 className="font-display text-lg font-semibold text-ink">{titre}</h1>
+        {sousTitre && <p className="mt-1 text-sm text-ink-faint">{sousTitre}</p>}
         <div className="mt-5">{children}</div>
       </div>
     </div>

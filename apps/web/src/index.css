@@ -1,22 +1,170 @@
 @import 'tailwindcss';
 
+/* ============================================================
+   Charte graphique Maïda — source de vérité (design tokens).
+   Vert « thé à la menthe » + safran, sur fond crème.
+   Règle : AUCUNE couleur en dur dans les composants — passer
+   toujours par les utilitaires Tailwind générés ci-dessous
+   (bg-canvas, text-ink, bg-brand-600, text-ok, border-line…).
+   ============================================================ */
+:root {
+  /* Fonds */
+  --bg: #ece7da; /* fond général, crème */
+  --surface: #fbf8f1; /* fond secondaire, panneaux clairs */
+  --card: #ffffff; /* cartes, tableaux, tickets */
+
+  /* Textes */
+  --ink: #15302b; /* texte principal */
+  --ink-soft: #4c5c56; /* texte secondaire */
+  --ink-faint: #8a968f; /* légendes, placeholders */
+
+  /* Vert de marque (thé à la menthe) */
+  --brand: #0e5a4a; /* boutons principaux, accents */
+  --brand-deep: #0a3f34; /* barres latérales, en-têtes sombres */
+  --brand-line: #1c6957;
+
+  /* Safran (accent chaud) */
+  --saffron: #cc811a; /* accent, boutons secondaires */
+  --saffron-soft: #f3ce85;
+  --saffron-bg: #fbefd7; /* fonds d'étiquettes */
+
+  /* Traits */
+  --line: rgba(21, 48, 43, 0.12);
+  --line-soft: rgba(21, 48, 43, 0.07);
+
+  /* États */
+  --ok: #2e7d55;
+  --ok-bg: #e4f1e9; /* actif, payé, table libre */
+  --warn: #b9791a;
+  --warn-bg: #faeed7; /* hors-ligne, essai, en attente */
+  --danger: #b23a2e;
+  --danger-bg: #f7e4e1; /* suspendu, annulation, erreur */
+
+  /* Rayons */
+  --r: 12px; /* cartes, panneaux (= rounded-xl) */
+  --r-sm: 8px; /* boutons, champs (= rounded-lg) */
+}
+
+/* ------------------------------------------------------------
+   Couche Tailwind : génère les utilitaires à partir des tokens.
+   Les couleurs pointent vers la charte ci-dessus (source unique).
+   ------------------------------------------------------------ */
 @theme {
-  /* Palette Maïda — terracotta chaleureux */
-  --color-brand-50: #fdf6ef;
-  --color-brand-100: #f9e8d8;
-  --color-brand-200: #f2cfaf;
-  --color-brand-300: #e9ae7d;
-  --color-brand-400: #de8749;
-  --color-brand-500: #d16a27;
-  --color-brand-600: #c2551c;
-  --color-brand-700: #a1421a;
-  --color-brand-800: #82361c;
-  --color-brand-900: #6a2e19;
+  /* Polices */
+  --font-sans: 'Inter', system-ui, sans-serif; /* défaut du corps de texte */
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-mono: 'Spline Sans Mono', ui-monospace, monospace;
+
+  /* Fonds / surfaces */
+  --color-canvas: var(--bg);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+
+  /* Textes */
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  /* Traits */
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+
+  /* Vert de marque — rampe (ancres charte : 500=line, 600=brand, 800=deep) */
+  --color-brand-50: #e9f2ef;
+  --color-brand-100: #cfe4de;
+  --color-brand-200: #a7cfc5;
+  --color-brand-300: #6fb0a2;
+  --color-brand-400: #38897a;
+  --color-brand-500: var(--brand-line);
+  --color-brand-600: var(--brand);
+  --color-brand-700: #0c4a3d;
+  --color-brand-800: var(--brand-deep);
+  --color-brand-900: #073029;
+
+  /* Safran (accent chaud) */
+  --color-saffron: var(--saffron);
+  --color-saffron-soft: var(--saffron-soft);
+  --color-saffron-bg: var(--saffron-bg);
+
+  /* États */
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+
+  /* --------------------------------------------------------------
+     Remappage des palettes Tailwind par défaut vers la charte.
+     Les écrans existants (stone/red/green/amber/sky) héritent ainsi
+     automatiquement des couleurs Maïda, sans réécrire chaque classe.
+     Le nouveau code, lui, utilise les tokens sémantiques ci-dessus.
+     -------------------------------------------------------------- */
+
+  /* stone → neutres chauds (crème → encre, teintés vert) */
+  --color-stone-50: #fbf8f1;
+  --color-stone-100: #f3eee3;
+  --color-stone-200: #e5dfd1;
+  --color-stone-300: #d2cbba;
+  --color-stone-400: #8a968f; /* = ink-faint */
+  --color-stone-500: #6e7a73;
+  --color-stone-600: #4c5c56; /* = ink-soft */
+  --color-stone-700: #38473f;
+  --color-stone-800: #22332d;
+  --color-stone-900: #15302b; /* = ink */
+
+  /* red → danger */
+  --color-red-50: #f7e4e1;
+  --color-red-100: #f1d2cd;
+  --color-red-200: #e6b3ac;
+  --color-red-300: #d98a80;
+  --color-red-400: #c85c4e;
+  --color-red-500: #b23a2e;
+  --color-red-600: #a5352a;
+  --color-red-700: #8e2c23;
+  --color-red-800: #74241c;
+  --color-red-900: #5e1d17;
+
+  /* green → ok (actif, payé, prête) */
+  --color-green-50: #e4f1e9;
+  --color-green-100: #d3e8dc;
+  --color-green-200: #b0d6bf;
+  --color-green-300: #82be9b;
+  --color-green-400: #4f9e71;
+  --color-green-500: #2e7d55;
+  --color-green-600: #276e4a;
+  --color-green-700: #215c3e;
+  --color-green-800: #1b4a32;
+  --color-green-900: #143726;
+
+  /* amber → warn (hors-ligne, en attente, alertes) */
+  --color-amber-50: #faeed7;
+  --color-amber-100: #f5e1be;
+  --color-amber-200: #eecb8c;
+  --color-amber-300: #e4b35d;
+  --color-amber-400: #d19a2e;
+  --color-amber-500: #b9791a;
+  --color-amber-600: #a66e18;
+  --color-amber-700: #8a5c16;
+  --color-amber-800: #6f4a13;
+  --color-amber-900: #5a3c10;
+
+  /* sky → safran (accent : suites, réclame, demandes clients) */
+  --color-sky-50: #fbefd7;
+  --color-sky-100: #f7e4bc;
+  --color-sky-200: #f3ce85;
+  --color-sky-300: #eab65c;
+  --color-sky-400: #dda038;
+  --color-sky-500: #cc811a;
+  --color-sky-600: #b0700f;
+  --color-sky-700: #935e11;
+  --color-sky-800: #7d4f11;
+  --color-sky-900: #5f3c0d;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-  background-color: var(--color-stone-100);
-  color: var(--color-stone-900);
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: var(--ink);
 }
