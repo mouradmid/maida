@@ -21,6 +21,7 @@ export function Reservations() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [editionTableId, setEditionTableId] = useState<string | null>(null);
 
   // Formulaire
   const [nomClient, setNomClient] = useState('');
@@ -94,6 +95,20 @@ export function Reservations() {
     }
   }
 
+  async function handleChangerTable(reservation: Reservation, nouvelleTableId: string) {
+    setEditionTableId(null);
+    if (nouvelleTableId === reservation.table.id) return;
+    setErreur(null);
+    setMessage(null);
+    try {
+      const maj = await api.changerTableReservation(reservation.id, nouvelleTableId);
+      setMessage(`${maj.nomClient} déplacé·e sur la table ${maj.table.numero}.`);
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   if (chargement && reservations.length === 0) {
     return <p className="text-center text-stone-500">Chargement des réservations...</p>;
   }
@@ -158,7 +173,31 @@ export function Reservations() {
                     </span>
                   </div>
                   {r.statut === 'A_VENIR' && (
-                    <span className="flex shrink-0 items-center gap-2">
+                    <span className="flex shrink-0 flex-wrap items-center gap-2">
+                      {editionTableId === r.id ? (
+                        <select
+                          autoFocus
+                          defaultValue={r.table.id}
+                          onChange={(e) => handleChangerTable(r, e.target.value)}
+                          onBlur={() => setEditionTableId(null)}
+                          title="Réaffecter la table"
+                          className={`${champ} w-auto py-1.5 text-xs`}
+                        >
+                          {tables.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              Table {t.numero} — {t.nombreCouverts} couv.
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEditionTableId(r.id)}
+                          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                        >
+                          Changer de table
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleStatut(r, 'ARRIVEE')}

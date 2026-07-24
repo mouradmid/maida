@@ -565,6 +565,40 @@ describe('Réservations', () => {
     expect(res.status).toBe(201);
   });
 
+  it('déplace une réservation vers une autre table', async () => {
+    const creation = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'À déplacer',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 10 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(creation.status).toBe(201);
+    expect(creation.body.table.numero).toBe('T1');
+
+    const deplacee = await serveur
+      .patch(`/api/caisse/reservations/${creation.body.id}`)
+      .send({ tableId: table2Id });
+    expect(deplacee.status).toBe(200);
+    expect(deplacee.body.table.numero).toBe('T2');
+  });
+
+  it('refuse de déplacer vers une table déjà occupée sur le créneau', async () => {
+    // « À déplacer » occupe désormais T2 à +10h. On crée une résa sur T1 au même créneau.
+    const creation = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Bloqué',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 10.5 * 60 * 60_000).toISOString(),
+      tableId,
+    });
+    expect(creation.status).toBe(201);
+
+    const refus = await serveur
+      .patch(`/api/caisse/reservations/${creation.body.id}`)
+      .send({ tableId: table2Id });
+    expect(refus.status).toBe(409);
+    expect(refus.body.error).toContain('À déplacer');
+  });
+
   it('signale la table sur le plan quand la réservation approche', async () => {
     await serveur.post('/api/caisse/reservations').send({
       nomClient: 'Imminent',

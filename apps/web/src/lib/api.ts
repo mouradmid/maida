@@ -689,6 +689,12 @@ export const api = {
       body: JSON.stringify({ statut }),
     }),
 
+  changerTableReservation: (id: string, tableId: string) =>
+    apiFetch<Reservation>(`/caisse/reservations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tableId }),
+    }),
+
   getJournee: () => apiFetch<EtatJournee>('/caisse/journee'),
 
   ouvrirJournee: (fondDeCaisse: number) =>

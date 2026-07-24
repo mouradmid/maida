@@ -211,6 +211,32 @@ function toPublicReservation(r: Prisma.ReservationGetPayload<{ include: typeof I
   };
 }
 
+// Détecte une réservation en conflit (chevauchement de créneau) sur une table donnée.
+async function trouverConflitReservation(
+  tableId: string,
+  debutCreneau: number,
+  dureeMinutes: number,
+  reservationExclueId?: string,
+) {
+  const finCreneau = debutCreneau + dureeMinutes * 60_000;
+  const voisines = await prisma.reservation.findMany({
+    where: {
+      tableId,
+      statut: { in: ['A_VENIR', 'ARRIVEE'] },
+      date: {
+        gte: new Date(debutCreneau - 12 * 60 * 60_000),
+        lte: new Date(finCreneau + 12 * 60 * 60_000),
+      },
+      ...(reservationExclueId ? { id: { not: reservationExclueId } } : {}),
+    },
+  });
+  return voisines.find((r) => {
+    const debutR = r.date.getTime();
+    const finR = debutR + r.dureeMinutes * 60_000;
+    return debutR < finCreneau && finR > debutCreneau;
+  });
+}
+
 caisseRouter.get('/reservations', async (req, res) => {
   const { debut, fin } = req.query;
   if (typeof debut !== 'string' || typeof fin !== 'string') {
@@ -289,23 +315,7 @@ caisseRouter.post('/reservations', async (req, res) => {
   }
 
   // Anti double-réservation : chevauchement sur la même table.
-  const debutCreneau = dateReservation.getTime();
-  const finCreneau = debutCreneau + duree * 60_000;
-  const voisines = await prisma.reservation.findMany({
-    where: {
-      tableId: table.id,
-      statut: { in: ['A_VENIR', 'ARRIVEE'] },
-      date: {
-        gte: new Date(debutCreneau - 12 * 60 * 60_000),
-        lte: new Date(finCreneau + 12 * 60 * 60_000),
-      },
-    },
-  });
-  const conflit = voisines.find((r) => {
-    const debutR = r.date.getTime();
-    const finR = debutR + r.dureeMinutes * 60_000;
-    return debutR < finCreneau && finR > debutCreneau;
-  });
+  const conflit = await trouverConflitReservation(table.id, dateReservation.getTime(), duree);
   if (conflit) {
     const heure = conflit.date.toLocaleTimeString('fr-FR', {
       hour: '2-digit',
@@ -338,10 +348,21 @@ caisseRouter.post('/reservations', async (req, res) => {
 });
 
 caisseRouter.patch('/reservations/:id', async (req, res) => {
-  const { statut } = req.body ?? {};
+  const { statut, tableId } = req.body ?? {};
 
-  if (statut !== 'ARRIVEE' && statut !== 'ANNULEE' && statut !== 'NO_SHOW') {
+  const veutChangerStatut = statut !== undefined;
+  const veutChangerTable = tableId !== undefined;
+
+  if (!veutChangerStatut && !veutChangerTable) {
+    res.status(400).json({ error: 'Aucune modification demandée' });
+    return;
+  }
+  if (veutChangerStatut && statut !== 'ARRIVEE' && statut !== 'ANNULEE' && statut !== 'NO_SHOW') {
     res.status(400).json({ error: 'Statut invalide (ARRIVEE, ANNULEE ou NO_SHOW)' });
+    return;
+  }
+  if (veutChangerTable && typeof tableId !== 'string') {
+    res.status(400).json({ error: 'La table est requise' });
     return;
   }
 
@@ -359,9 +380,44 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
     return;
   }
 
+  const data: Prisma.ReservationUpdateInput = {};
+
+  if (veutChangerTable) {
+    const table = await prisma.table.findUnique({ where: { id: tableId } });
+    if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
+      res.status(400).json({ error: 'Table invalide' });
+      return;
+    }
+    // On ne revérifie le conflit que si la table change réellement.
+    if (table.id !== reservation.tableId) {
+      const conflit = await trouverConflitReservation(
+        table.id,
+        reservation.date.getTime(),
+        reservation.dureeMinutes,
+        reservation.id,
+      );
+      if (conflit) {
+        const heure = conflit.date.toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Africa/Algiers',
+        });
+        res.status(409).json({
+          error: `La table ${table.numero} est déjà réservée sur ce créneau (${conflit.nomClient}, ${heure})`,
+        });
+        return;
+      }
+    }
+    data.table = { connect: { id: table.id } };
+  }
+
+  if (veutChangerStatut) {
+    data.statut = statut;
+  }
+
   const majApres = await prisma.reservation.update({
     where: { id: reservation.id },
-    data: { statut },
+    data,
     include: INCLUDE_RESERVATION,
   });
 
