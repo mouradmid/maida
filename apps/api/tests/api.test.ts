@@ -658,6 +658,42 @@ describe('Réservations', () => {
     expect(refus.status).toBe(400);
   });
 
+  it('corrige les coordonnées du client (nom, téléphone, email, note)', async () => {
+    const creation = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Nom Erroné',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 70 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      dureeMinutes: 60,
+    });
+    expect(creation.status).toBe(201);
+
+    const maj = await serveur.patch(`/api/caisse/reservations/${creation.body.id}`).send({
+      nomClient: 'Nom Corrigé',
+      telephone: '0661 22 33 44',
+      email: 'Corrige@Example.DZ',
+      note: 'Près de la fenêtre',
+    });
+    expect(maj.status).toBe(200);
+    expect(maj.body.nomClient).toBe('Nom Corrigé');
+    expect(maj.body.telephone).toBe('0661 22 33 44');
+    expect(maj.body.email).toBe('corrige@example.dz');
+    expect(maj.body.note).toBe('Près de la fenêtre');
+
+    // Vider téléphone et note (chaîne vide → null), et refuser un nom vide.
+    const vidage = await serveur
+      .patch(`/api/caisse/reservations/${creation.body.id}`)
+      .send({ telephone: '', note: '' });
+    expect(vidage.status).toBe(200);
+    expect(vidage.body.telephone).toBeNull();
+    expect(vidage.body.note).toBeNull();
+
+    const nomVide = await serveur
+      .patch(`/api/caisse/reservations/${creation.body.id}`)
+      .send({ nomClient: '   ' });
+    expect(nomVide.status).toBe(400);
+  });
+
   it('signale la table sur le plan quand la réservation approche', async () => {
     await serveur.post('/api/caisse/reservations').send({
       nomClient: 'Imminent',

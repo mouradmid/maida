@@ -348,14 +348,27 @@ caisseRouter.post('/reservations', async (req, res) => {
 });
 
 caisseRouter.patch('/reservations/:id', async (req, res) => {
-  const { statut, tableId, nombreCouverts, date } = req.body ?? {};
+  const { statut, tableId, nombreCouverts, date, nomClient, telephone, email, note } = req.body ?? {};
 
   const veutChangerStatut = statut !== undefined;
   const veutChangerTable = tableId !== undefined;
   const veutChangerCouverts = nombreCouverts !== undefined;
   const veutChangerDate = date !== undefined;
+  const veutChangerNom = nomClient !== undefined;
+  const veutChangerTelephone = telephone !== undefined;
+  const veutChangerEmail = email !== undefined;
+  const veutChangerNote = note !== undefined;
 
-  if (!veutChangerStatut && !veutChangerTable && !veutChangerCouverts && !veutChangerDate) {
+  if (
+    !veutChangerStatut &&
+    !veutChangerTable &&
+    !veutChangerCouverts &&
+    !veutChangerDate &&
+    !veutChangerNom &&
+    !veutChangerTelephone &&
+    !veutChangerEmail &&
+    !veutChangerNote
+  ) {
     res.status(400).json({ error: 'Aucune modification demandée' });
     return;
   }
@@ -369,6 +382,26 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
   }
   if (veutChangerCouverts && (!Number.isInteger(nombreCouverts) || nombreCouverts <= 0)) {
     res.status(400).json({ error: 'Le nombre de couverts doit être un entier positif' });
+    return;
+  }
+  if (veutChangerNom && (typeof nomClient !== 'string' || !nomClient.trim() || nomClient.length > 100)) {
+    res.status(400).json({ error: 'Le nom du client est requis' });
+    return;
+  }
+  if (veutChangerTelephone && (typeof telephone !== 'string' || telephone.length > 30)) {
+    res.status(400).json({ error: 'Téléphone invalide' });
+    return;
+  }
+  if (
+    veutChangerEmail &&
+    (typeof email !== 'string' ||
+      (email.trim() !== '' && (email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))))
+  ) {
+    res.status(400).json({ error: 'Adresse email invalide' });
+    return;
+  }
+  if (veutChangerNote && (typeof note !== 'string' || note.length > 500)) {
+    res.status(400).json({ error: 'Note invalide' });
     return;
   }
   let dateModifiee: Date | null = null;
@@ -452,6 +485,19 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
 
   if (veutChangerCouverts) {
     data.nombreCouverts = nombreCouverts;
+  }
+
+  if (veutChangerNom) {
+    data.nomClient = nomClient.trim();
+  }
+  if (veutChangerTelephone) {
+    data.telephone = telephone.trim() ? telephone.trim() : null;
+  }
+  if (veutChangerEmail) {
+    data.email = email.trim() ? email.trim().toLowerCase() : null;
+  }
+  if (veutChangerNote) {
+    data.note = note.trim() ? note.trim() : null;
   }
 
   if (veutChangerStatut) {

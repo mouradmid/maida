@@ -691,7 +691,15 @@ export const api = {
 
   modifierReservation: (
     id: string,
-    data: { tableId?: string; nombreCouverts?: number; date?: string },
+    data: {
+      tableId?: string;
+      nombreCouverts?: number;
+      date?: string;
+      nomClient?: string;
+      telephone?: string;
+      email?: string;
+      note?: string;
+    },
   ) =>
     apiFetch<Reservation>(`/caisse/reservations/${id}`, {
       method: 'PATCH',

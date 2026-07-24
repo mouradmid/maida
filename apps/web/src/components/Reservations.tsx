@@ -29,6 +29,11 @@ export function Reservations() {
   const [editionTableId, setEditionTableId] = useState<string | null>(null);
   const [editionCouvertsId, setEditionCouvertsId] = useState<string | null>(null);
   const [editionHeureId, setEditionHeureId] = useState<string | null>(null);
+  const [editionInfosId, setEditionInfosId] = useState<string | null>(null);
+  const [infoNom, setInfoNom] = useState('');
+  const [infoTel, setInfoTel] = useState('');
+  const [infoEmail, setInfoEmail] = useState('');
+  const [infoNote, setInfoNote] = useState('');
 
   // Formulaire
   const [nomClient, setNomClient] = useState('');
@@ -110,6 +115,36 @@ export function Reservations() {
     try {
       const maj = await api.modifierReservation(reservation.id, { tableId: nouvelleTableId });
       setMessage(`${maj.nomClient} déplacé·e sur la table ${maj.table.numero}.`);
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  function ouvrirEditionInfos(reservation: Reservation) {
+    setEditionInfosId(reservation.id);
+    setInfoNom(reservation.nomClient);
+    setInfoTel(reservation.telephone ?? '');
+    setInfoEmail(reservation.email ?? '');
+    setInfoNote(reservation.note ?? '');
+  }
+
+  async function handleEnregistrerInfos(reservation: Reservation) {
+    if (!infoNom.trim()) {
+      setErreur('Le nom du client est requis');
+      return;
+    }
+    setErreur(null);
+    setMessage(null);
+    try {
+      const maj = await api.modifierReservation(reservation.id, {
+        nomClient: infoNom.trim(),
+        telephone: infoTel.trim(),
+        email: infoEmail.trim(),
+        note: infoNote.trim(),
+      });
+      setEditionInfosId(null);
+      setMessage(`Coordonnées de ${maj.nomClient} mises à jour.`);
       await charger();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -299,6 +334,15 @@ export function Reservations() {
                           Changer de table
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          editionInfosId === r.id ? setEditionInfosId(null) : ouvrirEditionInfos(r)
+                        }
+                        className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                      >
+                        Modifier les infos
+                      </button>
                       {r.statut === 'A_VENIR' && (
                         <>
                           <button
@@ -325,6 +369,62 @@ export function Reservations() {
                         </>
                       )}
                     </span>
+                  )}
+                  {editionInfosId === r.id && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleEnregistrerInfos(r);
+                      }}
+                      className="flex w-full flex-col gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3"
+                    >
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nom du client"
+                          value={infoNom}
+                          onChange={(e) => setInfoNom(e.target.value)}
+                          required
+                          className={`${champ} min-w-40 flex-1`}
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Téléphone"
+                          value={infoTel}
+                          onChange={(e) => setInfoTel(e.target.value)}
+                          className={`${champ} min-w-40 flex-1`}
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email"
+                          value={infoEmail}
+                          onChange={(e) => setInfoEmail(e.target.value)}
+                          className={`${champ} min-w-40 flex-1`}
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Note (anniversaire, terrasse...)"
+                        value={infoNote}
+                        onChange={(e) => setInfoNote(e.target.value)}
+                        className={champ}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-700"
+                        >
+                          Enregistrer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditionInfosId(null)}
+                          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </form>
                   )}
                 </li>
               );
