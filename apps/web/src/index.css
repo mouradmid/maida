@@ -60,6 +60,11 @@
   --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
   --font-mono: 'Spline Sans Mono', ui-monospace, monospace;
 
+  /* Polices du logo (mot-symbole Maïda, arabe, mention) */
+  --font-marcellus: 'Marcellus', Georgia, serif;
+  --font-arabe: 'Aref Ruqaa', 'Marcellus', serif;
+  --font-jost: 'Jost', 'Inter', sans-serif;
+
   /* Fonds / surfaces */
   --color-canvas: var(--bg);
   --color-surface: var(--surface);
