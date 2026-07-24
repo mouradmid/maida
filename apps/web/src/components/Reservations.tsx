@@ -22,6 +22,7 @@ export function Reservations() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [editionTableId, setEditionTableId] = useState<string | null>(null);
+  const [editionCouvertsId, setEditionCouvertsId] = useState<string | null>(null);
 
   // Formulaire
   const [nomClient, setNomClient] = useState('');
@@ -101,8 +102,25 @@ export function Reservations() {
     setErreur(null);
     setMessage(null);
     try {
-      const maj = await api.changerTableReservation(reservation.id, nouvelleTableId);
+      const maj = await api.modifierReservation(reservation.id, { tableId: nouvelleTableId });
       setMessage(`${maj.nomClient} déplacé·e sur la table ${maj.table.numero}.`);
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleChangerCouverts(reservation: Reservation, valeur: string) {
+    setEditionCouvertsId(null);
+    const couverts = Number(valeur);
+    if (!Number.isInteger(couverts) || couverts <= 0 || couverts === reservation.nombreCouverts) {
+      return;
+    }
+    setErreur(null);
+    setMessage(null);
+    try {
+      const maj = await api.modifierReservation(reservation.id, { nombreCouverts: couverts });
+      setMessage(`Réservation de ${maj.nomClient} : ${maj.nombreCouverts} couverts.`);
       await charger();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -146,6 +164,7 @@ export function Reservations() {
           <ul className="flex flex-col divide-y divide-stone-100">
             {reservations.map((r) => {
               const statut = LIBELLES_STATUT[r.statut];
+              const modifiable = r.statut === 'A_VENIR' || r.statut === 'ARRIVEE';
               return (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div className="flex min-w-0 flex-col gap-1">
@@ -158,7 +177,35 @@ export function Reservations() {
                       </span>
                       <span className="font-medium text-stone-900">{r.nomClient}</span>
                       <span className={badgeNeutre}>Table {r.table.numero}</span>
-                      <span className={badgeNeutre}>{r.nombreCouverts} couv.</span>
+                      {modifiable ? (
+                        editionCouvertsId === r.id ? (
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            autoFocus
+                            defaultValue={r.nombreCouverts}
+                            onBlur={(e) => handleChangerCouverts(r, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.currentTarget.blur();
+                              if (e.key === 'Escape') setEditionCouvertsId(null);
+                            }}
+                            title="Modifier le nombre de couverts"
+                            className={`${champ} w-16 py-0.5 text-xs`}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditionCouvertsId(r.id)}
+                            title="Modifier le nombre de couverts"
+                            className={`${badgeNeutre} cursor-pointer hover:bg-brand-100`}
+                          >
+                            {r.nombreCouverts} couv. ✎
+                          </button>
+                        )
+                      ) : (
+                        <span className={badgeNeutre}>{r.nombreCouverts} couv.</span>
+                      )}
                       <span
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statut.classes}`}
                       >
@@ -172,7 +219,7 @@ export function Reservations() {
                       {r.note && <> · « {r.note} »</>}
                     </span>
                   </div>
-                  {r.statut === 'A_VENIR' && (
+                  {modifiable && (
                     <span className="flex shrink-0 flex-wrap items-center gap-2">
                       {editionTableId === r.id ? (
                         <select
@@ -198,27 +245,31 @@ export function Reservations() {
                           Changer de table
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleStatut(r, 'ARRIVEE')}
-                        className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-green-700"
-                      >
-                        Client arrivé ✓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleStatut(r, 'NO_SHOW')}
-                        className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
-                      >
-                        No-show
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleStatut(r, 'ANNULEE')}
-                        className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
-                      >
-                        Annuler
-                      </button>
+                      {r.statut === 'A_VENIR' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStatut(r, 'ARRIVEE')}
+                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-green-700"
+                          >
+                            Client arrivé ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatut(r, 'NO_SHOW')}
+                            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
+                          >
+                            No-show
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatut(r, 'ANNULEE')}
+                            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                          >
+                            Annuler
+                          </button>
+                        </>
+                      )}
                     </span>
                   )}
                 </li>

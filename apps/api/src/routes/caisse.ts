@@ -348,12 +348,13 @@ caisseRouter.post('/reservations', async (req, res) => {
 });
 
 caisseRouter.patch('/reservations/:id', async (req, res) => {
-  const { statut, tableId } = req.body ?? {};
+  const { statut, tableId, nombreCouverts } = req.body ?? {};
 
   const veutChangerStatut = statut !== undefined;
   const veutChangerTable = tableId !== undefined;
+  const veutChangerCouverts = nombreCouverts !== undefined;
 
-  if (!veutChangerStatut && !veutChangerTable) {
+  if (!veutChangerStatut && !veutChangerTable && !veutChangerCouverts) {
     res.status(400).json({ error: 'Aucune modification demandée' });
     return;
   }
@@ -363,6 +364,10 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
   }
   if (veutChangerTable && typeof tableId !== 'string') {
     res.status(400).json({ error: 'La table est requise' });
+    return;
+  }
+  if (veutChangerCouverts && (!Number.isInteger(nombreCouverts) || nombreCouverts <= 0)) {
+    res.status(400).json({ error: 'Le nombre de couverts doit être un entier positif' });
     return;
   }
 
@@ -375,8 +380,15 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
     res.status(404).json({ error: 'Réservation introuvable' });
     return;
   }
-  if (reservation.statut !== 'A_VENIR') {
+  // Le changement de statut ne concerne qu'une réservation à venir ; la table et
+  // les couverts restent ajustables tant que le client n'a pas quitté (à venir ou arrivé).
+  const modifiable = reservation.statut === 'A_VENIR' || reservation.statut === 'ARRIVEE';
+  if (!modifiable) {
     res.status(409).json({ error: "Cette réservation n'est plus modifiable" });
+    return;
+  }
+  if (veutChangerStatut && reservation.statut !== 'A_VENIR') {
+    res.status(409).json({ error: 'Le statut ne peut être modifié que pour une réservation à venir' });
     return;
   }
 
@@ -409,6 +421,10 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
       }
     }
     data.table = { connect: { id: table.id } };
+  }
+
+  if (veutChangerCouverts) {
+    data.nombreCouverts = nombreCouverts;
   }
 
   if (veutChangerStatut) {

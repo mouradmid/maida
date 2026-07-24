@@ -624,6 +624,34 @@ describe('Réservations', () => {
     expect(rejeu.status).toBe(409);
   });
 
+  it('ajuste couverts et table même après arrivée du client, mais pas le statut', async () => {
+    // reservationId est désormais ARRIVEE (test précédent).
+    const couverts = await serveur
+      .patch(`/api/caisse/reservations/${reservationId}`)
+      .send({ nombreCouverts: 6 });
+    expect(couverts.status).toBe(200);
+    expect(couverts.body.nombreCouverts).toBe(6);
+
+    const table = await serveur
+      .patch(`/api/caisse/reservations/${reservationId}`)
+      .send({ tableId: table2Id });
+    expect(table.status).toBe(200);
+    expect(table.body.table.numero).toBe('T2');
+
+    // Le statut, lui, n'est plus modifiable une fois le client arrivé.
+    const statut = await serveur
+      .patch(`/api/caisse/reservations/${reservationId}`)
+      .send({ statut: 'NO_SHOW' });
+    expect(statut.status).toBe(409);
+  });
+
+  it('refuse un nombre de couverts invalide', async () => {
+    const res = await serveur
+      .patch(`/api/caisse/reservations/${reservationId}`)
+      .send({ nombreCouverts: 0 });
+    expect(res.status).toBe(400);
+  });
+
   it('refuse une adresse email invalide, accepte une valide', async () => {
     const invalide = await serveur.post('/api/caisse/reservations').send({
       nomClient: 'Email cassé',
