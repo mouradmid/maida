@@ -20,7 +20,7 @@ export function EnTeteEspace({
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-20 bg-white/90 backdrop-blur">
       {horsLigne && (
         <div className="bg-amber-500 px-4 py-1.5 text-center text-sm font-semibold text-white">
           ⚠ Hors ligne — le service continue, tout sera synchronisé au retour du réseau
@@ -52,6 +52,11 @@ export function EnTeteEspace({
           </button>
         </div>
       </div>
+      {/* Filet doré de marque, dégradé qui s'estompe sur les bords */}
+      <div
+        aria-hidden
+        className="h-px w-full bg-gradient-to-r from-transparent via-gold-deep to-transparent opacity-70"
+      />
     </header>
   );
 }
