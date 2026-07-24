@@ -599,6 +599,65 @@ describe('Réservations', () => {
     expect(refus.body.error).toContain('À déplacer');
   });
 
+  it("modifie l'heure d'une réservation à venir", async () => {
+    const creation = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Horaire',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 30 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      dureeMinutes: 60,
+    });
+    expect(creation.status).toBe(201);
+
+    const nouvelleHeure = new Date(Date.now() + 40 * 60 * 60_000).toISOString();
+    const maj = await serveur
+      .patch(`/api/caisse/reservations/${creation.body.id}`)
+      .send({ date: nouvelleHeure });
+    expect(maj.status).toBe(200);
+    expect(new Date(maj.body.date).getTime()).toBe(new Date(nouvelleHeure).getTime());
+  });
+
+  it('refuse un nouvel horaire qui chevauche une autre résa de la table', async () => {
+    // Deux résas sur T2 à des créneaux distincts, puis on tente de les superposer.
+    const a = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Créneau A',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 50 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      dureeMinutes: 60,
+    });
+    const b = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Créneau B',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 55 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      dureeMinutes: 60,
+    });
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+
+    // Déplacer B sur le créneau de A → conflit.
+    const refus = await serveur
+      .patch(`/api/caisse/reservations/${b.body.id}`)
+      .send({ date: new Date(Date.now() + 50 * 60 * 60_000).toISOString() });
+    expect(refus.status).toBe(409);
+    expect(refus.body.error).toContain('Créneau A');
+  });
+
+  it('refuse un horaire dans le passé', async () => {
+    const creation = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Passé',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 60 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      dureeMinutes: 60,
+    });
+    const refus = await serveur
+      .patch(`/api/caisse/reservations/${creation.body.id}`)
+      .send({ date: new Date(Date.now() - 3 * 60 * 60_000).toISOString() });
+    expect(refus.status).toBe(400);
+  });
+
   it('signale la table sur le plan quand la réservation approche', async () => {
     await serveur.post('/api/caisse/reservations').send({
       nomClient: 'Imminent',

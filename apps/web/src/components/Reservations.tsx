@@ -14,6 +14,11 @@ function jourISO(date: Date) {
   return decale.toISOString().slice(0, 10);
 }
 
+function heureLocale(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export function Reservations() {
   const [jour, setJour] = useState(jourISO(new Date()));
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -23,6 +28,7 @@ export function Reservations() {
   const [message, setMessage] = useState<string | null>(null);
   const [editionTableId, setEditionTableId] = useState<string | null>(null);
   const [editionCouvertsId, setEditionCouvertsId] = useState<string | null>(null);
+  const [editionHeureId, setEditionHeureId] = useState<string | null>(null);
 
   // Formulaire
   const [nomClient, setNomClient] = useState('');
@@ -110,6 +116,25 @@ export function Reservations() {
     }
   }
 
+  async function handleChangerHeure(reservation: Reservation, heureStr: string) {
+    setEditionHeureId(null);
+    if (!heureStr) return;
+    const [h, m] = heureStr.split(':').map(Number);
+    if (!Number.isInteger(h) || !Number.isInteger(m)) return;
+    const nouvelleDate = new Date(reservation.date);
+    nouvelleDate.setHours(h, m, 0, 0);
+    if (nouvelleDate.getTime() === new Date(reservation.date).getTime()) return;
+    setErreur(null);
+    setMessage(null);
+    try {
+      const maj = await api.modifierReservation(reservation.id, { date: nouvelleDate.toISOString() });
+      setMessage(`Réservation de ${maj.nomClient} déplacée à ${heureLocale(maj.date)}.`);
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   async function handleChangerCouverts(reservation: Reservation, valeur: string) {
     setEditionCouvertsId(null);
     const couverts = Number(valeur);
@@ -169,12 +194,41 @@ export function Reservations() {
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div className="flex min-w-0 flex-col gap-1">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-lg font-bold text-stone-900">
-                        {new Date(r.date).toLocaleTimeString('fr-FR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
+                      {modifiable ? (
+                        editionHeureId === r.id ? (
+                          <input
+                            type="time"
+                            autoFocus
+                            defaultValue={heureLocale(r.date)}
+                            onBlur={(e) => handleChangerHeure(r, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.currentTarget.blur();
+                              if (e.key === 'Escape') setEditionHeureId(null);
+                            }}
+                            title="Modifier l'heure"
+                            className={`${champ} w-auto py-0.5 text-base font-bold`}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditionHeureId(r.id)}
+                            title="Modifier l'heure"
+                            className="text-lg font-bold text-stone-900 transition-colors hover:text-brand-700"
+                          >
+                            {new Date(r.date).toLocaleTimeString('fr-FR', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-lg font-bold text-stone-900">
+                          {new Date(r.date).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      )}
                       <span className="font-medium text-stone-900">{r.nomClient}</span>
                       <span className={badgeNeutre}>Table {r.table.numero}</span>
                       {modifiable ? (

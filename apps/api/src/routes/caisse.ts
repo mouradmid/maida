@@ -348,13 +348,14 @@ caisseRouter.post('/reservations', async (req, res) => {
 });
 
 caisseRouter.patch('/reservations/:id', async (req, res) => {
-  const { statut, tableId, nombreCouverts } = req.body ?? {};
+  const { statut, tableId, nombreCouverts, date } = req.body ?? {};
 
   const veutChangerStatut = statut !== undefined;
   const veutChangerTable = tableId !== undefined;
   const veutChangerCouverts = nombreCouverts !== undefined;
+  const veutChangerDate = date !== undefined;
 
-  if (!veutChangerStatut && !veutChangerTable && !veutChangerCouverts) {
+  if (!veutChangerStatut && !veutChangerTable && !veutChangerCouverts && !veutChangerDate) {
     res.status(400).json({ error: 'Aucune modification demandée' });
     return;
   }
@@ -370,18 +371,33 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
     res.status(400).json({ error: 'Le nombre de couverts doit être un entier positif' });
     return;
   }
+  let dateModifiee: Date | null = null;
+  if (veutChangerDate) {
+    dateModifiee = typeof date === 'string' ? new Date(date) : null;
+    const maintenant = Date.now();
+    if (
+      !dateModifiee ||
+      Number.isNaN(dateModifiee.getTime()) ||
+      dateModifiee.getTime() < maintenant - 30 * 60_000 ||
+      dateModifiee.getTime() > maintenant + 365 * 24 * 60 * 60_000
+    ) {
+      res.status(400).json({ error: 'Horaire invalide (il doit être à venir)' });
+      return;
+    }
+  }
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
   const reservation = await prisma.reservation.findFirst({
     where: { id: req.params.id, etablissementId },
+    include: { table: { select: { id: true, numero: true } } },
   });
   if (!reservation) {
     res.status(404).json({ error: 'Réservation introuvable' });
     return;
   }
-  // Le changement de statut ne concerne qu'une réservation à venir ; la table et
-  // les couverts restent ajustables tant que le client n'a pas quitté (à venir ou arrivé).
+  // Le changement de statut ne concerne qu'une réservation à venir ; la table,
+  // les couverts et l'horaire restent ajustables tant que le client n'a pas quitté.
   const modifiable = reservation.statut === 'A_VENIR' || reservation.statut === 'ARRIVEE';
   if (!modifiable) {
     res.status(409).json({ error: "Cette réservation n'est plus modifiable" });
@@ -394,33 +410,44 @@ caisseRouter.patch('/reservations/:id', async (req, res) => {
 
   const data: Prisma.ReservationUpdateInput = {};
 
+  // Table cible pour la vérification de conflit (nouvelle table ou table actuelle).
+  let tableCible = reservation.table;
   if (veutChangerTable) {
     const table = await prisma.table.findUnique({ where: { id: tableId } });
     if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
       res.status(400).json({ error: 'Table invalide' });
       return;
     }
-    // On ne revérifie le conflit que si la table change réellement.
-    if (table.id !== reservation.tableId) {
-      const conflit = await trouverConflitReservation(
-        table.id,
-        reservation.date.getTime(),
-        reservation.dureeMinutes,
-        reservation.id,
-      );
-      if (conflit) {
-        const heure = conflit.date.toLocaleTimeString('fr-FR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'Africa/Algiers',
-        });
-        res.status(409).json({
-          error: `La table ${table.numero} est déjà réservée sur ce créneau (${conflit.nomClient}, ${heure})`,
-        });
-        return;
-      }
-    }
+    tableCible = { id: table.id, numero: table.numero };
     data.table = { connect: { id: table.id } };
+  }
+
+  // Anti double-réservation : on revérifie dès que la table OU l'horaire change réellement.
+  const tableChange = tableCible.id !== reservation.tableId;
+  const horaireChange = dateModifiee !== null && dateModifiee.getTime() !== reservation.date.getTime();
+  if (tableChange || horaireChange) {
+    const debutCreneau = (dateModifiee ?? reservation.date).getTime();
+    const conflit = await trouverConflitReservation(
+      tableCible.id,
+      debutCreneau,
+      reservation.dureeMinutes,
+      reservation.id,
+    );
+    if (conflit) {
+      const heure = conflit.date.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Africa/Algiers',
+      });
+      res.status(409).json({
+        error: `La table ${tableCible.numero} est déjà réservée sur ce créneau (${conflit.nomClient}, ${heure})`,
+      });
+      return;
+    }
+  }
+
+  if (veutChangerDate && dateModifiee) {
+    data.date = dateModifiee;
   }
 
   if (veutChangerCouverts) {
