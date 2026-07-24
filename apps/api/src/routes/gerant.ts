@@ -404,9 +404,24 @@ gerantRouter.post('/tables', async (req, res) => {
 
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
-  const nombreTables = await prisma.table.count({ where: { etablissementId } });
-  const positionX = 20 + (nombreTables % 6) * 110;
-  const positionY = 20 + Math.floor(nombreTables / 6) * 110;
+  // Cherche le premier créneau de la grille non occupé, pour ne jamais poser une
+  // nouvelle table exactement sur une autre (sinon elle devient impossible à attraper).
+  const existantes = await prisma.table.findMany({
+    where: { etablissementId },
+    select: { positionX: true, positionY: true },
+  });
+  const occupe = new Set(existantes.map((t) => `${t.positionX},${t.positionY}`));
+  let positionX = 20;
+  let positionY = 20;
+  for (let i = 0; i < 240; i++) {
+    const x = 20 + (i % 6) * 110;
+    const y = 20 + Math.floor(i / 6) * 110;
+    if (!occupe.has(`${x},${y}`)) {
+      positionX = x;
+      positionY = y;
+      break;
+    }
+  }
 
   try {
     const table = await prisma.table.create({

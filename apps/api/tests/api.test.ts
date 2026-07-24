@@ -796,6 +796,22 @@ describe('Réservations', () => {
   });
 });
 
+describe('Plan de salle', () => {
+  it('place chaque nouvelle table sur un créneau libre (jamais empilée)', async () => {
+    const a = await gerant
+      .post('/api/gerant/tables')
+      .send({ numero: 'P1', forme: 'CARREE', nombreCouverts: 2 });
+    const b = await gerant
+      .post('/api/gerant/tables')
+      .send({ numero: 'P2', forme: 'CARREE', nombreCouverts: 2 });
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    // Deux tables ne doivent jamais partager exactement la même position.
+    const memePosition = a.body.positionX === b.body.positionX && a.body.positionY === b.body.positionY;
+    expect(memePosition).toBe(false);
+  });
+});
+
 describe('Suites de service', () => {
   let commandeId = '';
   let lignePlatId = '';

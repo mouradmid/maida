@@ -40,6 +40,7 @@ export function PlanDeSalle() {
 
   const dragRef = useRef<DragState | null>(null);
   const [, forceRender] = useState(0);
+  const [tableSelectionnee, setTableSelectionnee] = useState<string | null>(null);
 
   async function charger() {
     setChargement(true);
@@ -78,6 +79,7 @@ export function PlanDeSalle() {
 
   function handlePointerDown(e: React.PointerEvent, table: TablePlan) {
     e.preventDefault();
+    setTableSelectionnee(table.id);
     dragRef.current = {
       id: table.id,
       startX: e.clientX,
@@ -136,7 +138,8 @@ export function PlanDeSalle() {
 
       <div className={`${carte} overflow-x-auto`}>
         <p className="mb-3 text-sm text-stone-500">
-          Glissez-déposez les tables pour organiser votre salle.
+          Glissez-déposez les tables pour organiser votre salle. Si deux tables se superposent, cliquez
+          la table voulue dans la liste ci-dessous pour la ramener au premier plan, puis déplacez-la.
         </p>
         <div
           className="relative rounded-xl border border-stone-200 bg-stone-50"
@@ -156,7 +159,7 @@ export function PlanDeSalle() {
                 table.statut === 'INACTIF'
                   ? 'border-dashed border-stone-300 bg-stone-100 text-stone-400'
                   : 'border-brand-300 bg-white text-stone-800'
-              }`}
+              } ${tableSelectionnee === table.id ? 'ring-2 ring-brand-500 ring-offset-1' : ''}`}
               style={{
                 left: table.positionX,
                 top: table.positionY,
@@ -164,6 +167,7 @@ export function PlanDeSalle() {
                 height: table.hauteur,
                 borderRadius: radiusPour(table.forme),
                 touchAction: 'none',
+                zIndex: tableSelectionnee === table.id ? 20 : undefined,
               }}
             >
               <span className="font-semibold">{table.numero}</span>
@@ -178,7 +182,14 @@ export function PlanDeSalle() {
           <h3 className="mb-3 font-semibold text-stone-900">Tables ({tables.length})</h3>
           <ul className="flex flex-col divide-y divide-stone-100">
             {tables.map((table) => (
-              <li key={table.id} className="flex items-center justify-between py-2.5 text-sm">
+              <li
+                key={table.id}
+                onClick={() => setTableSelectionnee(table.id)}
+                className={`flex cursor-pointer items-center justify-between rounded-lg px-2 py-2.5 text-sm transition-colors hover:bg-stone-50 ${
+                  tableSelectionnee === table.id ? 'bg-brand-50' : ''
+                }`}
+                title="Cliquer pour la sélectionner et la ramener au premier plan"
+              >
                 <span className="flex items-center gap-2">
                   <span className="font-medium text-stone-900">Table {table.numero}</span>
                   <span className={badgeNeutre}>
@@ -186,7 +197,14 @@ export function PlanDeSalle() {
                   </span>
                   {table.statut === 'INACTIF' && <span className={badgeNeutre}>désactivée</span>}
                 </span>
-                <button type="button" onClick={() => handleToggleTable(table)} className={boutonDiscret}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleTable(table);
+                  }}
+                  className={boutonDiscret}
+                >
                   {table.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
                 </button>
               </li>
