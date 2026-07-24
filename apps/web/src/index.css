@@ -22,11 +22,16 @@
   --brand: #0e5a4a; /* boutons principaux, accents */
   --brand-deep: #0a3f34; /* barres latérales, en-têtes sombres */
   --brand-line: #1c6957;
+  --brand-logo: #005126; /* vert exact du logo, réservé au logo */
 
   /* Safran (accent chaud) */
   --saffron: #cc811a; /* accent, boutons secondaires */
   --saffron-soft: #f3ce85;
   --saffron-bg: #fbefd7; /* fonds d'étiquettes */
+
+  /* Or du logo (usage limité : logo, filets, mentions de marque) */
+  --gold: #ceb66a;
+  --gold-deep: #b09d63;
 
   /* Traits */
   --line: rgba(21, 48, 43, 0.12);
@@ -80,11 +85,16 @@
   --color-brand-700: #0c4a3d;
   --color-brand-800: var(--brand-deep);
   --color-brand-900: #073029;
+  --color-brand-logo: var(--brand-logo); /* réservé au logo */
 
   /* Safran (accent chaud) */
   --color-saffron: var(--saffron);
   --color-saffron-soft: var(--saffron-soft);
   --color-saffron-bg: var(--saffron-bg);
+
+  /* Or du logo (usage limité : logo, filets, mentions de marque) */
+  --color-gold: var(--gold);
+  --color-gold-deep: var(--gold-deep);
 
   /* États */
   --color-ok: var(--ok);
