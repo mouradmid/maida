@@ -13,6 +13,7 @@ import { HistoriqueRemises } from '../components/HistoriqueRemises';
 import { QrCodes } from '../components/QrCodes';
 import { RapportsGerant } from '../components/RapportsGerant';
 import { ReservationsGerant } from '../components/ReservationsGerant';
+import { IndicateurHorsLigne } from '../components/IndicateurHorsLigne';
 import { useMe } from '../hooks/useMe';
 
 const ONGLETS = [
@@ -89,6 +90,7 @@ export function EspaceGerant() {
             <QrCodes etablissementId={user.etablissementId} />
           )}
         </main>
+        <IndicateurHorsLigne />
       </div>
     );
   }

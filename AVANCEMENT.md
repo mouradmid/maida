@@ -49,6 +49,8 @@
   reçu client
 - Synchronisation automatique au retour du réseau, **sans jamais un doublon** (clés d'idempotence
   vérifiées côté serveur)
+- **Avertissement permanent en bas d'écran** rappelant à l'équipe qu'elle est hors ligne
+  (en plus du bandeau d'en-tête), avec le nombre d'opérations en attente
 - Application installable sur tablette (PWA)
 
 ### Espace gérant
@@ -60,6 +62,8 @@
 - **TVA** : taux par article (19/9/0 % + libre), prix TTC, récap par taux sur le ticket,
   TVA collectée prête pour la déclaration
 - **Réservations** : statistiques no-show, clients à surveiller
+- **Exports CSV (ouvrables dans Excel)** : chiffre d'affaires + indicateurs de la période,
+  répertoire clients (contacts récoltés aux réservations) et historique des réservations
 - Menu, plan de salle, équipe et droits, moyens de paiement, historique des annulations et
   remises, journées de caisse
 

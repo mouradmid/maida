@@ -6,7 +6,8 @@ import {
   type RapportVentes,
   type ResumeCout,
 } from '../lib/api';
-import { carte, champ, da, messageErreur } from '../lib/ui';
+import { boutonSecondaire, carte, champ, da, messageErreur } from '../lib/ui';
+import { type CelluleCsv, dateFichier, nombreCsv, telechargerCsv } from '../lib/export';
 
 const LIBELLES_MOYEN: Record<ModePaiement, string> = {
   ESPECES: 'Espèces',
@@ -14,6 +15,94 @@ const LIBELLES_MOYEN: Record<ModePaiement, string> = {
   CHEQUE: 'Chèque',
   AUTRE: 'Autre',
 };
+
+function dateCourte(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+// Construit le CSV du rapport : synthèse des indicateurs puis détails vendus.
+// `voirCouts` conditionne l'export des coûts/marges comme à l'écran.
+function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
+  const lignes: CelluleCsv[][] = [];
+  lignes.push(['Maïda — Chiffre d\'affaires et indicateurs']);
+  lignes.push(['Période', `${dateCourte(rapport.periode.debut)} au ${dateCourte(rapport.periode.fin)}`]);
+  lignes.push([]);
+
+  lignes.push(['INDICATEURS']);
+  lignes.push(['Indicateur', 'Valeur']);
+  lignes.push(['CA encaissé (DA)', nombreCsv(rapport.caEncaisse)]);
+  lignes.push(['Nombre de paiements', rapport.nbPaiements]);
+  lignes.push(['CA commandé (DA)', nombreCsv(rapport.caCommande)]);
+  lignes.push(['Nombre de commandes', rapport.nbCommandes]);
+  lignes.push(['Ticket moyen (DA)', nombreCsv(rapport.ticketMoyen)]);
+  lignes.push(['Pertes / annulations (DA)', nombreCsv(rapport.pertes.montant)]);
+  lignes.push([
+    'dont perte sèche après préparation (DA)',
+    nombreCsv(rapport.pertes.apresPreparation.montant),
+  ]);
+  lignes.push(['Remises & offerts (DA)', nombreCsv(rapport.remises.montant)]);
+  lignes.push(['TVA collectée (DA)', nombreCsv(rapport.tva.totalTva)]);
+  if (voirCouts && rapport.foodCost) {
+    const { nourriture, boissons } = rapport.foodCost;
+    if (nourriture.pct !== null) {
+      lignes.push(['Food cost nourriture (%)', nombreCsv(nourriture.pct)]);
+      lignes.push(['Marge brute nourriture (DA)', nombreCsv(nourriture.marge ?? 0)]);
+    }
+    if (boissons.pct !== null) {
+      lignes.push(['Beverage cost boissons (%)', nombreCsv(boissons.pct)]);
+      lignes.push(['Marge brute boissons (DA)', nombreCsv(boissons.marge ?? 0)]);
+    }
+  }
+
+  lignes.push([]);
+  lignes.push(['VENTES PAR PRODUIT']);
+  const enTeteProduit: CelluleCsv[] = ['Produit', 'Catégorie', 'Quantité', 'Montant (DA)'];
+  if (voirCouts) enTeteProduit.push('Coût (DA)', 'Marge (DA)', 'Food cost (%)');
+  lignes.push(enTeteProduit);
+  for (const p of rapport.parProduit) {
+    const ligne: CelluleCsv[] = [p.nom, p.categorie, p.quantite, nombreCsv(p.montant)];
+    if (voirCouts) {
+      ligne.push(
+        p.cout !== null ? nombreCsv(p.cout) : '',
+        p.marge !== null ? nombreCsv(p.marge) : '',
+        p.foodCostPct !== null ? nombreCsv(p.foodCostPct) : '',
+      );
+    }
+    lignes.push(ligne);
+  }
+
+  lignes.push([]);
+  lignes.push(['VENTES PAR CATÉGORIE']);
+  lignes.push(['Catégorie', 'Articles', 'Montant (DA)']);
+  for (const c of rapport.parCategorie) lignes.push([c.nom, c.quantite, nombreCsv(c.montant)]);
+
+  lignes.push([]);
+  lignes.push(['ENCAISSEMENTS PAR MOYEN DE PAIEMENT']);
+  lignes.push(['Moyen', 'Nombre', 'Montant (DA)']);
+  for (const m of rapport.parMoyen) {
+    lignes.push([LIBELLES_MOYEN[m.moyenPaiement], m.nombre, nombreCsv(m.montant)]);
+  }
+
+  lignes.push([]);
+  lignes.push(['TVA PAR TAUX']);
+  lignes.push(['Taux (%)', 'HT (DA)', 'TTC (DA)', 'TVA (DA)']);
+  for (const t of rapport.tva.parTaux) {
+    lignes.push([t.taux, nombreCsv(t.ht), nombreCsv(t.ttc), nombreCsv(t.tva)]);
+  }
+
+  lignes.push([]);
+  lignes.push(['ACTIVITÉ PAR SERVEUR']);
+  lignes.push(['Serveur', 'Commandes', 'Montant (DA)']);
+  for (const s of rapport.parServeur) {
+    lignes.push([`${s.prenom} ${s.nom}`, s.nbCommandes, nombreCsv(s.montant)]);
+  }
+
+  telechargerCsv(`maida-ca-${dateFichier()}.csv`, lignes);
+}
 
 const PERIODES = [
   { id: 'aujourdhui', libelle: "Aujourd'hui" },
@@ -237,12 +326,21 @@ export function RapportsGerant() {
             />
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => rapport && exporterRapport(rapport, voirCouts)}
+          disabled={!rapport}
+          title="Télécharger le chiffre d'affaires et les indicateurs de la période au format CSV (Excel)"
+          className={`ml-auto ${boutonSecondaire} disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          ⬇ Exporter (CSV)
+        </button>
         {parametres?.moduleFoodCost && (
           <button
             type="button"
             onClick={handleToggleSuiviCouts}
             title="Affiche ou masque les coûts de revient, marges et food cost dans tout l'espace gérant"
-            className={`ml-auto rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
               parametres.suiviCoutsActive
                 ? 'bg-brand-600 text-white'
                 : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'

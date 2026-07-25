@@ -7,6 +7,7 @@ import { Encaissement } from '../components/Encaissement';
 import { EcranCuisine } from '../components/EcranCuisine';
 import { JourneeCaisse } from '../components/JourneeCaisse';
 import { Reservations } from '../components/Reservations';
+import { IndicateurHorsLigne } from '../components/IndicateurHorsLigne';
 import { demarrerSynchronisation } from '../lib/horsLigne';
 import { messageErreur, messageSucces } from '../lib/ui';
 import { useMe } from '../hooks/useMe';
@@ -87,6 +88,7 @@ export function EspaceCaisse() {
           {onglet === 'reservations' && <Reservations />}
           {onglet === 'journee' && <JourneeCaisse droitCloturer={user.droits.includes('CLOTURER')} />}
         </main>
+        <IndicateurHorsLigne />
       </div>
     );
   }
