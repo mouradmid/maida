@@ -95,9 +95,26 @@ export async function resoudreLignesCommande(
   });
   const produitsParId = new Map(produits.map((p) => [p.id, p]));
 
+  // Quantité totale demandée par produit (plusieurs lignes du même produit se
+  // cumulent) : sert à vérifier le stock disponible.
+  const quantiteDemandee = new Map<string, number>();
+  for (const l of lignes) {
+    quantiteDemandee.set(l.produitId, (quantiteDemandee.get(l.produitId) ?? 0) + l.quantite);
+  }
+
   for (const id of produitIds) {
-    if (!produitsParId.has(id)) {
+    const produit = produitsParId.get(id);
+    if (!produit) {
       return { ok: false, erreur: `Produit invalide ou indisponible: ${id}` };
+    }
+    if (!produit.disponible) {
+      return { ok: false, erreur: `« ${produit.nom} » est en rupture` };
+    }
+    if (produit.suiviQuantite && (produit.quantiteRestante ?? 0) < (quantiteDemandee.get(id) ?? 0)) {
+      return {
+        ok: false,
+        erreur: `« ${produit.nom} » : quantité insuffisante (reste ${produit.quantiteRestante ?? 0})`,
+      };
     }
   }
 
@@ -146,4 +163,62 @@ export async function resoudreLignesCommande(
   }
 
   return { ok: true, lignes: resolues };
+}
+
+// Levée par decompterStock quand un produit devient indisponible entre la
+// résolution et l'écriture (rupture posée, ou dernière portion prise ailleurs).
+// Le handler la traduit en 409 avec un message clair pour le serveur.
+export class ErreurStock extends Error {}
+
+// Décompte le stock des produits suivis, à l'intérieur de la transaction qui
+// crée la commande — c'est le garde-fou faisant autorité (il couvre aussi les
+// duplications d'articles, qui ne passent pas par resoudreLignesCommande).
+// Le décompte est conditionnel (gte) pour ne jamais passer sous zéro, même en
+// cas de deux envois quasi simultanés. Une rupture manuelle bloque aussi ici.
+export async function decompterStock(
+  tx: Prisma.TransactionClient,
+  lignes: Array<{ produitId: string; quantite: number }>,
+): Promise<void> {
+  const parProduit = new Map<string, number>();
+  for (const l of lignes) {
+    parProduit.set(l.produitId, (parProduit.get(l.produitId) ?? 0) + l.quantite);
+  }
+  const produits = await tx.produit.findMany({
+    where: { id: { in: [...parProduit.keys()] } },
+    select: { id: true, nom: true, disponible: true, suiviQuantite: true, quantiteRestante: true },
+  });
+  for (const produit of produits) {
+    const demande = parProduit.get(produit.id) ?? 0;
+    if (!produit.disponible) {
+      throw new ErreurStock(`« ${produit.nom} » est en rupture`);
+    }
+    if (!produit.suiviQuantite) continue;
+    const maj = await tx.produit.updateMany({
+      where: { id: produit.id, suiviQuantite: true, quantiteRestante: { gte: demande } },
+      data: { quantiteRestante: { decrement: demande } },
+    });
+    if (maj.count === 0) {
+      throw new ErreurStock(
+        `« ${produit.nom} » : quantité insuffisante (reste ${produit.quantiteRestante ?? 0})`,
+      );
+    }
+  }
+}
+
+// Rend au stock les quantités d'un produit suivi (annulation avant préparation).
+// No-op pour les produits non suivis grâce au filtre suiviQuantite.
+export async function rendreAuStock(
+  tx: Prisma.TransactionClient,
+  lignes: Array<{ produitId: string; quantite: number }>,
+): Promise<void> {
+  const parProduit = new Map<string, number>();
+  for (const l of lignes) {
+    parProduit.set(l.produitId, (parProduit.get(l.produitId) ?? 0) + l.quantite);
+  }
+  for (const [produitId, quantite] of parProduit) {
+    await tx.produit.updateMany({
+      where: { id: produitId, suiviQuantite: true },
+      data: { quantiteRestante: { increment: quantite } },
+    });
+  }
 }

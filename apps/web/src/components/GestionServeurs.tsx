@@ -66,6 +66,12 @@ export function GestionServeurs() {
       inactif: 'Ne peut pas remiser',
       titre: 'Autoriser ce serveur à accorder remises et offerts sans validation du gérant',
     },
+    {
+      droit: 'GERER_STOCK',
+      actif: '✓ Peut gérer le stock',
+      inactif: 'Ne peut pas gérer le stock',
+      titre: 'Autoriser ce serveur à marquer les ruptures et ajuster les quantités depuis la caisse',
+    },
   ];
 
   async function handleAjouter(e: React.FormEvent) {

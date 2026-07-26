@@ -304,8 +304,19 @@ gerantRouter.post('/produits', async (req, res) => {
 });
 
 gerantRouter.patch('/produits/:id', async (req, res) => {
-  const { nom, description, prix, categorieId, statut, tempsPreparationMinutes, coutRevient, tauxTva } =
-    req.body ?? {};
+  const {
+    nom,
+    description,
+    prix,
+    categorieId,
+    statut,
+    tempsPreparationMinutes,
+    coutRevient,
+    tauxTva,
+    disponible,
+    suiviQuantite,
+    quantiteRestante,
+  } = req.body ?? {};
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const produit = await prisma.produit.findUnique({ where: { id: req.params.id } });
@@ -353,6 +364,22 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
     res.status(400).json({ error: 'Le taux de TVA doit être un entier entre 0 et 100' });
     return;
   }
+  if (disponible !== undefined && typeof disponible !== 'boolean') {
+    res.status(400).json({ error: 'disponible doit être un booléen' });
+    return;
+  }
+  if (suiviQuantite !== undefined && typeof suiviQuantite !== 'boolean') {
+    res.status(400).json({ error: 'suiviQuantite doit être un booléen' });
+    return;
+  }
+  if (
+    quantiteRestante !== undefined &&
+    quantiteRestante !== null &&
+    (!Number.isInteger(quantiteRestante) || quantiteRestante < 0 || quantiteRestante > 100_000)
+  ) {
+    res.status(400).json({ error: 'quantiteRestante doit être un entier positif (ou null)' });
+    return;
+  }
 
   const produitMaj = await prisma.produit.update({
     where: { id: produit.id },
@@ -365,6 +392,9 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
       tempsPreparationMinutes: nouveauTempsPrepa,
       coutRevient: nouveauCout,
       tauxTva: tauxTva ?? undefined,
+      disponible: disponible ?? undefined,
+      suiviQuantite: suiviQuantite ?? undefined,
+      quantiteRestante: quantiteRestante === undefined ? undefined : quantiteRestante,
     },
   });
 

@@ -19,6 +19,10 @@ interface ProduitSeed {
   cout?: number;
   tempsPreparationMinutes?: number;
   options?: { nom: string; obligatoire: boolean; valeurs: string[] }[];
+  // Démo gestion des stocks : rupture manuelle ou suivi de quantité.
+  disponible?: boolean;
+  suiviQuantite?: boolean;
+  quantiteRestante?: number;
 }
 
 const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
@@ -48,10 +52,12 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
       },
       // Volontairement sans coût de revient : montre l'alerte de couverture dans les rapports.
       {
+        // Démo « rupture manuelle » : article épuisé, masqué au menu QR client.
         nom: 'Salade César',
         description: 'Poulet grillé, parmesan, croûtons',
         prix: 550,
         tempsPreparationMinutes: 8,
+        disponible: false,
       },
     ],
   },
@@ -95,11 +101,14 @@ const MENU: { categorie: string; produits: ProduitSeed[] }[] = [
         tempsPreparationMinutes: 12,
       },
       {
+        // Démo « suivi de quantité » : plat en série limitée du service.
         nom: 'Demi-poulet braisé',
         description: 'Mariné aux épices, riz ou frites',
         prix: 950,
         cout: 300,
         tempsPreparationMinutes: 20,
+        suiviQuantite: true,
+        quantiteRestante: 8,
       },
     ],
   },
@@ -235,7 +244,10 @@ async function main() {
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[0].id },
-    data: { codePinHash: await bcrypt.hash('1234', 12), droits: ['ANNULER', 'CLOTURER', 'REMISER'] },
+    data: {
+      codePinHash: await bcrypt.hash('1234', 12),
+      droits: ['ANNULER', 'CLOTURER', 'REMISER', 'GERER_STOCK'],
+    },
   });
   await prisma.utilisateur.update({
     where: { id: serveurs[1].id },
@@ -337,6 +349,9 @@ async function main() {
           coutRevient: p.cout,
           tauxTva,
           tempsPreparationMinutes: p.tempsPreparationMinutes,
+          disponible: p.disponible ?? true,
+          suiviQuantite: p.suiviQuantite ?? false,
+          quantiteRestante: p.quantiteRestante ?? null,
           categorieId: categorie.id,
           etablissementId,
         },

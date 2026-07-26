@@ -1,6 +1,6 @@
 const API_BASE = '/api';
 
-export type DroitUtilisateur = 'ANNULER' | 'CLOTURER' | 'REMISER';
+export type DroitUtilisateur = 'ANNULER' | 'CLOTURER' | 'REMISER' | 'GERER_STOCK';
 
 export interface Utilisateur {
   id: string;
@@ -45,6 +45,9 @@ export interface Produit {
   coutRevient: number | null;
   tempsPreparationMinutes: number | null;
   statut: 'ACTIF' | 'INACTIF';
+  disponible: boolean;
+  suiviQuantite: boolean;
+  quantiteRestante: number | null;
   categorieId: string;
   etablissementId: string;
   creeLe: string;
@@ -57,6 +60,9 @@ export interface ProduitMenu {
   description: string | null;
   prix: number;
   tempsPreparationMinutes: number | null;
+  disponible: boolean;
+  suiviQuantite: boolean;
+  quantiteRestante: number | null;
   groupesOptions: GroupeOption[];
 }
 
@@ -394,6 +400,9 @@ export const api = {
       tempsPreparationMinutes: number | null;
       coutRevient: number | null;
       tauxTva: number;
+      disponible: boolean;
+      suiviQuantite: boolean;
+      quantiteRestante: number | null;
     }>,
   ) => apiFetch<Produit>(`/gerant/produits/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
@@ -437,6 +446,19 @@ export const api = {
     >('/gerant/annulations'),
 
   caisseMenu: () => apiFetch<CategorieMenu[]>('/caisse/menu'),
+
+  // Gestion du stock depuis la caisse (droit GERER_STOCK) : rupture, suivi de
+  // quantité, ajustement de la quantité restante.
+  majStockCaisse: (
+    produitId: string,
+    data: Partial<{ disponible: boolean; suiviQuantite: boolean; quantiteRestante: number | null }>,
+  ) =>
+    apiFetch<{
+      id: string;
+      disponible: boolean;
+      suiviQuantite: boolean;
+      quantiteRestante: number | null;
+    }>(`/caisse/produits/${produitId}/stock`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   caisseTables: () => apiFetch<TableCaisse[]>('/caisse/tables'),
 

@@ -20,6 +20,10 @@
 - **Remises & offerts** : % ou montant, article offert, motifs, droit REMISER, tout tracé
 - **Réservations** : prise au téléphone, anti-conflit de créneau, badge sur le plan de salle,
   arrivée / annulation / no-show
+- **Ruptures & quantités** : marquer un article « en rupture » en un geste (grisé à la caisse,
+  masqué au menu QR), ou suivre une quantité par service qui se décompte à chaque envoi et passe
+  en rupture à zéro — la quantité revient au stock si on annule avant préparation ; géré depuis le
+  Menu (gérant) ou la caisse (serveur avec le droit **Gérer le stock**)
 - **Tickets d'impression** (thermique 80 mm) : ticket cuisine et ticket client avec TVA et
   remises ; le bon cuisine encadre chaque service (« SUITE 1 · À PRÉPARER » / « SUITE 2 ·
   À SUIVRE — ATTENDRE LA RÉCLAME ») et chaque réclame imprime un **bon de réclame** dédié

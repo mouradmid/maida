@@ -48,6 +48,7 @@ enum DroitUtilisateur {
   ANNULER
   CLOTURER
   REMISER
+  GERER_STOCK
 }
 
 // Geste commercial : remise sur l'addition, ou article offert.
@@ -220,6 +221,13 @@ model Produit {
   coutRevient             Decimal?      @db.Decimal(10, 2)
   tempsPreparationMinutes Int?
   statut                  StatutProduit @default(ACTIF)
+  // Gestion des stocks / ruptures.
+  // disponible=false → rupture manuelle (« 86 »). suiviQuantite active le
+  // décompte par service : quantiteRestante diminue à chaque envoi en cuisine et,
+  // à 0, le produit devient non commandable (rupture automatique).
+  disponible              Boolean       @default(true)
+  suiviQuantite           Boolean       @default(false)
+  quantiteRestante        Int?
   creeLe                  DateTime      @default(now())
 
   categorieId String

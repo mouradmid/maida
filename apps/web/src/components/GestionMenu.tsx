@@ -75,6 +75,8 @@ export function GestionMenu() {
   const [editCout, setEditCout] = useState('');
   const [editTva, setEditTva] = useState('19');
   const [editCategorieId, setEditCategorieId] = useState('');
+  const [editSuivi, setEditSuivi] = useState(false);
+  const [editQuantite, setEditQuantite] = useState('');
 
   // Renommage d'une catégorie
   const [categorieEnEdition, setCategorieEnEdition] = useState<string | null>(null);
@@ -158,6 +160,8 @@ export function GestionMenu() {
     setEditCout(produit.coutRevient != null ? String(produit.coutRevient) : '');
     setEditTva(String(produit.tauxTva));
     setEditCategorieId(produit.categorieId);
+    setEditSuivi(produit.suiviQuantite);
+    setEditQuantite(produit.quantiteRestante != null ? String(produit.quantiteRestante) : '');
   }
 
   async function handleEnregistrerProduit(produit: Produit) {
@@ -176,6 +180,9 @@ export function GestionMenu() {
         tempsPreparationMinutes: editPrepa === '' ? null : Number(editPrepa),
         coutRevient: editCout === '' ? null : Number(editCout),
         tauxTva: editTva === '' ? undefined : Number(editTva),
+        suiviQuantite: editSuivi,
+        // Quantité prise en compte seulement si le suivi est activé.
+        quantiteRestante: editSuivi ? (editQuantite === '' ? 0 : Number(editQuantite)) : null,
       });
       setProduitEnEdition(null);
       await chargerTout();
@@ -230,6 +237,17 @@ export function GestionMenu() {
   async function handleToggleProduit(produit: Produit) {
     await api.updateProduit(produit.id, { statut: produit.statut === 'ACTIF' ? 'INACTIF' : 'ACTIF' });
     await chargerTout();
+  }
+
+  // Rupture manuelle (« 86 ») depuis la liste : bascule disponible.
+  async function handleToggleRupture(produit: Produit) {
+    setErreur(null);
+    try {
+      await api.updateProduit(produit.id, { disponible: !produit.disponible });
+      await chargerTout();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
   }
 
   if (chargement) return <p className="text-center text-stone-500">Chargement du menu...</p>;
@@ -342,6 +360,22 @@ export function GestionMenu() {
                           {produit.tempsPreparationMinutes != null && (
                             <span className={badgeNeutre}>{produit.tempsPreparationMinutes} min</span>
                           )}
+                          {produit.suiviQuantite && (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                (produit.quantiteRestante ?? 0) > 0
+                                  ? 'bg-brand-50 text-brand-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              Stock : {produit.quantiteRestante ?? 0}
+                            </span>
+                          )}
+                          {!produit.disponible && (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                              En rupture
+                            </span>
+                          )}
                           {produit.statut === 'INACTIF' && (
                             <span className={badgeNeutre}>désactivé</span>
                           )}
@@ -368,6 +402,14 @@ export function GestionMenu() {
                             className={boutonDiscret}
                           >
                             Options ({produit.groupesOptions.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRupture(produit)}
+                            className={boutonDiscret}
+                            title="Marquer ce produit en rupture (invisible pour les clients, bloqué à la caisse) ou le remettre en vente"
+                          >
+                            {produit.disponible ? 'Rupture' : 'Remettre en vente'}
                           </button>
                           <button
                             type="button"
@@ -459,6 +501,31 @@ export function GestionMenu() {
                               TVA
                               <SelecteurTva valeur={editTva} onChange={setEditTva} />
                             </label>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2">
+                            <label className="flex items-center gap-2 text-xs font-medium text-stone-600">
+                              <input
+                                type="checkbox"
+                                checked={editSuivi}
+                                onChange={(e) => setEditSuivi(e.target.checked)}
+                                className="h-4 w-4"
+                              />
+                              Suivre la quantité (décompte auto à chaque envoi)
+                            </label>
+                            {editSuivi && (
+                              <label className="flex items-center gap-2 text-xs font-medium text-stone-600">
+                                Quantité pour le service
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  value={editQuantite}
+                                  onChange={(e) => setEditQuantite(e.target.value)}
+                                  placeholder="0"
+                                  className={`${champ} w-24 px-2 py-1`}
+                                />
+                              </label>
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <button

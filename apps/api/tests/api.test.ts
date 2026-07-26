@@ -86,7 +86,7 @@ beforeAll(async () => {
       nom: 'Test',
       prenom: 'AvecDroits',
       codePinHash: await bcrypt.hash(PIN_SERVEUR_DROITS, 12),
-      droits: ['ANNULER', 'CLOTURER', 'REMISER'],
+      droits: ['ANNULER', 'CLOTURER', 'REMISER', 'GERER_STOCK'],
       compteClientId: compte.id,
       etablissementId: etab.id,
     },
@@ -1356,6 +1356,98 @@ describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
     expect(retabli.status).toBe(200);
     const parametresApres = await gerant.get('/api/gerant/parametres');
     expect(parametresApres.body.moduleQrMenu).toBe(true);
+  });
+});
+
+describe('Gestion du stock (ruptures et quantités)', () => {
+  // On rétablit la boisson à son état par défaut après ce bloc.
+  afterAll(async () => {
+    await prisma.produit.update({
+      where: { id: produitBoissonId },
+      data: { disponible: true, suiviQuantite: false, quantiteRestante: null },
+    });
+  });
+
+  it('refuse la gestion du stock sans le droit GERER_STOCK', async () => {
+    const res = await serveurSans
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ disponible: false });
+    expect(res.status).toBe(403);
+  });
+
+  it('permet la rupture avec le droit, et la commande est alors bloquée', async () => {
+    const rupture = await serveur
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ disponible: false });
+    expect(rupture.status).toBe(200);
+    expect(rupture.body.disponible).toBe(false);
+
+    const commande = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'SUR_PLACE', tableId, lignes: [{ produitId: produitBoissonId, quantite: 1 }] });
+    expect(commande.status).toBe(400);
+
+    const retour = await serveur
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ disponible: true });
+    expect(retour.status).toBe(200);
+  });
+
+  it('décompte la quantité à l’envoi et refuse quand le stock est épuisé', async () => {
+    const init = await serveur
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ suiviQuantite: true, quantiteRestante: 2 });
+    expect(init.status).toBe(200);
+
+    const c1 = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'SUR_PLACE', tableId, lignes: [{ produitId: produitBoissonId, quantite: 2 }] });
+    expect(c1.status).toBe(201);
+
+    const menu = await serveur.get('/api/caisse/menu');
+    const boisson = menu.body
+      .flatMap(
+        (cat: { produits: Array<{ id: string; quantiteRestante: number | null }> }) => cat.produits,
+      )
+      .find((p: { id: string }) => p.id === produitBoissonId);
+    expect(boisson.quantiteRestante).toBe(0);
+
+    const c2 = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'SUR_PLACE', tableId, lignes: [{ produitId: produitBoissonId, quantite: 1 }] });
+    expect(c2.status).toBe(400);
+  });
+
+  it('rend la quantité au stock quand on annule avant préparation', async () => {
+    await serveur
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ suiviQuantite: true, quantiteRestante: 5 });
+
+    const commande = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'SUR_PLACE', tableId, lignes: [{ produitId: produitBoissonId, quantite: 2 }] });
+    expect(commande.status).toBe(201);
+    const apresEnvoi = await prisma.produit.findUnique({ where: { id: produitBoissonId } });
+    expect(apresEnvoi?.quantiteRestante).toBe(3);
+
+    const annulation = await serveur
+      .post(`/api/caisse/commandes/${commande.body.id}/annulation`)
+      .send({ portee: 'COMMANDE', motif: 'test retour stock' });
+    expect(annulation.status).toBe(201);
+    const apresAnnulation = await prisma.produit.findUnique({ where: { id: produitBoissonId } });
+    expect(apresAnnulation?.quantiteRestante).toBe(5);
+  });
+
+  it('masque les produits épuisés dans le menu public (QR)', async () => {
+    await serveur
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ disponible: false, suiviQuantite: false });
+    const menu = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(menu.status).toBe(200);
+    const ids = menu.body.categories
+      .flatMap((c: { produits: Array<{ id: string }> }) => c.produits)
+      .map((p: { id: string }) => p.id);
+    expect(ids).not.toContain(produitBoissonId);
   });
 });
 

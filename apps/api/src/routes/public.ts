@@ -54,6 +54,9 @@ publicRouter.get('/menu/:etablissementId', async (req, res) => {
           nom: true,
           description: true,
           prix: true,
+          disponible: true,
+          suiviQuantite: true,
+          quantiteRestante: true,
           groupesOptions: {
             select: {
               id: true,
@@ -83,6 +86,13 @@ publicRouter.get('/menu/:etablissementId', async (req, res) => {
     },
     commandeClientActive: parametres?.commandeClientActive ?? false,
     categories: categories
+      // Le client ne voit pas les articles épuisés (rupture manuelle ou stock à 0).
+      .map((c) => ({
+        ...c,
+        produits: c.produits.filter(
+          (p) => p.disponible && (!p.suiviQuantite || (p.quantiteRestante ?? 0) > 0),
+        ),
+      }))
       .filter((c) => c.produits.length > 0)
       .map((c) => ({
         id: c.id,

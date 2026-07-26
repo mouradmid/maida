@@ -82,7 +82,12 @@ export function EspaceCaisse() {
             ))}
           </nav>
 
-          {onglet === 'commande' && <PriseDeCommande droitAnnuler={user.droits.includes('ANNULER')} />}
+          {onglet === 'commande' && (
+            <PriseDeCommande
+              droitAnnuler={user.droits.includes('ANNULER')}
+              droitGererStock={user.droits.includes('GERER_STOCK')}
+            />
+          )}
           {onglet === 'encaissement' && <Encaissement droitRemiser={user.droits.includes('REMISER')} />}
           {onglet === 'cuisine' && <EcranCuisine />}
           {onglet === 'reservations' && <Reservations />}

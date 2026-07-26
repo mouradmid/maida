@@ -3,7 +3,10 @@ import { Router } from 'express';
 import { Prisma } from '../generated/prisma/client';
 import type { DroitUtilisateur, ModePaiement } from '../generated/prisma/client';
 import {
+  decompterStock,
   erreurLignesEntree,
+  ErreurStock,
+  rendreAuStock,
   resoudreLignesCommande,
   type LigneEntree,
   type LigneSourceEntree,
@@ -25,6 +28,16 @@ async function getContexteServeur(serveurId: string) {
     throw new Error('Serveur sans établissement associé');
   }
   return { etablissementId: serveur.etablissementId };
+}
+
+// Contexte + vérification d'un droit du serveur (sans validation par code
+// gérant) : pour les gestes fréquents et peu sensibles comme la gestion du stock.
+async function getContexteAvecDroit(serveurId: string, droit: DroitUtilisateur) {
+  const serveur = await prisma.utilisateur.findUnique({ where: { id: serveurId } });
+  if (!serveur?.etablissementId) {
+    throw new Error('Serveur sans établissement associé');
+  }
+  return { etablissementId: serveur.etablissementId, aLeDroit: serveur.droits.includes(droit) };
 }
 
 // Action sensible : soit le serveur a le droit requis, soit un gérant de
@@ -108,6 +121,9 @@ caisseRouter.get('/menu', async (req, res) => {
           description: true,
           prix: true,
           tempsPreparationMinutes: true,
+          disponible: true,
+          suiviQuantite: true,
+          quantiteRestante: true,
           groupesOptions: {
             select: {
               id: true,
@@ -132,6 +148,64 @@ caisseRouter.get('/menu', async (req, res) => {
       produits: c.produits.map((p) => ({ ...p, prix: Number(p.prix) })),
     })),
   );
+});
+
+// Gestion du stock depuis la caisse (droit GERER_STOCK) : marquer une rupture,
+// activer/désactiver le suivi de quantité, ajuster la quantité restante.
+caisseRouter.patch('/produits/:id/stock', async (req, res) => {
+  const { etablissementId, aLeDroit } = await getContexteAvecDroit(req.user!.id, 'GERER_STOCK');
+  if (!aLeDroit) {
+    res.status(403).json({ error: "Vous n'avez pas le droit de gérer le stock" });
+    return;
+  }
+
+  const { disponible, suiviQuantite, quantiteRestante } = req.body ?? {};
+  const data: Prisma.ProduitUpdateInput = {};
+
+  if (disponible !== undefined) {
+    if (typeof disponible !== 'boolean') {
+      res.status(400).json({ error: 'disponible doit être un booléen' });
+      return;
+    }
+    data.disponible = disponible;
+  }
+  if (suiviQuantite !== undefined) {
+    if (typeof suiviQuantite !== 'boolean') {
+      res.status(400).json({ error: 'suiviQuantite doit être un booléen' });
+      return;
+    }
+    data.suiviQuantite = suiviQuantite;
+  }
+  if (quantiteRestante !== undefined) {
+    if (
+      quantiteRestante !== null &&
+      (!Number.isInteger(quantiteRestante) || quantiteRestante < 0 || quantiteRestante > 100_000)
+    ) {
+      res.status(400).json({ error: 'quantiteRestante doit être un entier positif (ou null)' });
+      return;
+    }
+    data.quantiteRestante = quantiteRestante;
+  }
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: 'Aucune modification fournie' });
+    return;
+  }
+
+  const produit = await prisma.produit.findFirst({
+    where: { id: req.params.id, etablissementId },
+    select: { id: true },
+  });
+  if (!produit) {
+    res.status(404).json({ error: 'Produit introuvable' });
+    return;
+  }
+
+  const maj = await prisma.produit.update({
+    where: { id: produit.id },
+    data,
+    select: { id: true, disponible: true, suiviQuantite: true, quantiteRestante: true },
+  });
+  res.json(maj);
 });
 
 caisseRouter.get('/tables', async (req, res) => {
@@ -820,6 +894,18 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
       });
     }
 
+    // Annulation avant préparation : la portion n'a pas été consommée, on la
+    // rend au stock des produits suivis. Après préparation, c'est une perte sèche.
+    if (!apresPreparation) {
+      await rendreAuStock(
+        tx,
+        cibles.map((c) => ({
+          produitId: lignesParId.get(c.ligneCommandeId)!.produitId,
+          quantite: c.quantite,
+        })),
+      );
+    }
+
     if (portee === 'COMMANDE') {
       const quantiteTotale = cibles.reduce((s, c) => s + c.quantite, 0);
       const montantTotal = cibles.reduce(
@@ -960,55 +1046,67 @@ caisseRouter.post('/demandes/:id/accepter', async (req, res) => {
     return;
   }
 
-  const commande = await prisma.$transaction(async (tx) => {
-    const additionOuverte = await tx.addition.findFirst({
-      where: { etablissementId, tableId: demande.tableId, statut: 'OUVERTE' },
-    });
-    const additionId = additionOuverte
-      ? additionOuverte.id
-      : (await tx.addition.create({ data: { etablissementId, tableId: demande.tableId } })).id;
+  let commande;
+  try {
+    commande = await prisma.$transaction(async (tx) => {
+      await decompterStock(tx, resolution.lignes);
+      const additionOuverte = await tx.addition.findFirst({
+        where: { etablissementId, tableId: demande.tableId, statut: 'OUVERTE' },
+      });
+      const additionId = additionOuverte
+        ? additionOuverte.id
+        : (await tx.addition.create({ data: { etablissementId, tableId: demande.tableId } })).id;
 
-    const creee = await tx.commande.create({
-      data: {
-        canal: 'SUR_PLACE',
-        additionId,
-        etablissementId,
-        serveurId: req.user!.id,
-        noteCuisine: demande.note ? `Commande client : ${demande.note}` : 'Commande client (QR)',
-        lignes: {
-          create: resolution.lignes.map((l) => ({
-            produitId: l.produitId,
-            nomProduit: l.nomProduit,
-            prixUnitaire: l.prixUnitaire,
-            coutRevientUnitaire: l.coutRevientUnitaire,
-            tauxTva: l.tauxTva,
-            suite: l.suite,
-            quantite: l.quantite,
-            options: {
-              create: l.options.map((o) => ({
-                optionValeurId: o.optionValeurId,
-                nomGroupe: o.nomGroupe,
-                valeur: o.valeur,
-              })),
-            },
-          })),
+      const creee = await tx.commande.create({
+        data: {
+          canal: 'SUR_PLACE',
+          additionId,
+          etablissementId,
+          serveurId: req.user!.id,
+          noteCuisine: demande.note ? `Commande client : ${demande.note}` : 'Commande client (QR)',
+          lignes: {
+            create: resolution.lignes.map((l) => ({
+              produitId: l.produitId,
+              nomProduit: l.nomProduit,
+              prixUnitaire: l.prixUnitaire,
+              coutRevientUnitaire: l.coutRevientUnitaire,
+              tauxTva: l.tauxTva,
+              suite: l.suite,
+              quantite: l.quantite,
+              options: {
+                create: l.options.map((o) => ({
+                  optionValeurId: o.optionValeurId,
+                  nomGroupe: o.nomGroupe,
+                  valeur: o.valeur,
+                })),
+              },
+            })),
+          },
         },
-      },
-      include: INCLUDE_COMMANDE,
-    });
+        include: INCLUDE_COMMANDE,
+      });
 
-    await tx.demandeClient.update({
-      where: { id: demande.id },
-      data: {
-        statut: 'ACCEPTEE',
-        commandeId: creee.id,
-        traiteeParId: req.user!.id,
-        traiteeLe: new Date(),
-      },
-    });
+      await tx.demandeClient.update({
+        where: { id: demande.id },
+        data: {
+          statut: 'ACCEPTEE',
+          commandeId: creee.id,
+          traiteeParId: req.user!.id,
+          traiteeLe: new Date(),
+        },
+      });
 
-    return creee;
-  });
+      return creee;
+    });
+  } catch (error) {
+    if (error instanceof ErreurStock) {
+      res.status(409).json({
+        error: `Impossible d'accepter : ${error.message}. Refusez la demande et voyez avec le client.`,
+      });
+      return;
+    }
+    throw error;
+  }
 
   res.status(201).json(toPublicCommande(commande));
 });
@@ -1197,40 +1295,52 @@ caisseRouter.post('/commandes', async (req, res) => {
   });
   const suiteReclamee = progression._max.suiteReclamee ?? 1;
 
+  const toutesLignes = [...lignesAvecOptions, ...duplicats];
+
   try {
-    const commande = await prisma.commande.create({
-      data: {
-        canal,
-        additionId,
-        cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
-        creeLe: creeLeFinal,
-        noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
-        etablissementId,
-        serveurId: req.user!.id,
-        suiteReclamee,
-        lignes: {
-          create: [...lignesAvecOptions, ...duplicats].map((l) => ({
-            produitId: l.produitId,
-            nomProduit: l.nomProduit,
-            prixUnitaire: l.prixUnitaire,
-            coutRevientUnitaire: l.coutRevientUnitaire,
-            tauxTva: l.tauxTva,
-            suite: l.suite,
-            quantite: l.quantite,
-            options: {
-              create: l.options.map((o) => ({
-                optionValeurId: o.optionValeurId,
-                nomGroupe: o.nomGroupe,
-                valeur: o.valeur,
-              })),
-            },
-          })),
+    // Décompte du stock et création dans la même transaction : si un produit
+    // suivi vient d'être épuisé, rien n'est écrit et le serveur reçoit un 409.
+    const commande = await prisma.$transaction(async (tx) => {
+      await decompterStock(tx, toutesLignes);
+      return tx.commande.create({
+        data: {
+          canal,
+          additionId,
+          cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
+          creeLe: creeLeFinal,
+          noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
+          etablissementId,
+          serveurId: req.user!.id,
+          suiteReclamee,
+          lignes: {
+            create: toutesLignes.map((l) => ({
+              produitId: l.produitId,
+              nomProduit: l.nomProduit,
+              prixUnitaire: l.prixUnitaire,
+              coutRevientUnitaire: l.coutRevientUnitaire,
+              tauxTva: l.tauxTva,
+              suite: l.suite,
+              quantite: l.quantite,
+              options: {
+                create: l.options.map((o) => ({
+                  optionValeurId: o.optionValeurId,
+                  nomGroupe: o.nomGroupe,
+                  valeur: o.valeur,
+                })),
+              },
+            })),
+          },
         },
-      },
-      include: INCLUDE_COMMANDE,
+        include: INCLUDE_COMMANDE,
+      });
     });
     res.status(201).json(toPublicCommande(commande));
   } catch (error) {
+    // Produit épuisé entre-temps : rupture posée ou dernière portion prise.
+    if (error instanceof ErreurStock) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
     // Deux synchronisations simultanées de la même commande hors ligne :
     // la seconde renvoie celle que la première vient de créer.
     if (
