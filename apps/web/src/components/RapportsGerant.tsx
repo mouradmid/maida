@@ -28,7 +28,7 @@ function dateCourte(iso: string): string {
 // `voirCouts` conditionne l'export des coûts/marges comme à l'écran.
 function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
   const lignes: CelluleCsv[][] = [];
-  lignes.push(['Maïda — Chiffre d\'affaires et indicateurs']);
+  lignes.push(["Maïda — Chiffre d'affaires et indicateurs"]);
   lignes.push(['Période', `${dateCourte(rapport.periode.debut)} au ${dateCourte(rapport.periode.fin)}`]);
   lignes.push([]);
 

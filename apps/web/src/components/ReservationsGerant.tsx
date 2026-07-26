@@ -161,8 +161,8 @@ export function ReservationsGerant() {
     <div className="flex w-full flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm text-stone-500">
-          Les réservations se prennent à la caisse (onglet Réservations). Ici : la vue d'ensemble des
-          90 derniers jours.
+          Les réservations se prennent à la caisse (onglet Réservations). Ici : la vue d'ensemble des 90
+          derniers jours.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
