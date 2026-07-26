@@ -90,8 +90,10 @@ export function PlanDeSalle() {
   }
 
   useEffect(() => {
+    // Les coordonnées du pointeur sont fractionnaires dès que l'écran est mis à l'échelle
+    // (Windows 125 %, zoom navigateur) : on arrondit ici, les positions sont des entiers en base.
     function clamp(valeur: number, max: number) {
-      return Math.max(0, Math.min(max, valeur));
+      return Math.round(Math.max(0, Math.min(max, valeur)));
     }
 
     function handlePointerMove(e: PointerEvent) {

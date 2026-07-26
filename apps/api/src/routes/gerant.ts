@@ -375,6 +375,54 @@ gerantRouter.patch('/produits/:id', async (req, res) => {
 
 const FORMES_VALIDES = ['RONDE', 'CARREE', 'RECTANGULAIRE'];
 
+// Zone de travail du plan côté web (PlanDeSalle.tsx) : les créneaux proposés à une
+// nouvelle table doivent tenir dedans, sinon elle est posée hors du cadre visible.
+const CANVAS_LARGEUR = 900;
+const CANVAS_HAUTEUR = 500;
+const PAS_GRILLE = 110;
+const MARGE_GRILLE = 20;
+const TAILLE_TABLE_PAR_DEFAUT = 80; // doit rester aligné sur les @default du modèle Table
+
+// Les positions arrivent du glisser-déposer : sur un écran à mise à l'échelle
+// (Windows 125 %, zoom navigateur), les coordonnées du pointeur sont fractionnaires.
+// On arrondit au lieu d'ignorer la valeur, sinon le déplacement n'est jamais enregistré.
+function entierArrondi(valeur: unknown): number | undefined {
+  return typeof valeur === 'number' && Number.isFinite(valeur) ? Math.round(valeur) : undefined;
+}
+
+function seChevauchent(
+  a: { positionX: number; positionY: number; largeur: number; hauteur: number },
+  b: { positionX: number; positionY: number; largeur: number; hauteur: number },
+) {
+  return (
+    a.positionX < b.positionX + b.largeur &&
+    b.positionX < a.positionX + a.largeur &&
+    a.positionY < b.positionY + b.hauteur &&
+    b.positionY < a.positionY + a.hauteur
+  );
+}
+
+// Premier créneau de la grille où la nouvelle table ne recouvre aucune table existante.
+// Un test d'égalité exacte des coordonnées ne suffit pas : dès que le gérant a réorganisé
+// sa salle à la souris, les tables ne sont plus sur les créneaux de la grille.
+function placeLibre(
+  existantes: Array<{ positionX: number; positionY: number; largeur: number; hauteur: number }>,
+  largeur: number,
+  hauteur: number,
+) {
+  for (let y = MARGE_GRILLE; y + hauteur <= CANVAS_HAUTEUR; y += PAS_GRILLE) {
+    for (let x = MARGE_GRILLE; x + largeur <= CANVAS_LARGEUR; x += PAS_GRILLE) {
+      const candidate = { positionX: x, positionY: y, largeur, hauteur };
+      if (!existantes.some((t) => seChevauchent(candidate, t))) {
+        return { positionX: x, positionY: y };
+      }
+    }
+  }
+  // Salle saturée : décalage en escalier plutôt qu'un empilement exact, pour rester attrapable.
+  const decalage = (existantes.length % 10) * 14;
+  return { positionX: MARGE_GRILLE + decalage, positionY: MARGE_GRILLE + decalage };
+}
+
 gerantRouter.get('/tables', async (req, res) => {
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
@@ -404,24 +452,18 @@ gerantRouter.post('/tables', async (req, res) => {
 
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
-  // Cherche le premier créneau de la grille non occupé, pour ne jamais poser une
-  // nouvelle table exactement sur une autre (sinon elle devient impossible à attraper).
+  const largeurTable = entierArrondi(largeur);
+  const hauteurTable = entierArrondi(hauteur);
+
   const existantes = await prisma.table.findMany({
     where: { etablissementId },
-    select: { positionX: true, positionY: true },
+    select: { positionX: true, positionY: true, largeur: true, hauteur: true },
   });
-  const occupe = new Set(existantes.map((t) => `${t.positionX},${t.positionY}`));
-  let positionX = 20;
-  let positionY = 20;
-  for (let i = 0; i < 240; i++) {
-    const x = 20 + (i % 6) * 110;
-    const y = 20 + Math.floor(i / 6) * 110;
-    if (!occupe.has(`${x},${y}`)) {
-      positionX = x;
-      positionY = y;
-      break;
-    }
-  }
+  const { positionX, positionY } = placeLibre(
+    existantes,
+    largeurTable && largeurTable > 0 ? largeurTable : TAILLE_TABLE_PAR_DEFAUT,
+    hauteurTable && hauteurTable > 0 ? hauteurTable : TAILLE_TABLE_PAR_DEFAUT,
+  );
 
   try {
     const table = await prisma.table.create({
@@ -429,8 +471,8 @@ gerantRouter.post('/tables', async (req, res) => {
         numero,
         forme: forme as FormeTable,
         nombreCouverts,
-        largeur: Number.isInteger(largeur) && largeur > 0 ? largeur : undefined,
-        hauteur: Number.isInteger(hauteur) && hauteur > 0 ? hauteur : undefined,
+        largeur: largeurTable && largeurTable > 0 ? largeurTable : undefined,
+        hauteur: hauteurTable && hauteurTable > 0 ? hauteurTable : undefined,
         positionX,
         positionY,
         etablissementId,
@@ -470,6 +512,28 @@ gerantRouter.patch('/tables/:id', async (req, res) => {
     return;
   }
 
+  const mesures = {
+    largeur: entierArrondi(largeur),
+    hauteur: entierArrondi(hauteur),
+    positionX: entierArrondi(positionX),
+    positionY: entierArrondi(positionY),
+  };
+  for (const [nom, valeur] of Object.entries({ largeur, hauteur, positionX, positionY })) {
+    // Une valeur fournie mais illisible doit remonter une erreur : la refuser en silence
+    // laissait croire que le déplacement était enregistré alors qu'il était perdu.
+    if (valeur !== undefined && mesures[nom as keyof typeof mesures] === undefined) {
+      res.status(400).json({ error: `Valeur invalide pour ${nom}` });
+      return;
+    }
+  }
+  if (
+    (mesures.largeur !== undefined && mesures.largeur <= 0) ||
+    (mesures.hauteur !== undefined && mesures.hauteur <= 0)
+  ) {
+    res.status(400).json({ error: 'La taille de la table doit être positive' });
+    return;
+  }
+
   try {
     const tableMaj = await prisma.table.update({
       where: { id: table.id },
@@ -477,10 +541,10 @@ gerantRouter.patch('/tables/:id', async (req, res) => {
         numero: typeof numero === 'string' && numero.trim() ? numero : undefined,
         forme: forme !== undefined ? (forme as FormeTable) : undefined,
         nombreCouverts: nombreCouverts ?? undefined,
-        largeur: Number.isInteger(largeur) ? largeur : undefined,
-        hauteur: Number.isInteger(hauteur) ? hauteur : undefined,
-        positionX: Number.isInteger(positionX) ? positionX : undefined,
-        positionY: Number.isInteger(positionY) ? positionY : undefined,
+        largeur: mesures.largeur,
+        hauteur: mesures.hauteur,
+        positionX: mesures.positionX !== undefined ? Math.max(0, mesures.positionX) : undefined,
+        positionY: mesures.positionY !== undefined ? Math.max(0, mesures.positionY) : undefined,
         statut: statut ?? undefined,
       },
     });

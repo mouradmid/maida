@@ -810,6 +810,57 @@ describe('Plan de salle', () => {
     const memePosition = a.body.positionX === b.body.positionX && a.body.positionY === b.body.positionY;
     expect(memePosition).toBe(false);
   });
+
+  it('enregistre un déplacement aux coordonnées fractionnaires (écran mis à l’échelle)', async () => {
+    const creation = await gerant
+      .post('/api/gerant/tables')
+      .send({ numero: 'P3', forme: 'CARREE', nombreCouverts: 2, largeur: 80, hauteur: 80 });
+    expect(creation.status).toBe(201);
+
+    const deplacement = await gerant
+      .patch(`/api/gerant/tables/${creation.body.id}`)
+      .send({ positionX: 312.6, positionY: 148.2 });
+    expect(deplacement.status).toBe(200);
+    expect(deplacement.body.positionX).toBe(313);
+    expect(deplacement.body.positionY).toBe(148);
+
+    // Le déplacement doit survivre au rechargement de l'onglet plan de salle.
+    const rechargement = await gerant.get('/api/gerant/tables');
+    const table = rechargement.body.find((t: { id: string }) => t.id === creation.body.id);
+    expect(table.positionX).toBe(313);
+    expect(table.positionY).toBe(148);
+  });
+
+  it('ne pose pas une nouvelle table par-dessus une table déplacée hors grille', async () => {
+    const deplacee = await gerant
+      .post('/api/gerant/tables')
+      .send({ numero: 'P4', forme: 'CARREE', nombreCouverts: 2, largeur: 80, hauteur: 80 });
+    // Le gérant réorganise sa salle : la table n'est plus sur un créneau de la grille,
+    // mais elle recouvre toujours le premier créneau.
+    await gerant.patch(`/api/gerant/tables/${deplacee.body.id}`).send({ positionX: 25, positionY: 25 });
+
+    const nouvelle = await gerant
+      .post('/api/gerant/tables')
+      .send({ numero: 'P5', forme: 'CARREE', nombreCouverts: 2, largeur: 80, hauteur: 80 });
+    expect(nouvelle.status).toBe(201);
+
+    const chevauche =
+      nouvelle.body.positionX < 25 + 80 &&
+      25 < nouvelle.body.positionX + 80 &&
+      nouvelle.body.positionY < 25 + 80 &&
+      25 < nouvelle.body.positionY + 80;
+    expect(chevauche).toBe(false);
+  });
+
+  it('refuse une position illisible au lieu de l’ignorer en silence', async () => {
+    const creation = await gerant
+      .post('/api/gerant/tables')
+      .send({ numero: 'P6', forme: 'CARREE', nombreCouverts: 2 });
+    const reponse = await gerant
+      .patch(`/api/gerant/tables/${creation.body.id}`)
+      .send({ positionX: 'abc' });
+    expect(reponse.status).toBe(400);
+  });
 });
 
 describe('Suites de service', () => {
