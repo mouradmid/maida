@@ -348,6 +348,29 @@ describe('Annulations', () => {
     expect(annulations.body[0].montant).toBe(1000);
     expect(annulations.body[0].demandeePar?.prenom).toBe('SansDroit');
   });
+
+  it('filtre les annulations sur la période demandée', async () => {
+    const heure = 60 * 60 * 1000;
+    const jour = 24 * heure;
+    const iso = (decalage: number) => new Date(Date.now() + decalage).toISOString();
+
+    const dedans = await gerant.get(`/api/gerant/annulations?debut=${iso(-heure)}&fin=${iso(heure)}`);
+    expect(dedans.status).toBe(200);
+    expect(dedans.body.length).toBeGreaterThan(0);
+
+    // Une période entièrement passée ne doit rien remonter.
+    const dehors = await gerant.get(
+      `/api/gerant/annulations?debut=${iso(-3 * jour)}&fin=${iso(-2 * jour)}`,
+    );
+    expect(dehors.status).toBe(200);
+    expect(dehors.body).toHaveLength(0);
+
+    const incomplete = await gerant.get(`/api/gerant/annulations?debut=${iso(-heure)}`);
+    expect(incomplete.status).toBe(400);
+
+    const inversee = await gerant.get(`/api/gerant/annulations?debut=${iso(heure)}&fin=${iso(-heure)}`);
+    expect(inversee.status).toBe(400);
+  });
 });
 
 describe('Clôture de caisse', () => {
@@ -576,6 +599,24 @@ describe('Remises et offerts', () => {
     const rapport = await gerant.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
     expect(rapport.body.remises.montant).toBe(3000); // 1000 offert + 200 + 1800
     expect(rapport.body.remises.offerts.quantite).toBe(1);
+  });
+
+  it('filtre les remises sur la période demandée', async () => {
+    const heure = 60 * 60 * 1000;
+    const jour = 24 * heure;
+    const iso = (decalage: number) => new Date(Date.now() + decalage).toISOString();
+
+    const dedans = await gerant.get(`/api/gerant/remises?debut=${iso(-heure)}&fin=${iso(heure)}`);
+    expect(dedans.status).toBe(200);
+    expect(dedans.body).toHaveLength(3);
+
+    // Une période entièrement passée ne doit rien remonter.
+    const dehors = await gerant.get(`/api/gerant/remises?debut=${iso(-3 * jour)}&fin=${iso(-2 * jour)}`);
+    expect(dehors.status).toBe(200);
+    expect(dehors.body).toHaveLength(0);
+
+    const illisible = await gerant.get('/api/gerant/remises?debut=hier&fin=demain');
+    expect(illisible.status).toBe(400);
   });
 });
 

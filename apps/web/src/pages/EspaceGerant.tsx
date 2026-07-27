@@ -7,9 +7,8 @@ import { GestionMenu } from '../components/GestionMenu';
 import { GestionServeurs } from '../components/GestionServeurs';
 import { PlanDeSalle } from '../components/PlanDeSalle';
 import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
-import { HistoriqueAnnulations } from '../components/HistoriqueAnnulations';
+import { AnnulationsRemises } from '../components/AnnulationsRemises';
 import { HistoriqueJournees } from '../components/HistoriqueJournees';
-import { HistoriqueRemises } from '../components/HistoriqueRemises';
 import { QrCodes } from '../components/QrCodes';
 import { RapportsGerant } from '../components/RapportsGerant';
 import { ReservationsGerant } from '../components/ReservationsGerant';
@@ -79,12 +78,7 @@ export function EspaceGerant() {
           {onglet === 'menu' && <GestionMenu />}
           {onglet === 'equipe' && <GestionServeurs />}
           {onglet === 'paiements' && <ConfigMoyensPaiement />}
-          {onglet === 'annulations' && (
-            <div className="flex flex-col gap-4">
-              <HistoriqueRemises />
-              <HistoriqueAnnulations />
-            </div>
-          )}
+          {onglet === 'annulations' && <AnnulationsRemises />}
           {onglet === 'journees' && <HistoriqueJournees />}
           {onglet === 'qrcodes' && user.etablissementId && (
             <QrCodes etablissementId={user.etablissementId} />

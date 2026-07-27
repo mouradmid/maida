@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { badgeNeutre, carte, messageErreur } from '../lib/ui';
+import { badgeNeutre, carte } from '../lib/ui';
 
-type Remise = Awaited<ReturnType<typeof api.listRemises>>[number];
+export type Remise = Awaited<ReturnType<typeof api.listRemises>>[number];
 
 function dateHeure(date: string) {
   return new Date(date).toLocaleString('fr-FR', {
@@ -13,25 +12,9 @@ function dateHeure(date: string) {
   });
 }
 
-export function HistoriqueRemises() {
-  const [remises, setRemises] = useState<Remise[]>([]);
-  const [chargement, setChargement] = useState(true);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setRemises(await api.listRemises());
-      } catch (err) {
-        setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
-      } finally {
-        setChargement(false);
-      }
-    })();
-  }, []);
-
-  if (chargement) return <p className="text-center text-stone-500">Chargement des remises...</p>;
-
+// Affichage seul : la période, le chargement et l'export sont portés par
+// AnnulationsRemises, qui alimente aussi cet historique.
+export function HistoriqueRemises({ remises }: { remises: Remise[] }) {
   const totalPeriode = remises.reduce((s, r) => s + r.montant, 0);
 
   return (
@@ -48,10 +31,8 @@ export function HistoriqueRemises() {
         )}
       </div>
 
-      {erreur && <p className={messageErreur}>{erreur}</p>}
-
-      {remises.length === 0 && !erreur && (
-        <p className="text-sm text-stone-400">Aucune remise ni offert pour l'instant.</p>
+      {remises.length === 0 && (
+        <p className="text-sm text-stone-400">Aucune remise ni offert sur cette période.</p>
       )}
 
       <ul className="flex flex-col divide-y divide-stone-100 text-sm">

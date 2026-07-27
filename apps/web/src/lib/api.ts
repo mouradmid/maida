@@ -345,6 +345,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return data as T;
 }
 
+// Suffixe « ?debut=&fin= » des historiques filtrables par période. Sans bornes
+// complètes, l'API renvoie son historique par défaut.
+function queryPeriode(debut?: Date, fin?: Date): string {
+  if (!debut || !fin) return '';
+  return `?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`;
+}
+
 export const api = {
   login: (email: string, password: string) =>
     apiFetch<Utilisateur>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -427,7 +434,8 @@ export const api = {
       body: JSON.stringify({ droits }),
     }),
 
-  listAnnulations: () =>
+  // Sans période, l'API renvoie les 200 dernières annulations.
+  listAnnulations: (debut?: Date, fin?: Date) =>
     apiFetch<
       Array<{
         id: string;
@@ -443,7 +451,7 @@ export const api = {
         annuleePar: { nom: string; prenom: string; role: string };
         demandeePar: { nom: string; prenom: string } | null;
       }>
-    >('/gerant/annulations'),
+    >(`/gerant/annulations${queryPeriode(debut, fin)}`),
 
   caisseMenu: () => apiFetch<CategorieMenu[]>('/caisse/menu'),
 
@@ -627,7 +635,8 @@ export const api = {
       { method: 'POST', body: JSON.stringify(data) },
     ),
 
-  listRemises: () =>
+  // Sans période, l'API renvoie les 200 derniers gestes commerciaux.
+  listRemises: (debut?: Date, fin?: Date) =>
     apiFetch<
       Array<{
         id: string;
@@ -643,7 +652,7 @@ export const api = {
         accordeePar: { nom: string; prenom: string; role: string };
         demandeePar: { nom: string; prenom: string } | null;
       }>
-    >('/gerant/remises'),
+    >(`/gerant/remises${queryPeriode(debut, fin)}`),
 
   menuPublic: (etablissementId: string) =>
     apiFetch<{
@@ -744,11 +753,7 @@ export const api = {
 
   // Sans période, l'API renvoie les 90 dernières journées.
   listJournees: (debut?: Date, fin?: Date) =>
-    apiFetch<JourneeGerant[]>(
-      debut && fin
-        ? `/gerant/journees?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`
-        : '/gerant/journees',
-    ),
+    apiFetch<JourneeGerant[]>(`/gerant/journees${queryPeriode(debut, fin)}`),
 
   reservationsGerant: () =>
     apiFetch<{

@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { badgeNeutre, carte, messageErreur } from '../lib/ui';
+import { badgeNeutre, carte } from '../lib/ui';
 
-type Annulation = Awaited<ReturnType<typeof api.listAnnulations>>[number];
+export type Annulation = Awaited<ReturnType<typeof api.listAnnulations>>[number];
 
 function formaterDate(iso: string) {
   return new Date(iso).toLocaleString('fr-FR', {
@@ -13,21 +12,9 @@ function formaterDate(iso: string) {
   });
 }
 
-export function HistoriqueAnnulations() {
-  const [annulations, setAnnulations] = useState<Annulation[]>([]);
-  const [chargement, setChargement] = useState(true);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  useEffect(() => {
-    api
-      .listAnnulations()
-      .then(setAnnulations)
-      .catch((err) => setErreur(err instanceof Error ? err.message : 'Erreur de chargement'))
-      .finally(() => setChargement(false));
-  }, []);
-
-  if (chargement) return <p className="text-center text-stone-500">Chargement des annulations...</p>;
-
+// Affichage seul : la période, le chargement et l'export sont portés par
+// AnnulationsRemises, qui alimente aussi cet historique.
+export function HistoriqueAnnulations({ annulations }: { annulations: Annulation[] }) {
   const montantTotal = annulations.reduce((s, a) => s + a.montant, 0);
   const montantApresPrepa = annulations
     .filter((a) => a.apresPreparation)
@@ -35,8 +22,6 @@ export function HistoriqueAnnulations() {
 
   return (
     <div className="flex w-full flex-col gap-4">
-      {erreur && <p className={messageErreur}>{erreur}</p>}
-
       <div className="grid gap-4 sm:grid-cols-2">
         <div className={carte}>
           <p className="text-sm text-stone-500">Total annulé</p>
@@ -54,7 +39,7 @@ export function HistoriqueAnnulations() {
       <div className={carte}>
         <h3 className="mb-3 font-semibold text-stone-900">Historique</h3>
         {annulations.length === 0 && (
-          <p className="text-sm text-stone-400">Aucune annulation enregistrée.</p>
+          <p className="text-sm text-stone-400">Aucune annulation sur cette période.</p>
         )}
         <ul className="flex flex-col divide-y divide-stone-100">
           {annulations.map((a) => (

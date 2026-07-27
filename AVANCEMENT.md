@@ -70,6 +70,10 @@
   période choisie — ouverture/clôture, qui a ouvert et clôturé, fond de caisse, encaissé par
   moyen de paiement, espèces attendues/comptées, écart, commentaire — avec ligne de totaux,
   montants en vrais nombres et en-tête figé : le fichier part tel quel chez le comptable
+- **Export Excel des annulations et remises** (vrai fichier `.xlsx`, deux feuilles) : une ligne
+  par annulation (produit, quantité, montant, perte sèche après préparation, motif, qui a annulé
+  et qui a demandé) et une ligne par geste commercial (remise ou offert, pourcentage, montant,
+  motif, qui l'a accordé), avec totaux — les deux postes que le comptable rapproche du CA
 - **Exports CSV (ouvrables dans Excel)** : chiffre d'affaires + indicateurs de la période,
   répertoire clients (contacts récoltés aux réservations) et historique des réservations
 - Menu, plan de salle, équipe et droits, moyens de paiement, historique des annulations et

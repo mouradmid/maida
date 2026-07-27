@@ -57,27 +57,33 @@ function cellule(valeur: string | number | Date | null, type: TypeCellule): Cell
   return { value: String(valeur), type: String };
 }
 
+// Feuille mise en forme, prête à être écrite. Le type efface le `T` de ses
+// colonnes : un classeur peut ainsi rassembler des feuilles de natures
+// différentes (annulations et remises, par exemple).
+export interface FeuillePrete {
+  nom: string;
+  contenu: SheetData;
+  largeurs: number[];
+  lignesFigees: number;
+}
+
 /**
- * Écrit un classeur d'une feuille : titre, sous-titre, en-tête figé, données,
- * puis une ligne de totaux pour les colonnes qui en définissent un.
+ * Met en forme une feuille : titre, sous-titre, en-tête, données, puis une
+ * ligne de totaux pour les colonnes qui en définissent un.
  */
-export async function telechargerXlsx<T>({
-  nomFichier,
+export function preparerFeuille<T>({
   nomFeuille,
   titre,
   sousTitre,
   colonnes,
   lignes,
 }: {
-  nomFichier: string;
   nomFeuille: string;
   titre: string;
   sousTitre?: string;
   colonnes: Colonne<T>[];
   lignes: T[];
-}) {
-  const { default: writeXlsxFile } = await import('write-excel-file/browser');
-
+}): FeuillePrete {
   const vides = (n: number) => Array.from({ length: n }, () => ({}) as CellObject);
 
   const contenu: SheetData = [
@@ -120,13 +126,43 @@ export async function telechargerXlsx<T>({
     );
   }
 
-  await writeXlsxFile(contenu, {
-    sheet: nomFeuille,
-    columns: colonnes.map((c) => ({ width: c.largeur })),
+  return {
+    nom: nomFeuille,
+    contenu,
+    largeurs: colonnes.map((c) => c.largeur),
     // Fige le bandeau de titre et l'en-tête : les colonnes restent lisibles
     // quand le comptable fait défiler un mois entier.
-    stickyRowsCount: sousTitre ? 4 : 3,
-  }).toFile(nomFichier);
+    lignesFigees: sousTitre ? 4 : 3,
+  };
+}
+
+/** Écrit et télécharge un classeur d'une ou plusieurs feuilles. */
+export async function telechargerClasseur(nomFichier: string, feuilles: FeuillePrete[]) {
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
+
+  await writeXlsxFile(
+    feuilles.map((f) => ({
+      data: f.contenu,
+      sheet: f.nom,
+      columns: f.largeurs.map((width) => ({ width })),
+      stickyRowsCount: f.lignesFigees,
+    })),
+  ).toFile(nomFichier);
+}
+
+/** Raccourci pour un classeur d'une seule feuille. */
+export async function telechargerXlsx<T>({
+  nomFichier,
+  ...feuille
+}: {
+  nomFichier: string;
+  nomFeuille: string;
+  titre: string;
+  sousTitre?: string;
+  colonnes: Colonne<T>[];
+  lignes: T[];
+}) {
+  await telechargerClasseur(nomFichier, [preparerFeuille(feuille)]);
 }
 
 // Suffixe de fichier lisible pour une période (ex. « 2026-07-01_2026-07-31 »).

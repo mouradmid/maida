@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { Prisma, type FormeTable } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/requireAuth';
@@ -16,6 +16,27 @@ async function getContexteGerant(gerantId: string) {
     throw new Error('Gérant sans établissement associé');
   }
   return { compteClientId: gerant.compteClientId, etablissementId: gerant.etablissementId };
+}
+
+// Période optionnelle (?debut=&fin=) des historiques du gérant. Renvoie le
+// filtre de date Prisma à appliquer, `plage` absente si aucune borne n'est
+// demandée (l'historique reste alors complet), ou `erreur` à renvoyer en 400
+// si les bornes sont incomplètes, illisibles ou inversées.
+function plagePeriode(query: Request['query']): {
+  plage?: { gte: Date; lte: Date };
+  erreur?: string;
+} {
+  const { debut, fin } = query;
+  if (debut === undefined && fin === undefined) return {};
+  if (typeof debut !== 'string' || typeof fin !== 'string') {
+    return { erreur: 'Période incomplète (debut et fin)' };
+  }
+  const dateDebut = new Date(debut);
+  const dateFin = new Date(fin);
+  if (Number.isNaN(dateDebut.getTime()) || Number.isNaN(dateFin.getTime()) || dateDebut > dateFin) {
+    return { erreur: 'Période invalide' };
+  }
+  return { plage: { gte: dateDebut, lte: dateFin } };
 }
 
 gerantRouter.get('/serveurs', async (req, res) => {
@@ -713,11 +734,20 @@ gerantRouter.patch('/moyens-paiement', async (req, res) => {
 
 // --- Historique des annulations ---
 
+// Période optionnelle (?debut=&fin=) : sans elle, on renvoie les 200 dernières
+// annulations comme avant. Avec une période (export comptable), le plafond monte
+// à 2000 pour couvrir un exercice sans tronquer le fichier silencieusement.
 gerantRouter.get('/annulations', async (req, res) => {
+  const { plage: creeLe, erreur } = plagePeriode(req.query);
+  if (erreur) {
+    res.status(400).json({ error: erreur });
+    return;
+  }
+
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const annulations = await prisma.annulation.findMany({
-    where: { etablissementId },
+    where: { etablissementId, creeLe },
     include: {
       commande: {
         select: {
@@ -731,7 +761,7 @@ gerantRouter.get('/annulations', async (req, res) => {
       demandeePar: { select: { nom: true, prenom: true } },
     },
     orderBy: { creeLe: 'desc' },
-    take: 200,
+    take: creeLe ? 2000 : 200,
   });
 
   res.json(
@@ -813,11 +843,18 @@ gerantRouter.patch('/parametres', async (req, res) => {
 
 // --- Historique des remises et offerts ---
 
+// Période optionnelle (?debut=&fin=), mêmes règles que /gerant/annulations.
 gerantRouter.get('/remises', async (req, res) => {
+  const { plage: creeLe, erreur } = plagePeriode(req.query);
+  if (erreur) {
+    res.status(400).json({ error: erreur });
+    return;
+  }
+
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const remises = await prisma.remise.findMany({
-    where: { etablissementId },
+    where: { etablissementId, creeLe },
     include: {
       addition: { select: { table: { select: { numero: true } } } },
       ligneCommande: { select: { nomProduit: true } },
@@ -825,7 +862,7 @@ gerantRouter.get('/remises', async (req, res) => {
       demandeePar: { select: { nom: true, prenom: true } },
     },
     orderBy: { creeLe: 'desc' },
-    take: 200,
+    take: creeLe ? 2000 : 200,
   });
 
   res.json(
@@ -1192,20 +1229,10 @@ gerantRouter.get('/reservations', async (req, res) => {
 // journées comme avant. Le filtre porte sur l'ouverture de la journée, seule
 // date toujours renseignée (une journée en cours n'a pas de clôture).
 gerantRouter.get('/journees', async (req, res) => {
-  const { debut, fin } = req.query;
-  let ouverteLe: { gte: Date; lte: Date } | undefined;
-  if (debut !== undefined || fin !== undefined) {
-    if (typeof debut !== 'string' || typeof fin !== 'string') {
-      res.status(400).json({ error: 'Période incomplète (debut et fin)' });
-      return;
-    }
-    const dateDebut = new Date(debut);
-    const dateFin = new Date(fin);
-    if (Number.isNaN(dateDebut.getTime()) || Number.isNaN(dateFin.getTime()) || dateDebut > dateFin) {
-      res.status(400).json({ error: 'Période invalide' });
-      return;
-    }
-    ouverteLe = { gte: dateDebut, lte: dateFin };
+  const { plage: ouverteLe, erreur } = plagePeriode(req.query);
+  if (erreur) {
+    res.status(400).json({ error: erreur });
+    return;
   }
 
   const { etablissementId } = await getContexteGerant(req.user!.id);
