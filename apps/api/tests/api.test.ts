@@ -389,6 +389,58 @@ describe('Clôture de caisse', () => {
   });
 });
 
+describe('Journées de caisse (gérant)', () => {
+  const ilYAUneHeure = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const dansUneHeure = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  it('liste les journées avec leurs totaux par moyen de paiement', async () => {
+    const res = await gerant.get('/api/gerant/journees');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+
+    const journee = res.body[0];
+    expect(journee.statut).toBe('CLOTUREE');
+    expect(journee.fondDeCaisse).toBe(1000);
+    expect(journee.especesAttendues).toBe(3200);
+    expect(journee.especesComptees).toBe(3150);
+    expect(journee.ecart).toBe(-50);
+    expect(journee.commentaire).toBe('Test clôture');
+    expect(journee.totaux.total).toBe(2200);
+    expect(journee.totaux.parMoyen).toEqual([{ moyenPaiement: 'ESPECES', montant: 2200, nombre: 2 }]);
+  });
+
+  it('filtre les journées sur la période demandée', async () => {
+    const dedans = await gerant.get(
+      `/api/gerant/journees?debut=${ilYAUneHeure()}&fin=${dansUneHeure()}`,
+    );
+    expect(dedans.status).toBe(200);
+    expect(dedans.body).toHaveLength(1);
+
+    // Une période entièrement passée ne doit rien remonter.
+    const jour = 24 * 60 * 60 * 1000;
+    const dehors = await gerant.get(
+      `/api/gerant/journees?debut=${new Date(Date.now() - 3 * jour).toISOString()}&fin=${new Date(
+        Date.now() - 2 * jour,
+      ).toISOString()}`,
+    );
+    expect(dehors.status).toBe(200);
+    expect(dehors.body).toHaveLength(0);
+  });
+
+  it('rejette une période incomplète ou incohérente', async () => {
+    const incomplete = await gerant.get(`/api/gerant/journees?debut=${ilYAUneHeure()}`);
+    expect(incomplete.status).toBe(400);
+
+    const inversee = await gerant.get(
+      `/api/gerant/journees?debut=${dansUneHeure()}&fin=${ilYAUneHeure()}`,
+    );
+    expect(inversee.status).toBe(400);
+
+    const illisible = await gerant.get('/api/gerant/journees?debut=hier&fin=demain');
+    expect(illisible.status).toBe(400);
+  });
+});
+
 describe('Rapports', () => {
   it('calcule CA, palmarès et food cost sur la période', async () => {
     const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();

@@ -1188,18 +1188,39 @@ gerantRouter.get('/reservations', async (req, res) => {
 
 // --- Journées de caisse ---
 
+// Période optionnelle (?debut=&fin=) : sans elle, on renvoie les 90 dernières
+// journées comme avant. Le filtre porte sur l'ouverture de la journée, seule
+// date toujours renseignée (une journée en cours n'a pas de clôture).
 gerantRouter.get('/journees', async (req, res) => {
+  const { debut, fin } = req.query;
+  let ouverteLe: { gte: Date; lte: Date } | undefined;
+  if (debut !== undefined || fin !== undefined) {
+    if (typeof debut !== 'string' || typeof fin !== 'string') {
+      res.status(400).json({ error: 'Période incomplète (debut et fin)' });
+      return;
+    }
+    const dateDebut = new Date(debut);
+    const dateFin = new Date(fin);
+    if (Number.isNaN(dateDebut.getTime()) || Number.isNaN(dateFin.getTime()) || dateDebut > dateFin) {
+      res.status(400).json({ error: 'Période invalide' });
+      return;
+    }
+    ouverteLe = { gte: dateDebut, lte: dateFin };
+  }
+
   const { etablissementId } = await getContexteGerant(req.user!.id);
 
   const journees = await prisma.journeeCaisse.findMany({
-    where: { etablissementId },
+    where: { etablissementId, ouverteLe },
     include: {
       ouvertePar: { select: { nom: true, prenom: true } },
       clotureePar: { select: { nom: true, prenom: true, role: true } },
       clotureDemandeePar: { select: { nom: true, prenom: true } },
     },
     orderBy: { ouverteLe: 'desc' },
-    take: 90,
+    // Sans période, on plafonne à 90 journées pour l'affichage. Avec une période
+    // explicite (export comptable), on laisse passer jusqu'à un an de journées.
+    take: ouverteLe ? 400 : 90,
   });
 
   const totaux = await prisma.paiement.groupBy({

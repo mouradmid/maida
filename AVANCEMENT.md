@@ -66,10 +66,14 @@
 - **TVA** : taux par article (19/9/0 % + libre), prix TTC, récap par taux sur le ticket,
   TVA collectée prête pour la déclaration
 - **Réservations** : statistiques no-show, clients à surveiller
+- **Export Excel des clôtures de caisse** (vrai fichier `.xlsx`) : une ligne par journée sur la
+  période choisie — ouverture/clôture, qui a ouvert et clôturé, fond de caisse, encaissé par
+  moyen de paiement, espèces attendues/comptées, écart, commentaire — avec ligne de totaux,
+  montants en vrais nombres et en-tête figé : le fichier part tel quel chez le comptable
 - **Exports CSV (ouvrables dans Excel)** : chiffre d'affaires + indicateurs de la période,
   répertoire clients (contacts récoltés aux réservations) et historique des réservations
 - Menu, plan de salle, équipe et droits, moyens de paiement, historique des annulations et
-  remises, journées de caisse
+  remises, journées de caisse **filtrables par période**
 
 ### Espace super-admin (éditeur)
 
@@ -88,7 +92,7 @@
 
 - Hébergement Railway avec déploiement automatique à chaque push
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter et 72 tests d'intégration à chaque push
+- **CI GitHub Actions** : compilation, linter et 94 tests d'intégration à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
 

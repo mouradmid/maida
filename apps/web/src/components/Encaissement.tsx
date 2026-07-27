@@ -88,15 +88,9 @@ import {
   messageErreur,
   messageSucces,
 } from '../lib/ui';
+import { LIBELLES_MOYEN } from '../lib/libelles';
 
 type Mode = 'TOTAL' | 'POURCENTAGE' | 'MONTANT' | 'ARTICLES';
-
-const LIBELLES_MOYEN: Record<ModePaiement, string> = {
-  ESPECES: 'Espèces',
-  CARTE: 'Carte',
-  CHEQUE: 'Chèque',
-  AUTRE: 'Autre',
-};
 
 const LIBELLES_MODE: Record<Mode, string> = {
   TOTAL: 'Solde total',

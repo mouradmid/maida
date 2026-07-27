@@ -742,7 +742,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  listJournees: () => apiFetch<JourneeGerant[]>('/gerant/journees'),
+  // Sans période, l'API renvoie les 90 dernières journées.
+  listJournees: (debut?: Date, fin?: Date) =>
+    apiFetch<JourneeGerant[]>(
+      debut && fin
+        ? `/gerant/journees?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`
+        : '/gerant/journees',
+    ),
 
   reservationsGerant: () =>
     apiFetch<{

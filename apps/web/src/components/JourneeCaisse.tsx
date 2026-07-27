@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type EtatJournee, type ModePaiement, type TotauxJournee } from '../lib/api';
+import { api, type EtatJournee, type TotauxJournee } from '../lib/api';
+import { LIBELLES_MOYEN } from '../lib/libelles';
 import {
   boutonDiscret,
   boutonPrimaire,
@@ -9,13 +10,6 @@ import {
   messageErreur,
   messageSucces,
 } from '../lib/ui';
-
-const LIBELLES_MOYEN: Record<ModePaiement, string> = {
-  ESPECES: 'Espèces',
-  CARTE: 'Carte',
-  CHEQUE: 'Chèque',
-  AUTRE: 'Autre',
-};
 
 function heure(date: string) {
   return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });

@@ -1,13 +1,7 @@
 // Impression de tickets sur imprimante thermique (72 mm) via l'impression
 // navigateur : on rend le ticket dans une iframe cachée puis window.print().
 import type { AdditionDetail, Commande, ModePaiement } from './api';
-
-const LIBELLES_MOYEN: Record<ModePaiement, string> = {
-  ESPECES: 'Espèces',
-  CARTE: 'Carte',
-  CHEQUE: 'Chèque',
-  AUTRE: 'Autre',
-};
+import { LIBELLES_MOYEN } from './libelles';
 
 function echapper(texte: string) {
   return texte.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

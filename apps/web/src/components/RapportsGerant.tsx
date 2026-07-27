@@ -1,20 +1,10 @@
 import { useEffect, useState } from 'react';
-import {
-  api,
-  type ModePaiement,
-  type ParametresGerant,
-  type RapportVentes,
-  type ResumeCout,
-} from '../lib/api';
-import { boutonSecondaire, carte, champ, da, messageErreur } from '../lib/ui';
+import { api, type ParametresGerant, type RapportVentes, type ResumeCout } from '../lib/api';
+import { boutonSecondaire, carte, da, messageErreur } from '../lib/ui';
 import { type CelluleCsv, dateFichier, nombreCsv, telechargerCsv } from '../lib/export';
-
-const LIBELLES_MOYEN: Record<ModePaiement, string> = {
-  ESPECES: 'Espèces',
-  CARTE: 'Carte',
-  CHEQUE: 'Chèque',
-  AUTRE: 'Autre',
-};
+import { LIBELLES_MOYEN } from '../lib/libelles';
+import { bornes, type Periode } from '../lib/periode';
+import { SelecteurPeriode } from './SelecteurPeriode';
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', {
@@ -102,48 +92,6 @@ function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
   }
 
   telechargerCsv(`maida-ca-${dateFichier()}.csv`, lignes);
-}
-
-const PERIODES = [
-  { id: 'aujourdhui', libelle: "Aujourd'hui" },
-  { id: 'hier', libelle: 'Hier' },
-  { id: 'jours7', libelle: '7 jours' },
-  { id: 'jours30', libelle: '30 jours' },
-  { id: 'perso', libelle: 'Dates libres' },
-] as const;
-
-type Periode = (typeof PERIODES)[number]['id'];
-
-function debutDeJour(d: Date) {
-  const r = new Date(d);
-  r.setHours(0, 0, 0, 0);
-  return r;
-}
-
-function finDeJour(d: Date) {
-  const r = new Date(d);
-  r.setHours(23, 59, 59, 999);
-  return r;
-}
-
-function bornes(periode: Periode, persoDebut: string, persoFin: string): [Date, Date] | null {
-  const maintenant = new Date();
-  if (periode === 'aujourdhui') return [debutDeJour(maintenant), finDeJour(maintenant)];
-  if (periode === 'hier') {
-    const hier = new Date(maintenant);
-    hier.setDate(hier.getDate() - 1);
-    return [debutDeJour(hier), finDeJour(hier)];
-  }
-  if (periode === 'jours7' || periode === 'jours30') {
-    const debut = new Date(maintenant);
-    debut.setDate(debut.getDate() - (periode === 'jours7' ? 6 : 29));
-    return [debutDeJour(debut), finDeJour(maintenant)];
-  }
-  if (!persoDebut || !persoFin) return null;
-  const debut = new Date(persoDebut);
-  const fin = new Date(persoFin);
-  if (Number.isNaN(debut.getTime()) || Number.isNaN(fin.getTime()) || debut > fin) return null;
-  return [debutDeJour(debut), finDeJour(fin)];
 }
 
 function Tuile({
@@ -295,37 +243,14 @@ export function RapportsGerant() {
   return (
     <div className="flex w-full flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        {PERIODES.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setPeriode(p.id)}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              periode === p.id
-                ? 'bg-stone-900 text-white'
-                : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
-            }`}
-          >
-            {p.libelle}
-          </button>
-        ))}
-        {periode === 'perso' && (
-          <span className="flex items-center gap-2">
-            <input
-              type="date"
-              value={persoDebut}
-              onChange={(e) => setPersoDebut(e.target.value)}
-              className={`${champ} w-auto`}
-            />
-            <span className="text-sm text-stone-400">→</span>
-            <input
-              type="date"
-              value={persoFin}
-              onChange={(e) => setPersoFin(e.target.value)}
-              className={`${champ} w-auto`}
-            />
-          </span>
-        )}
+        <SelecteurPeriode
+          periode={periode}
+          onPeriode={setPeriode}
+          persoDebut={persoDebut}
+          onPersoDebut={setPersoDebut}
+          persoFin={persoFin}
+          onPersoFin={setPersoFin}
+        />
         <button
           type="button"
           onClick={() => rapport && exporterRapport(rapport, voirCouts)}
