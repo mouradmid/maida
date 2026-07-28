@@ -664,19 +664,6 @@ caisseRouter.get('/commandes', async (req, res) => {
   res.json(commandes.map(toPublicCommande));
 });
 
-// Écran cuisine : les commandes envoyées, de la plus ancienne à la plus récente.
-caisseRouter.get('/cuisine/commandes', async (req, res) => {
-  const { etablissementId } = await getContexteServeur(req.user!.id);
-
-  const commandes = await prisma.commande.findMany({
-    where: { etablissementId, statut: 'ENVOYEE' },
-    include: INCLUDE_COMMANDE,
-    orderBy: { creeLe: 'asc' },
-  });
-
-  res.json(commandes.map(toPublicCommande));
-});
-
 // Le serveur réclame la suite suivante pour toute la table : la cuisine peut
 // alors la préparer. Porte sur l'addition (une table = une addition ouverte),
 // donc toutes les commandes en préparation avancent ensemble.
@@ -753,32 +740,6 @@ caisseRouter.patch('/lignes/:id/suite', async (req, res) => {
   res.json(toPublicCommande(commande));
 });
 
-caisseRouter.patch('/commandes/:id/prete', async (req, res) => {
-  const { etablissementId } = await getContexteServeur(req.user!.id);
-
-  const commande = await prisma.commande.findFirst({
-    where: { id: req.params.id, etablissementId },
-  });
-
-  if (!commande) {
-    res.status(404).json({ error: 'Commande introuvable' });
-    return;
-  }
-
-  if (commande.statut !== 'ENVOYEE') {
-    res.status(409).json({ error: "Cette commande n'est plus en préparation" });
-    return;
-  }
-
-  const majApres = await prisma.commande.update({
-    where: { id: commande.id },
-    data: { statut: 'PRETE', preteLe: new Date() },
-    include: INCLUDE_COMMANDE,
-  });
-
-  res.json(toPublicCommande(majApres));
-});
-
 // --- Annulations ---
 
 interface LigneAAnnuler {
@@ -787,7 +748,14 @@ interface LigneAAnnuler {
 }
 
 caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
-  const { portee, lignes, motif, commentaire, codeGerant } = req.body ?? {};
+  const {
+    portee,
+    lignes,
+    motif,
+    commentaire,
+    codeGerant,
+    apresPreparation: dejaPrepareDeclare,
+  } = req.body ?? {};
 
   if (portee !== 'COMMANDE' && portee !== 'LIGNES') {
     res.status(400).json({ error: 'Portée invalide (COMMANDE ou LIGNES)' });
@@ -799,6 +767,10 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
   }
   if (commentaire !== undefined && typeof commentaire !== 'string') {
     res.status(400).json({ error: 'Commentaire invalide' });
+    return;
+  }
+  if (dejaPrepareDeclare !== undefined && typeof dejaPrepareDeclare !== 'boolean') {
+    res.status(400).json({ error: 'Indicateur « déjà préparé » invalide' });
     return;
   }
   if (portee === 'LIGNES') {
@@ -881,7 +853,10 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
   }
 
   const lignesParId = new Map(commande.lignes.map((l) => [l.id, l]));
-  const apresPreparation = commande.statut === 'PRETE';
+  // C'est le serveur qui déclare si le plat était déjà préparé : lui seul le
+  // sait, la cuisine travaillant sur les bons imprimés. À défaut (client qui
+  // n'envoie pas le champ), on retombe sur le statut de la commande.
+  const apresPreparation = dejaPrepareDeclare ?? commande.statut === 'PRETE';
   const motifFinal = motif.trim();
   const commentaireFinal =
     typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null;

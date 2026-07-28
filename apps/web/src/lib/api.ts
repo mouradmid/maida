@@ -135,6 +135,8 @@ export interface Commande {
   additionId: string;
   additionStatut: 'OUVERTE' | 'PAYEE';
   table: { numero: string } | null;
+  // PRETE et preteLe ne sont plus produits depuis le retrait de l'écran
+  // cuisine : ils ne subsistent que sur les commandes historiques.
   statut: 'ENVOYEE' | 'PRETE' | 'ANNULEE';
   suiteReclamee: number;
   creeLe: string;
@@ -472,11 +474,6 @@ export const api = {
 
   listCommandes: () => apiFetch<Commande[]>('/caisse/commandes'),
 
-  listCommandesCuisine: () => apiFetch<Commande[]>('/caisse/cuisine/commandes'),
-
-  marquerCommandePrete: (id: string) =>
-    apiFetch<Commande>(`/caisse/commandes/${id}/prete`, { method: 'PATCH' }),
-
   reclamerSuiteTable: (additionId: string) =>
     apiFetch<{ suiteReclamee: number; commandes: Commande[] }>(
       `/caisse/additions/${additionId}/reclamer`,
@@ -489,16 +486,25 @@ export const api = {
       body: JSON.stringify({ suite }),
     }),
 
+  // `apresPreparation` est déclaré par le serveur au moment d'annuler : il
+  // conditionne la perte sèche des rapports et le retour au stock.
   annulerCommande: (
     id: string,
     data:
-      | { portee: 'COMMANDE'; motif: string; commentaire?: string; codeGerant?: string }
+      | {
+          portee: 'COMMANDE';
+          motif: string;
+          commentaire?: string;
+          codeGerant?: string;
+          apresPreparation: boolean;
+        }
       | {
           portee: 'LIGNES';
           lignes: Array<{ ligneCommandeId: string; quantite: number }>;
           motif: string;
           commentaire?: string;
           codeGerant?: string;
+          apresPreparation: boolean;
         },
   ) =>
     apiFetch<Commande>(`/caisse/commandes/${id}/annulation`, {

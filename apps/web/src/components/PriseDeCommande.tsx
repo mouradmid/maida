@@ -14,7 +14,6 @@ import { lireCache, mettreEnAttente, sauvegarderCache } from '../lib/horsLigne';
 import {
   badgeBrand,
   badgeNeutre,
-  badgeVert,
   boutonPrimaire,
   boutonSecondaire,
   carte,
@@ -660,7 +659,6 @@ export function PriseDeCommande({
                             minute: '2-digit',
                           })}
                         </span>
-                        {c.statut === 'PRETE' && <span className={`${badgeVert} ml-2`}>prête</span>}
                         <span className="ml-2 text-xs text-stone-500">
                           {c.lignes
                             .filter((l) => l.quantite - l.quantiteAnnulee > 0)
@@ -889,9 +887,6 @@ export function PriseDeCommande({
                             {active === 0 ? ligne.quantite : active}× {ligne.nomProduit}
                             {ligne.options.length > 0 &&
                               ` (${ligne.options.map((o) => o.valeur).join(', ')})`}
-                            {commande.statut === 'PRETE' && (
-                              <span className="ml-1 font-semibold text-green-700">✓ prête</span>
-                            )}
                           </span>
                           <span className="flex shrink-0 items-center gap-1">
                             {active > 0 && boutonRajout(ligne)}

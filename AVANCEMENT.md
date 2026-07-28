@@ -9,14 +9,13 @@
 
 - **Prise de commande** : plan de salle interactif, sur place / à emporter, options par produit
   (cuisson, sauce…), note cuisine
-- **Écran cuisine** : commandes en préparation, ancienneté colorée, marquage « prête »,
-  actualisation automatique
 - **Encaissement** : total, partiel, par article, par pourcentage ; moyens de paiement
   configurables ; monnaie rendue
 - **Journée de caisse** : ouverture avec fond de caisse, clôture avec comptage des espèces et
   écart, verrouillage
 - **Annulations tracées** : par commande ou par article, motif obligatoire, droit par serveur ou
-  validation code gérant, perte sèche identifiée
+  validation code gérant ; le serveur déclare si **la cuisine avait déjà préparé** — cette case
+  décide de la perte sèche au rapport et du retour au stock
 - **Remises & offerts** : % ou montant, article offert, motifs, droit REMISER, tout tracé
 - **Réservations** : prise au téléphone, anti-conflit de créneau, badge sur le plan de salle,
   arrivée / annulation / no-show

@@ -239,7 +239,7 @@ describe('Commandes', () => {
     expect(res.body.error).toContain('Choix');
   });
 
-  it('crée une commande et la fait passer en cuisine puis prête', async () => {
+  it('crée une commande envoyée en cuisine', async () => {
     const res = await serveur.post('/api/caisse/commandes').send({
       canal: 'SUR_PLACE',
       tableId,
@@ -253,12 +253,10 @@ describe('Commandes', () => {
     expect(res.body.total).toBe(1200);
     expect(res.body.lignes[0].tauxTva).toBe(9); // figé depuis le produit
 
-    const cuisine = await serveur.get('/api/caisse/cuisine/commandes');
-    expect(cuisine.body.map((c: { id: string }) => c.id)).toContain(res.body.id);
-
-    const prete = await serveur.patch(`/api/caisse/commandes/${res.body.id}/prete`);
-    expect(prete.status).toBe(200);
-    expect(prete.body.statut).toBe('PRETE');
+    const liste = await serveur.get('/api/caisse/commandes');
+    const envoyee = liste.body.find((c: { id: string }) => c.id === res.body.id);
+    expect(envoyee.statut).toBe('ENVOYEE');
+    expect(envoyee.noteCuisine).toBe('Test note');
   });
 });
 
@@ -1088,8 +1086,8 @@ describe('Rajouts (« la même chose en plus ») et réclame par table', () => {
     expect(nouveau.options).toHaveLength(1);
     expect(nouveau.suite).toBe(2); // catégorie Plats réglée sur 2 plus haut
 
-    const cuisine = await serveur.get('/api/caisse/cuisine/commandes');
-    expect(cuisine.body.some((c: { id: string }) => c.id === res.body.id)).toBe(true);
+    const liste = await serveur.get('/api/caisse/commandes');
+    expect(liste.body.some((c: { id: string }) => c.id === res.body.id)).toBe(true);
   });
 
   it("refuse un rajout venant d'une autre addition", async () => {
@@ -1369,8 +1367,8 @@ describe('Commande client depuis le QR', () => {
     expect(res.body.total).toBe(2200);
     expect(res.body.noteCuisine).toContain('Sans oignons');
 
-    const cuisine = await serveur.get('/api/caisse/cuisine/commandes');
-    expect(cuisine.body.map((c: { id: string }) => c.id)).toContain(res.body.id);
+    const liste = await serveur.get('/api/caisse/commandes');
+    expect(liste.body.map((c: { id: string }) => c.id)).toContain(res.body.id);
 
     const rejeu = await serveur.post(`/api/caisse/demandes/${demandeId}/accepter`);
     expect(rejeu.status).toBe(409);
@@ -1529,6 +1527,41 @@ describe('Gestion du stock (ruptures et quantités)', () => {
     expect(annulation.status).toBe(201);
     const apresAnnulation = await prisma.produit.findUnique({ where: { id: produitBoissonId } });
     expect(apresAnnulation?.quantiteRestante).toBe(5);
+  });
+
+  // Le serveur déclare lui-même que la cuisine avait lancé le plat : perte
+  // sèche au rapport, et rien ne revient en stock.
+  it('garde la quantité perdue quand le serveur déclare le plat déjà préparé', async () => {
+    await serveur
+      .patch(`/api/caisse/produits/${produitBoissonId}/stock`)
+      .send({ suiviQuantite: true, quantiteRestante: 4 });
+
+    const commande = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'SUR_PLACE', tableId, lignes: [{ produitId: produitBoissonId, quantite: 2 }] });
+    expect(commande.status).toBe(201);
+
+    const annulation = await serveur
+      .post(`/api/caisse/commandes/${commande.body.id}/annulation`)
+      .send({ portee: 'COMMANDE', motif: 'Client parti', apresPreparation: true });
+    expect(annulation.status).toBe(201);
+
+    const apres = await prisma.produit.findUnique({ where: { id: produitBoissonId } });
+    expect(apres?.quantiteRestante).toBe(2); // perdu, pas rendu au stock
+
+    const historique = await gerant.get('/api/gerant/annulations');
+    expect(historique.body[0].apresPreparation).toBe(true);
+    expect(historique.body[0].motif).toBe('Client parti');
+  });
+
+  it("refuse un indicateur « déjà préparé » qui n'est pas un booléen", async () => {
+    const commande = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'SUR_PLACE', tableId, lignes: [{ produitId: produitPlatId, quantite: 1 }] });
+    const res = await serveur
+      .post(`/api/caisse/commandes/${commande.body.id}/annulation`)
+      .send({ portee: 'COMMANDE', motif: 'Test', apresPreparation: 'oui' });
+    expect(res.status).toBe(400);
   });
 
   it('masque les produits épuisés dans le menu public (QR)', async () => {

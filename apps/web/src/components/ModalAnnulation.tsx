@@ -28,6 +28,9 @@ export function ModalAnnulation({
   const [porteeCommande, setPorteeCommande] = useState(true);
   const [selection, setSelection] = useState<Record<string, number>>({});
   const [motif, setMotif] = useState<string>(MOTIFS_PREDEFINIS[0]);
+  // Déclaré par le serveur, seul à savoir si la cuisine avait déjà lancé le
+  // plat : décide de la perte sèche au rapport et du retour au stock.
+  const [dejaPrepare, setDejaPrepare] = useState(false);
   const [commentaire, setCommentaire] = useState('');
   const [codeGerant, setCodeGerant] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
@@ -61,6 +64,7 @@ export function ModalAnnulation({
               motif,
               commentaire: commentaire.trim() || undefined,
               codeGerant: codeGerant || undefined,
+              apresPreparation: dejaPrepare,
             }
           : {
               portee: 'LIGNES',
@@ -68,6 +72,7 @@ export function ModalAnnulation({
               motif,
               commentaire: commentaire.trim() || undefined,
               codeGerant: codeGerant || undefined,
+              apresPreparation: dejaPrepare,
             },
       );
       onAnnulee();
@@ -85,11 +90,6 @@ export function ModalAnnulation({
         <h3 className="text-lg font-semibold text-stone-900">
           Annuler — {commande.table ? `Table ${commande.table.numero}` : 'À emporter'}
         </h3>
-        {commande.statut === 'PRETE' && (
-          <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Cette commande a déjà été préparée : l'annulation sera signalée au gérant comme une perte.
-          </p>
-        )}
 
         <div className="mt-4 flex flex-col gap-4">
           <div className="flex gap-2">
@@ -199,6 +199,27 @@ export function ModalAnnulation({
               className={champ}
             />
           </div>
+
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+              dejaPrepare ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-white'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={dejaPrepare}
+              onChange={(e) => setDejaPrepare(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-amber-600"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-stone-900">La cuisine avait déjà préparé</span>
+              <span className="mt-0.5 block text-xs text-stone-500">
+                {dejaPrepare
+                  ? 'Perte sèche : le montant est signalé comme perdu au gérant et les articles ne reviennent pas en stock.'
+                  : "Le plat n'était pas lancé : les articles suivis en quantité reviennent en stock."}
+              </span>
+            </span>
+          </label>
 
           {!droitAnnuler && (
             <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">

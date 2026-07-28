@@ -495,7 +495,8 @@ async function main() {
     undefined,
     ilYA(1315),
   );
-  // Servie hier soir : ne doit pas rester « en préparation » sur l'écran cuisine.
+  // Servie hier soir (statut historique, plus produit depuis le retrait de
+  // l'écran cuisine) : la commande ne traîne pas parmi les envois du jour.
   await prisma.commande.update({
     where: { id: commandeHier.id },
     data: { statut: 'PRETE', preteLe: ilYA(1290) },
