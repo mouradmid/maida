@@ -1060,12 +1060,6 @@ export function EcranTables({
                   Aucune journée de caisse ouverte : ouvrez-la (onglet « Journée ») avant d'encaisser.
                 </p>
               )}
-              {horsLigne && (
-                <p className="text-xs text-warn">
-                  Hors ligne — montant du dernier état connu, encaissement enregistré et synchronisé au
-                  retour du réseau.
-                </p>
-              )}
               {!horsLigne && chargementAddition && !detailAddition && (
                 <p className="py-6 text-center text-sm text-stone-400">Chargement de l'addition...</p>
               )}
