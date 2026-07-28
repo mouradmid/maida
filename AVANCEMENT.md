@@ -7,10 +7,12 @@
 
 ### Cœur du service (caisse)
 
-- **Prise de commande** : plan de salle interactif, sur place / à emporter, options par produit
-  (cuisson, sauce…), note cuisine
+- **Écran Tables** : un seul écran pour tout le service. Le plan de salle porte le montant en
+  cours et les tables « à réclamer » ; on touche une table et le panneau de droite bascule entre
+  **Commande** (menu, suites, rajouts, annulation, envoi en cuisine) et **Addition** (détail
+  facturable, remise / offert, ticket client, encaissement) — sans jamais changer d'onglet
 - **Encaissement** : total, partiel, par article, par pourcentage ; moyens de paiement
-  configurables ; monnaie rendue
+  configurables ; monnaie rendue ; ventes à emporter encaissées depuis la même fiche
 - **Journée de caisse** : ouverture avec fond de caisse, clôture avec comptage des espèces et
   écart, verrouillage
 - **Annulations tracées** : par commande ou par article, motif obligatoire, droit par serveur ou
@@ -36,10 +38,11 @@
 - **Suites de service** : entrée / plat / dessert hérités des catégories (commandes caisse et
   QR client), cuisine par suites avec « en attente de réclame », réclame **par table**,
   correction d'un article par glisser-déposer ou toucher-toucher (tablette)
-- **Panneau de commande unifié** (style Lightspeed) : tout se passe dans un seul cadre par
-  table — articles déjà en cuisine groupés par suite, rajout rapide (« un 2e Hamoud »),
-  nouveaux articles du menu, annulation, réclame — un seul bouton « Envoyer en cuisine »,
-  un seul ticket ; les commandes ajoutées héritent de la progression des suites de la table
+- **Fiche table unifiée** (style Lightspeed) : tout se passe dans un seul cadre par table —
+  articles déjà en cuisine groupés par suite, rajout rapide (« un 2e Hamoud »), nouveaux
+  articles du menu, annulation, réclame — un seul bouton « Envoyer en cuisine », un seul
+  ticket ; les commandes ajoutées héritent de la progression des suites de la table ; et le
+  volet « Addition » solde la table sur place, une fois payée elle se libère sur le plan
 - **« À suivre » à la saisie** : le serveur tape toute la commande d'un coup et décide
   lui-même des services — tout part dans le service en cours, le bouton « À suivre » passe
   au suivant (une entrée peut servir de plat), et un badge « Suite N » par ligne permet de

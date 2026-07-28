@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   api,
   ErreurReseau,
+  type AdditionDetail,
   type CategorieMenu,
   type Commande,
   type DemandeClient,
   type LigneCommande,
+  type ModePaiement,
   type ProduitMenu,
   type TableCaisse,
   type Utilisateur,
@@ -26,6 +28,8 @@ import { htmlTicketCuisine, htmlTicketReclame, imprimerHtml } from '../lib/impre
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
 import { ModalStock } from './ModalStock';
+import { PanneauAddition, type InfosEtablissement } from './PanneauAddition';
+import { PanneauPaiement } from './PanneauPaiement';
 
 // Un produit est commandable s'il n'est pas en rupture et, s'il est suivi en
 // quantité, qu'il en reste. Reflète exactement la règle du serveur.
@@ -60,12 +64,23 @@ function cleLigne(produitId: string, options: ChoixOption[], suite: number): str
 
 const SUITES = [1, 2, 3];
 
-export function PriseDeCommande({
+// Les deux faces d'une table : ce qu'on lui envoie, et ce qu'elle doit.
+type Volet = 'commande' | 'addition';
+
+/**
+ * Écran unique de la caisse, centré sur la table : le plan de salle sert de
+ * point d'entrée, et tout se règle dans le panneau de droite — commander,
+ * envoyer, réclamer un service, annuler, remiser puis encaisser — sans jamais
+ * changer d'écran.
+ */
+export function EcranTables({
   droitAnnuler,
   droitGererStock,
+  droitRemiser,
 }: {
   droitAnnuler: boolean;
   droitGererStock: boolean;
+  droitRemiser: boolean;
 }) {
   const [categories, setCategories] = useState<CategorieMenu[]>([]);
   const [tables, setTables] = useState<TableCaisse[]>([]);
@@ -101,6 +116,17 @@ export function PriseDeCommande({
   // Article en cours de déplacement vers une autre suite (toucher-toucher).
   const [ligneEnDeplacement, setLigneEnDeplacement] = useState<string | null>(null);
 
+  // Volet « addition » : encaissement de la table sans quitter l'écran.
+  const [volet, setVolet] = useState<Volet>('commande');
+  const [detailAddition, setDetailAddition] = useState<AdditionDetail | null>(null);
+  const [chargementAddition, setChargementAddition] = useState(false);
+  // Addition d'une vente à emporter sélectionnée dans la liste (une vente à
+  // emporter n'a pas de table sur laquelle s'appuyer).
+  const [additionEmporterId, setAdditionEmporterId] = useState<string | null>(null);
+  const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>(['ESPECES']);
+  const [journeeOuverte, setJourneeOuverte] = useState(true);
+  const [etablissement, setEtablissement] = useState<InfosEtablissement | null>(null);
+
   async function chargerDemandes() {
     try {
       setDemandes(await api.listDemandes());
@@ -125,8 +151,30 @@ export function PriseDeCommande({
     }
   }
 
+  // Ce qu'il faut pour encaisser : moyens acceptés, journée ouverte, en-tête du
+  // ticket. Isolé du menu pour qu'une panne ici n'empêche pas de commander.
+  async function chargerContexteEncaissement() {
+    try {
+      const [moyens, etatJournee, infosEtab] = await Promise.all([
+        api.caisseMoyensPaiement(),
+        api.getJournee(),
+        api.caisseEtablissement(),
+      ]);
+      setMoyensActifs(moyens.actifs.length > 0 ? moyens.actifs : ['ESPECES']);
+      setJourneeOuverte(etatJournee.journee !== null);
+      setEtablissement(infosEtab);
+      sauvegarderCache('moyensPaiement', moyens.actifs);
+      sauvegarderCache('etablissement', infosEtab);
+    } catch {
+      // Hors ligne : on repart du dernier état connu.
+      setMoyensActifs(lireCache<ModePaiement[]>('moyensPaiement') ?? ['ESPECES']);
+      setEtablissement(lireCache<InfosEtablissement>('etablissement'));
+    }
+  }
+
   useEffect(() => {
     chargerDemandes();
+    chargerContexteEncaissement();
     const minuterie = setInterval(() => {
       chargerDemandes();
       rafraichirCommandes();
@@ -332,14 +380,76 @@ export function PriseDeCommande({
   const nbArticles =
     lignesPanier.reduce((s, l) => s + l.quantite, 0) + lignesRajouts.reduce((s, r) => s + r.quantite, 0);
 
+  // Sur place et à emporter sont deux contextes distincts : on ne garde pas la
+  // table (ni son addition) en passant de l'un à l'autre.
+  function handleChoisirCanal(nouveau: 'SUR_PLACE' | 'EMPORTER') {
+    if (nouveau === canal) return;
+    setCanal(nouveau);
+    setTableId('');
+    setRajouts({});
+    setLigneEnDeplacement(null);
+    setSuiteSaisie(1);
+    setVolet('commande');
+    setDetailAddition(null);
+    setAdditionEmporterId(null);
+  }
+
   function handleChoisirTable(id: string) {
     if (id !== tableId) {
       // Les rajouts visent les articles de la table précédente : on repart à zéro.
       setRajouts({});
       setLigneEnDeplacement(null);
       setSuiteSaisie(1);
+      setVolet('commande');
+      setDetailAddition(null);
     }
     setTableId(id);
+  }
+
+  // Addition affichée dans le volet : celle de la table choisie, ou celle de la
+  // vente à emporter sélectionnée.
+  const additionCouranteId =
+    canal === 'SUR_PLACE' ? (tableSelectionnee?.addition?.id ?? additionIdTable) : additionEmporterId;
+  const soldeCourant =
+    canal === 'SUR_PLACE'
+      ? (tableSelectionnee?.addition?.solde ?? null)
+      : (detailAddition?.solde ?? null);
+
+  async function chargerAddition(id: string) {
+    setChargementAddition(true);
+    try {
+      setDetailAddition(await api.getAddition(id));
+    } catch (err) {
+      setDetailAddition(null);
+      setErreur(
+        err instanceof ErreurReseau
+          ? "Hors ligne : l'addition détaillée revient avec le réseau (encaissez depuis l'onglet Encaissement)."
+          : err instanceof Error
+            ? err.message
+            : 'Erreur de chargement',
+      );
+    } finally {
+      setChargementAddition(false);
+    }
+  }
+
+  useEffect(() => {
+    if (volet !== 'addition' || !additionCouranteId) return;
+    chargerAddition(additionCouranteId);
+  }, [volet, additionCouranteId]);
+
+  function handleOuvrirAddition(additionId: string | null) {
+    if (!additionId) return;
+    setErreur(null);
+    setConfirmation(null);
+    if (canal === 'EMPORTER') setAdditionEmporterId(additionId);
+    setVolet('addition');
+  }
+
+  // Après remise, offert ou encaissement : le détail ET le plan doivent bouger
+  // (le solde de la table est affiché sur le plan).
+  async function rafraichirApresAddition(additionId: string) {
+    await Promise.all([chargerAddition(additionId), rafraichirCommandes()]);
   }
 
   async function handleReclamerTable(additionId: string) {
@@ -615,7 +725,7 @@ export function PriseDeCommande({
             <div className="flex rounded-lg border border-stone-200 bg-white p-1">
               <button
                 type="button"
-                onClick={() => setCanal('SUR_PLACE')}
+                onClick={() => handleChoisirCanal('SUR_PLACE')}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   canal === 'SUR_PLACE' ? 'bg-brand-600 text-white' : 'text-stone-600 hover:bg-stone-50'
                 }`}
@@ -624,7 +734,7 @@ export function PriseDeCommande({
               </button>
               <button
                 type="button"
-                onClick={() => setCanal('EMPORTER')}
+                onClick={() => handleChoisirCanal('EMPORTER')}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   canal === 'EMPORTER' ? 'bg-brand-600 text-white' : 'text-stone-600 hover:bg-stone-50'
                 }`}
@@ -675,6 +785,18 @@ export function PriseDeCommande({
                       </span>
                       <span className="flex shrink-0 items-center gap-3">
                         <span className="font-semibold text-stone-900">{da(c.total)}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOuvrirAddition(c.additionId)}
+                          title="Voir l'addition et encaisser cette vente"
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                            additionEmporterId === c.additionId && volet === 'addition'
+                              ? 'bg-brand-600 text-white'
+                              : 'border border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100'
+                          }`}
+                        >
+                          Addition
+                        </button>
                         {c.statut === 'ENVOYEE' && c.suiteReclamee < suiteMax && (
                           <button
                             type="button"
@@ -791,18 +913,9 @@ export function PriseDeCommande({
           </div>
         </div>
 
-        {/* Panneau de commande : tout ce qui concerne la table sélectionnée */}
+        {/* Fiche de la table : commande d'un côté, addition de l'autre */}
         <div className={`${carte} sticky top-20 flex flex-col gap-4`}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-stone-900">Commande</h2>
-            {nbArticles > 0 && (
-              <span className={badgeNeutre}>
-                {nbArticles} article{nbArticles > 1 ? 's' : ''} à envoyer
-              </span>
-            )}
-          </div>
-
-          <div>
+          <div className="flex items-center justify-between gap-2">
             {canal === 'EMPORTER' ? (
               <span className={badgeBrand}>À emporter</span>
             ) : tableSelectionnee ? (
@@ -810,263 +923,347 @@ export function PriseDeCommande({
             ) : (
               <span className={badgeNeutre}>Touchez une table sur le plan</span>
             )}
-          </div>
-
-          {/* Déjà envoyé : les articles en cuisine, groupés par suite */}
-          {commandesTable.length > 0 && (
-            <div className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-                  Déjà envoyé — {da(totalEnvoye)}
-                </span>
-                {commandesEnvoyees.length > 0 && suiteReclameeTable < suiteMaxTable && (
-                  <button
-                    type="button"
-                    onClick={() => additionIdTable && handleReclamerTable(additionIdTable)}
-                    title="La table est prête pour la suite : la cuisine peut la préparer"
-                    className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
-                  >
-                    Réclamer la suite {suiteReclameeTable + 1}
-                  </button>
-                )}
-              </div>
-
-              {SUITES.filter(
-                (suite) =>
-                  lignesEnvoyees.some((e) => e.ligne.suite === suite) || ligneEnDeplacement !== null,
-              ).map((suite) => (
-                <div
-                  key={suite}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDeposerDansSuite(suite)}
-                  onClick={() => {
-                    // Équivalent tactile du glisser-déposer : on touche
-                    // l'article, puis la suite de destination.
-                    if (ligneEnDeplacement) handleDeposerDansSuite(suite);
-                  }}
-                  className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
-                    ligneEnDeplacement
-                      ? 'cursor-pointer border-dashed border-sky-400 bg-sky-50'
-                      : 'border-stone-200 bg-white'
-                  }`}
-                >
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                    Suite {suite}
-                    {suite <= suiteReclameeTable ? ' · en cuisine' : ' · en attente'}
-                  </span>
-                  {lignesEnvoyees
-                    .filter((e) => e.ligne.suite === suite)
-                    .map(({ ligne, commande }) => {
-                      const active = ligne.quantite - ligne.quantiteAnnulee;
-                      const deplacable = commande.statut === 'ENVOYEE';
-                      return (
-                        <span
-                          key={ligne.id}
-                          draggable={deplacable}
-                          onDragStart={() => deplacable && setLigneEnDeplacement(ligne.id)}
-                          onDragEnd={() => setLigneEnDeplacement(null)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!deplacable) return;
-                            setLigneEnDeplacement(ligneEnDeplacement === ligne.id ? null : ligne.id);
-                          }}
-                          title={
-                            deplacable
-                              ? 'Glissez (ou touchez puis touchez la suite de destination) pour changer de suite'
-                              : undefined
-                          }
-                          className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 text-xs shadow-sm ring-1 ${
-                            deplacable ? 'cursor-grab active:cursor-grabbing' : ''
-                          } ${
-                            ligneEnDeplacement === ligne.id
-                              ? 'bg-sky-600 text-white ring-sky-600'
-                              : `bg-white ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
-                          }`}
-                        >
-                          <span className="min-w-0">
-                            {active === 0 ? ligne.quantite : active}× {ligne.nomProduit}
-                            {ligne.options.length > 0 &&
-                              ` (${ligne.options.map((o) => o.valeur).join(', ')})`}
-                          </span>
-                          <span className="flex shrink-0 items-center gap-1">
-                            {active > 0 && boutonRajout(ligne)}
-                            {active > 0 && boutonAnnulerCommande(commande)}
-                          </span>
-                        </span>
-                      );
-                    })}
-                </div>
-              ))}
-
-              {commandesTable.some((c) => c.noteCuisine) && (
-                <p className="text-xs italic text-brand-700">
-                  Cuisine :{' '}
-                  {commandesTable
-                    .filter((c) => c.noteCuisine)
-                    .map((c) => c.noteCuisine)
-                    .join(' · ')}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* À envoyer : rajouts + nouveaux articles */}
-          {lignesRajouts.length > 0 && (
-            <ul className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 p-2.5">
-              {lignesRajouts.map(({ entree, ligneId, quantite }) => (
-                <li key={ligneId} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="min-w-0 text-stone-800">
-                    {entree.ligne.nomProduit}
-                    {entree.ligne.options.length > 0 && (
-                      <span className="text-stone-500">
-                        {' '}
-                        ({entree.ligne.options.map((o) => o.valeur).join(', ')})
-                      </span>
-                    )}
-                    <span className="ml-1 text-xs text-stone-500">— rajout</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => changerRajout(ligneId, -1)}
-                      aria-label={`Retirer un ${entree.ligne.nomProduit}`}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
-                    >
-                      −
-                    </button>
-                    <span className="w-8 text-center font-semibold">+{quantite}</span>
-                    <button
-                      type="button"
-                      onClick={() => changerRajout(ligneId, 1)}
-                      aria-label={`Ajouter un ${entree.ligne.nomProduit}`}
-                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
-                    >
-                      +
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {lignesPanier.length === 0 && lignesRajouts.length === 0 && (
-            <p className="py-4 text-center text-sm text-stone-400">
-              Touchez un produit pour l'ajouter à la commande
-              {commandesTable.length > 0 ? ', ou « + » sur un article envoyé pour en rajouter un' : ''}.
-            </p>
-          )}
-
-          <ul className="flex flex-col gap-3">
-            {[...lignesPanier]
-              .sort((a, b) => a.suite - b.suite)
-              .map((ligne, index, triees) => (
-                <li key={ligne.cle} className="flex flex-col gap-1">
-                  {/* Séparateur de service quand le panier couvre plusieurs suites */}
-                  {new Set(triees.map((l) => l.suite)).size > 1 &&
-                    (index === 0 || triees[index - 1].suite !== ligne.suite) && (
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                        Suite {ligne.suite}
-                      </p>
-                    )}
-                  <div className="flex items-start justify-between gap-2 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium text-stone-900">{ligne.produit.nom}</p>
-                      {ligne.options.length > 0 && (
-                        <p className="text-xs text-stone-500">
-                          {ligne.options.map((o) => `${o.nomGroupe} : ${o.valeur}`).join(' · ')}
-                        </p>
-                      )}
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
-                        {ligne.produit.prix * ligne.quantite} DA
-                        <button
-                          type="button"
-                          onClick={() => changerSuiteLignePanier(ligne.cle)}
-                          title="Changer l'article de service (entrée / plat / dessert)"
-                          className="rounded-full border border-stone-300 bg-white px-2 py-px text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
-                        >
-                          Suite {ligne.suite}
-                        </button>
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => changerQuantite(ligne.cle, -1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
-                        aria-label="Retirer un"
-                      >
-                        −
-                      </button>
-                      <span className="w-6 text-center font-semibold">{ligne.quantite}</span>
-                      <button
-                        type="button"
-                        onClick={() => changerQuantite(ligne.cle, 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
-                        aria-label="Ajouter un"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-          </ul>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSuiteSaisie((s) => Math.min(s + 1, 3))}
-              disabled={suiteSaisie >= 3}
-              title="Passer au service suivant : les prochains articles partiront à suivre"
-              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
-            >
-              À suivre →
-            </button>
-            {suiteSaisie > 1 && (
-              <span className="flex items-center gap-1.5 text-xs text-sky-800">
-                saisie en suite {suiteSaisie}
-                <button
-                  type="button"
-                  onClick={() => setSuiteSaisie(1)}
-                  aria-label="Revenir à la suite 1"
-                  title="Revenir à la suite 1"
-                  className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
-                >
-                  ✕
-                </button>
+            {nbArticles > 0 && (
+              <span className={badgeNeutre}>
+                {nbArticles} article{nbArticles > 1 ? 's' : ''} à envoyer
               </span>
             )}
           </div>
 
-          {nbArticles > 0 && (
-            <div className="flex items-center justify-between border-t border-stone-100 pt-3">
-              <span className="text-sm font-medium text-stone-600">À envoyer</span>
-              <span className="text-xl font-bold text-stone-900">{totalAEnvoyer} DA</span>
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-stone-600" htmlFor="noteCuisine">
-              Message pour la cuisine (optionnel)
-            </label>
-            <textarea
-              id="noteCuisine"
-              value={noteCuisine}
-              onChange={(e) => setNoteCuisine(e.target.value)}
-              rows={2}
-              placeholder="ex : client allergique aux fruits de mer"
-              className={champ}
-            />
+          {/* Bascule commande / addition : le cœur de l'écran table */}
+          <div className="flex rounded-lg border border-stone-200 bg-stone-50 p-1">
+            <button
+              type="button"
+              onClick={() => setVolet('commande')}
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                volet === 'commande' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+              }`}
+            >
+              Commande
+            </button>
+            <button
+              type="button"
+              disabled={!additionCouranteId}
+              onClick={() => handleOuvrirAddition(additionCouranteId)}
+              title={
+                additionCouranteId
+                  ? "Voir l'addition, remiser et encaisser"
+                  : 'Aucune addition ouverte sur cette table'
+              }
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                volet === 'addition' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+              }`}
+            >
+              Addition{soldeCourant != null && soldeCourant > 0 ? ` · ${da(soldeCourant)}` : ''}
+            </button>
           </div>
 
-          <button
-            type="button"
-            disabled={nbArticles === 0 || envoiEnCours}
-            onClick={handleEnvoyerCommande}
-            className={`${boutonPrimaire} py-3 text-base`}
-          >
-            Envoyer en cuisine
-          </button>
+          {volet === 'addition' && (
+            <>
+              {!journeeOuverte && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Aucune journée de caisse ouverte : ouvrez-la (onglet « Journée ») avant d'encaisser.
+                </p>
+              )}
+              {chargementAddition && !detailAddition && (
+                <p className="py-6 text-center text-sm text-stone-400">Chargement de l'addition...</p>
+              )}
+              {detailAddition && (
+                <>
+                  <PanneauAddition
+                    detail={detailAddition}
+                    etablissement={etablissement}
+                    droitRemiser={droitRemiser}
+                    onGesteApplique={async () => {
+                      setConfirmation('Geste commercial appliqué.');
+                      await rafraichirApresAddition(detailAddition.id);
+                    }}
+                  />
+                  <PanneauPaiement
+                    detail={detailAddition}
+                    moyensActifs={moyensActifs}
+                    journeeOuverte={journeeOuverte}
+                    onErreur={setErreur}
+                    onEncaisse={async (message, additionCloturee) => {
+                      setConfirmation(message);
+                      setErreur(null);
+                      await rafraichirApresAddition(detailAddition.id);
+                      if (additionCloturee) {
+                        // Table soldée : elle se libère, on revient à la commande.
+                        setVolet('commande');
+                        setDetailAddition(null);
+                        setAdditionEmporterId(null);
+                        if (canal === 'SUR_PLACE') setTableId('');
+                      }
+                    }}
+                  />
+                </>
+              )}
+            </>
+          )}
+
+          {volet === 'commande' && (
+            <>
+              {/* Déjà envoyé : les articles en cuisine, groupés par suite */}
+              {commandesTable.length > 0 && (
+                <div className="flex flex-col gap-2 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                      Déjà envoyé — {da(totalEnvoye)}
+                    </span>
+                    {commandesEnvoyees.length > 0 && suiteReclameeTable < suiteMaxTable && (
+                      <button
+                        type="button"
+                        onClick={() => additionIdTable && handleReclamerTable(additionIdTable)}
+                        title="La table est prête pour la suite : la cuisine peut la préparer"
+                        className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+                      >
+                        Réclamer la suite {suiteReclameeTable + 1}
+                      </button>
+                    )}
+                  </div>
+
+                  {SUITES.filter(
+                    (suite) =>
+                      lignesEnvoyees.some((e) => e.ligne.suite === suite) || ligneEnDeplacement !== null,
+                  ).map((suite) => (
+                    <div
+                      key={suite}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleDeposerDansSuite(suite)}
+                      onClick={() => {
+                        // Équivalent tactile du glisser-déposer : on touche
+                        // l'article, puis la suite de destination.
+                        if (ligneEnDeplacement) handleDeposerDansSuite(suite);
+                      }}
+                      className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
+                        ligneEnDeplacement
+                          ? 'cursor-pointer border-dashed border-sky-400 bg-sky-50'
+                          : 'border-stone-200 bg-white'
+                      }`}
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                        Suite {suite}
+                        {suite <= suiteReclameeTable ? ' · en cuisine' : ' · en attente'}
+                      </span>
+                      {lignesEnvoyees
+                        .filter((e) => e.ligne.suite === suite)
+                        .map(({ ligne, commande }) => {
+                          const active = ligne.quantite - ligne.quantiteAnnulee;
+                          const deplacable = commande.statut === 'ENVOYEE';
+                          return (
+                            <span
+                              key={ligne.id}
+                              draggable={deplacable}
+                              onDragStart={() => deplacable && setLigneEnDeplacement(ligne.id)}
+                              onDragEnd={() => setLigneEnDeplacement(null)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!deplacable) return;
+                                setLigneEnDeplacement(ligneEnDeplacement === ligne.id ? null : ligne.id);
+                              }}
+                              title={
+                                deplacable
+                                  ? 'Glissez (ou touchez puis touchez la suite de destination) pour changer de suite'
+                                  : undefined
+                              }
+                              className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 text-xs shadow-sm ring-1 ${
+                                deplacable ? 'cursor-grab active:cursor-grabbing' : ''
+                              } ${
+                                ligneEnDeplacement === ligne.id
+                                  ? 'bg-sky-600 text-white ring-sky-600'
+                                  : `bg-white ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
+                              }`}
+                            >
+                              <span className="min-w-0">
+                                {active === 0 ? ligne.quantite : active}× {ligne.nomProduit}
+                                {ligne.options.length > 0 &&
+                                  ` (${ligne.options.map((o) => o.valeur).join(', ')})`}
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1">
+                                {active > 0 && boutonRajout(ligne)}
+                                {active > 0 && boutonAnnulerCommande(commande)}
+                              </span>
+                            </span>
+                          );
+                        })}
+                    </div>
+                  ))}
+
+                  {commandesTable.some((c) => c.noteCuisine) && (
+                    <p className="text-xs italic text-brand-700">
+                      Cuisine :{' '}
+                      {commandesTable
+                        .filter((c) => c.noteCuisine)
+                        .map((c) => c.noteCuisine)
+                        .join(' · ')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* À envoyer : rajouts + nouveaux articles */}
+              {lignesRajouts.length > 0 && (
+                <ul className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 p-2.5">
+                  {lignesRajouts.map(({ entree, ligneId, quantite }) => (
+                    <li key={ligneId} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 text-stone-800">
+                        {entree.ligne.nomProduit}
+                        {entree.ligne.options.length > 0 && (
+                          <span className="text-stone-500">
+                            {' '}
+                            ({entree.ligne.options.map((o) => o.valeur).join(', ')})
+                          </span>
+                        )}
+                        <span className="ml-1 text-xs text-stone-500">— rajout</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => changerRajout(ligneId, -1)}
+                          aria-label={`Retirer un ${entree.ligne.nomProduit}`}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                        >
+                          −
+                        </button>
+                        <span className="w-8 text-center font-semibold">+{quantite}</span>
+                        <button
+                          type="button"
+                          onClick={() => changerRajout(ligneId, 1)}
+                          aria-label={`Ajouter un ${entree.ligne.nomProduit}`}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                        >
+                          +
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {lignesPanier.length === 0 && lignesRajouts.length === 0 && (
+                <p className="py-4 text-center text-sm text-stone-400">
+                  Touchez un produit pour l'ajouter à la commande
+                  {commandesTable.length > 0
+                    ? ', ou « + » sur un article envoyé pour en rajouter un'
+                    : ''}
+                  .
+                </p>
+              )}
+
+              <ul className="flex flex-col gap-3">
+                {[...lignesPanier]
+                  .sort((a, b) => a.suite - b.suite)
+                  .map((ligne, index, triees) => (
+                    <li key={ligne.cle} className="flex flex-col gap-1">
+                      {/* Séparateur de service quand le panier couvre plusieurs suites */}
+                      {new Set(triees.map((l) => l.suite)).size > 1 &&
+                        (index === 0 || triees[index - 1].suite !== ligne.suite) && (
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                            Suite {ligne.suite}
+                          </p>
+                        )}
+                      <div className="flex items-start justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium text-stone-900">{ligne.produit.nom}</p>
+                          {ligne.options.length > 0 && (
+                            <p className="text-xs text-stone-500">
+                              {ligne.options.map((o) => `${o.nomGroupe} : ${o.valeur}`).join(' · ')}
+                            </p>
+                          )}
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
+                            {ligne.produit.prix * ligne.quantite} DA
+                            <button
+                              type="button"
+                              onClick={() => changerSuiteLignePanier(ligne.cle)}
+                              title="Changer l'article de service (entrée / plat / dessert)"
+                              className="rounded-full border border-stone-300 bg-white px-2 py-px text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                            >
+                              Suite {ligne.suite}
+                            </button>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => changerQuantite(ligne.cle, -1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                            aria-label="Retirer un"
+                          >
+                            −
+                          </button>
+                          <span className="w-6 text-center font-semibold">{ligne.quantite}</span>
+                          <button
+                            type="button"
+                            onClick={() => changerQuantite(ligne.cle, 1)}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                            aria-label="Ajouter un"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSuiteSaisie((s) => Math.min(s + 1, 3))}
+                  disabled={suiteSaisie >= 3}
+                  title="Passer au service suivant : les prochains articles partiront à suivre"
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
+                >
+                  À suivre →
+                </button>
+                {suiteSaisie > 1 && (
+                  <span className="flex items-center gap-1.5 text-xs text-sky-800">
+                    saisie en suite {suiteSaisie}
+                    <button
+                      type="button"
+                      onClick={() => setSuiteSaisie(1)}
+                      aria-label="Revenir à la suite 1"
+                      title="Revenir à la suite 1"
+                      className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+              </div>
+
+              {nbArticles > 0 && (
+                <div className="flex items-center justify-between border-t border-stone-100 pt-3">
+                  <span className="text-sm font-medium text-stone-600">À envoyer</span>
+                  <span className="text-xl font-bold text-stone-900">{totalAEnvoyer} DA</span>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-stone-600" htmlFor="noteCuisine">
+                  Message pour la cuisine (optionnel)
+                </label>
+                <textarea
+                  id="noteCuisine"
+                  value={noteCuisine}
+                  onChange={(e) => setNoteCuisine(e.target.value)}
+                  rows={2}
+                  placeholder="ex : client allergique aux fruits de mer"
+                  className={champ}
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={nbArticles === 0 || envoiEnCours}
+                onClick={handleEnvoyerCommande}
+                className={`${boutonPrimaire} py-3 text-base`}
+              >
+                Envoyer en cuisine
+              </button>
+            </>
+          )}
         </div>
       </div>
 

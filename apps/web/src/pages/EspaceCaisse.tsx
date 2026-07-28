@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { LoginPin } from '../components/LoginPin';
 import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
-import { PriseDeCommande } from '../components/PriseDeCommande';
+import { EcranTables } from '../components/EcranTables';
 import { Encaissement } from '../components/Encaissement';
 import { JourneeCaisse } from '../components/JourneeCaisse';
 import { Reservations } from '../components/Reservations';
@@ -11,9 +11,12 @@ import { demarrerSynchronisation } from '../lib/horsLigne';
 import { messageErreur, messageSucces } from '../lib/ui';
 import { useMe } from '../hooks/useMe';
 
+// « Tables » porte tout le service : commander, envoyer, réclamer, encaisser.
+// « Encaissement » ne subsiste que pour le mode hors ligne, le temps que
+// l'écran Tables sache encaisser sans réseau.
 const ONGLETS = [
-  { id: 'commande', libelle: 'Prise de commande' },
-  { id: 'encaissement', libelle: 'Encaissement' },
+  { id: 'tables', libelle: 'Tables' },
+  { id: 'encaissement', libelle: 'Encaissement (hors ligne)' },
   { id: 'reservations', libelle: 'Réservations' },
   { id: 'journee', libelle: 'Journée' },
 ] as const;
@@ -22,7 +25,7 @@ type Onglet = (typeof ONGLETS)[number]['id'];
 
 export function EspaceCaisse() {
   const { user, loading, refresh } = useMe();
-  const [onglet, setOnglet] = useState<Onglet>('commande');
+  const [onglet, setOnglet] = useState<Onglet>('tables');
   const [messageSync, setMessageSync] = useState<{ texte: string; erreur: boolean } | null>(null);
 
   // Rejoue automatiquement les commandes prises hors ligne dès que possible.
@@ -80,10 +83,11 @@ export function EspaceCaisse() {
             ))}
           </nav>
 
-          {onglet === 'commande' && (
-            <PriseDeCommande
+          {onglet === 'tables' && (
+            <EcranTables
               droitAnnuler={user.droits.includes('ANNULER')}
               droitGererStock={user.droits.includes('GERER_STOCK')}
+              droitRemiser={user.droits.includes('REMISER')}
             />
           )}
           {onglet === 'encaissement' && <Encaissement droitRemiser={user.droits.includes('REMISER')} />}
