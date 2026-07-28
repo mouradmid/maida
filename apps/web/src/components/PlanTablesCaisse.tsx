@@ -1,4 +1,5 @@
 import type { TableCaisse } from '../lib/api';
+import { da } from '../lib/ui';
 
 // Mêmes dimensions que le plan de salle du gérant : les positions sont
 // exprimées dans ce repère, on les convertit en pourcentages pour que le
@@ -65,13 +66,35 @@ export function PlanTablesCaisse({
               aria-pressed={selectionnee}
             >
               <span>{table.numero}</span>
-              <span
-                className={`hidden text-[10px] font-normal sm:block ${
-                  selectionnee ? 'text-white/80' : 'text-stone-400'
-                }`}
-              >
-                {table.nombreCouverts} couv.
-              </span>
+              {/* Une table occupée montre son reste à payer plutôt que ses
+                  couverts : c'est l'information que le serveur cherche. */}
+              {table.addition ? (
+                <span
+                  className={`text-[10px] font-semibold ${
+                    selectionnee ? 'text-white' : 'text-brand-800'
+                  }`}
+                >
+                  {da(table.addition.solde)}
+                </span>
+              ) : (
+                <span
+                  className={`hidden text-[10px] font-normal sm:block ${
+                    selectionnee ? 'text-white/80' : 'text-stone-400'
+                  }`}
+                >
+                  {table.nombreCouverts} couv.
+                </span>
+              )}
+              {table.addition?.aReclamer && (
+                <span
+                  title="Un service reste à réclamer pour cette table"
+                  className={`absolute -bottom-1.5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold ${
+                    selectionnee ? 'bg-white text-amber-800' : 'bg-amber-500 text-white'
+                  }`}
+                >
+                  à réclamer
+                </span>
+              )}
               {table.reservationProche && (
                 <span
                   className={`absolute -top-2 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold ${
@@ -101,6 +124,9 @@ export function PlanTablesCaisse({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full border-2 border-brand-700 bg-brand-600" /> sélectionnée
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-full bg-amber-500" /> service à réclamer
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full bg-sky-600" /> réservée bientôt

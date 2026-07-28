@@ -109,6 +109,15 @@ export interface TableCaisse {
   positionX: number;
   positionY: number;
   occupee: boolean;
+  // Addition en cours sur la table : ce qui permet au plan de salle d'afficher
+  // le montant et l'état du service sans ouvrir la table.
+  addition: {
+    id: string;
+    ouverteLe: string;
+    total: number;
+    solde: number;
+    aReclamer: boolean;
+  } | null;
   reservationProche: { date: string; nomClient: string } | null;
 }
 

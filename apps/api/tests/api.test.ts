@@ -995,6 +995,21 @@ describe('Suites de service', () => {
     expect(plat.suite).toBe(3);
   });
 
+  // Le plan de salle doit se lire sans ouvrir les tables : montant en cours et
+  // service restant à réclamer.
+  it("porte le montant et l'état du service sur le plan de salle", async () => {
+    const tables = await serveur.get('/api/caisse/tables');
+    const t1 = tables.body.find((t: { numero: string }) => t.numero === 'T1');
+    expect(t1.occupee).toBe(true);
+    expect(t1.addition.id).toBe(additionId);
+    expect(t1.addition.total).toBeGreaterThan(0);
+    expect(t1.addition.solde).toBe(t1.addition.total); // rien d'encaissé encore
+    expect(t1.addition.aReclamer).toBe(true); // le plat est en suite 3, réclamée : 1
+
+    const libre = tables.body.find((t: { addition: unknown }) => t.addition === null);
+    expect(libre.occupee).toBe(false);
+  });
+
   it('réclame les suites de la table une à une, jamais au-delà de la dernière', async () => {
     const deux = await serveur.post(`/api/caisse/additions/${additionId}/reclamer`);
     expect(deux.status).toBe(200);
@@ -1005,6 +1020,11 @@ describe('Suites de service', () => {
     expect(trois.body.suiteReclamee).toBe(3);
     const trop = await serveur.post(`/api/caisse/additions/${additionId}/reclamer`);
     expect(trop.status).toBe(409);
+
+    // Tous les services lancés : le plan n'affiche plus « à réclamer ».
+    const tables = await serveur.get('/api/caisse/tables');
+    const t1 = tables.body.find((t: { numero: string }) => t.numero === 'T1');
+    expect(t1.addition.aReclamer).toBe(false);
   });
 
   it('la commande client par QR hérite aussi des suites', async () => {
