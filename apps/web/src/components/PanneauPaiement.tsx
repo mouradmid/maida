@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { api, type AdditionDetail, type ModePaiement } from '../lib/api';
+import { api, type ModePaiement } from '../lib/api';
+import { mettrePaiementEnAttente, type CibleHorsLigne } from '../lib/horsLigne';
+import { htmlRecuHorsLigne, imprimerHtml } from '../lib/impression';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { boutonPrimaire, champ, da } from '../lib/ui';
+import type { InfosEtablissement, VueAddition } from './PanneauAddition';
 
 type Mode = 'TOTAL' | 'POURCENTAGE' | 'MONTANT' | 'ARTICLES';
 
@@ -14,20 +17,30 @@ const LIBELLES_MODE: Record<Mode, string> = {
 
 /**
  * Encaissement d'une addition : mode de partage, moyen de paiement, monnaie
- * rendue. Le composant ne connaît que l'addition qu'on lui donne — c'est
- * l'écran appelant qui rafraîchit la table après le paiement.
+ * rendue. Sans réseau, le même écran encaisse dans la file locale — seul le
+ * paiement par article, qui a besoin du serveur pour verrouiller les articles,
+ * devient indisponible. Le paiement en file porte sa clé d'idempotence et sera
+ * rejoué sans doublon.
  */
 export function PanneauPaiement({
-  detail,
+  vue,
+  additionId,
+  cible,
   moyensActifs,
   journeeOuverte,
+  horsLigne,
+  etablissement,
   onEncaisse,
   onErreur,
 }: {
-  detail: AdditionDetail;
+  vue: VueAddition;
+  additionId: string | null;
+  cible: CibleHorsLigne | null;
   moyensActifs: ModePaiement[];
   journeeOuverte: boolean;
-  onEncaisse: (message: string, additionCloturee: boolean) => void | Promise<void>;
+  horsLigne: boolean;
+  etablissement: InfosEtablissement | null;
+  onEncaisse: (message: string, additionSoldee: boolean) => void | Promise<void>;
   onErreur: (message: string) => void;
 }) {
   const [mode, setMode] = useState<Mode>('TOTAL');
@@ -40,20 +53,24 @@ export function PanneauPaiement({
   const [montantRecu, setMontantRecu] = useState('');
   const [enCours, setEnCours] = useState(false);
 
-  const lignesDisponibles = detail.commandes
-    .flatMap((c) => c.lignes)
-    .filter((l) => l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte > 0);
+  const lignesDisponibles = vue.lignes.filter(
+    (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte > 0,
+  );
 
   const montantArticles = lignesDisponibles.reduce(
     (s, l) => s + (selection[l.id] ?? 0) * l.prixUnitaire,
     0,
   );
 
+  // Le paiement par article n'est pas rejouable hors ligne : on retombe sur le
+  // solde total plutôt que de laisser un mode inopérant sélectionné.
+  const modeEffectif: Mode = horsLigne && mode === 'ARTICLES' ? 'TOTAL' : mode;
+
   let montantPropose = 0;
-  if (mode === 'TOTAL') montantPropose = detail.solde;
-  else if (mode === 'POURCENTAGE') {
-    montantPropose = Math.round(detail.solde * ((Number(pourcentage) || 0) / 100) * 100) / 100;
-  } else if (mode === 'MONTANT') montantPropose = Number(montantLibre) || 0;
+  if (modeEffectif === 'TOTAL') montantPropose = vue.solde;
+  else if (modeEffectif === 'POURCENTAGE') {
+    montantPropose = Math.round(vue.solde * ((Number(pourcentage) || 0) / 100) * 100) / 100;
+  } else if (modeEffectif === 'MONTANT') montantPropose = Number(montantLibre) || 0;
   else montantPropose = Math.round(montantArticles * 100) / 100;
 
   const renduEstime =
@@ -61,15 +78,57 @@ export function PanneauPaiement({
       ? Math.round((Number(montantRecu) - montantPropose) * 100) / 100
       : null;
 
+  function encaisserHorsLigne() {
+    if (!cible) {
+      onErreur("Cette addition n'est pas encaissable hors ligne");
+      return;
+    }
+    const recu = moyenPaiement === 'ESPECES' && montantRecu ? Number(montantRecu) : undefined;
+    mettrePaiementEnAttente({
+      description: `${cible.libelle} — ${montantPropose} DA`,
+      montant: montantPropose,
+      moyenPaiement,
+      montantRecu: recu,
+      additionId: cible.additionId,
+      cleCommandeLocale: cible.additionId ? undefined : cible.cleCommandeLocale,
+    });
+    imprimerHtml(
+      htmlRecuHorsLigne(
+        etablissement ?? { nom: 'Maïda', adresse: null, ville: null },
+        cible.libelle,
+        montantPropose,
+        moyenPaiement,
+        recu ?? null,
+      ),
+    );
+    const reste = Math.max(0, Math.round((vue.solde - montantPropose) * 100) / 100);
+    setMontantLibre('');
+    setMontantRecu('');
+    onEncaisse(
+      `Encaissé ${da(montantPropose)} hors ligne${
+        reste <= 0.01 ? ' — addition soldée' : ` — reste ${da(reste)}`
+      }, à synchroniser au retour du réseau.`,
+      reste <= 0.01,
+    );
+  }
+
   async function handleEncaisser() {
     if (montantPropose <= 0) {
       onErreur('Montant invalide');
       return;
     }
+    if (horsLigne) {
+      encaisserHorsLigne();
+      return;
+    }
+    if (!additionId) {
+      onErreur("Cette addition n'existe pas encore côté serveur");
+      return;
+    }
     setEnCours(true);
     try {
       const data =
-        mode === 'ARTICLES'
+        modeEffectif === 'ARTICLES'
           ? {
               mode: 'ARTICLES' as const,
               lignes: Object.entries(selection)
@@ -85,7 +144,7 @@ export function PanneauPaiement({
               montantRecu: montantRecu ? Number(montantRecu) : undefined,
             };
 
-      const res = await api.creerPaiement(detail.id, data);
+      const res = await api.creerPaiement(additionId, data);
       setSelection({});
       setMontantLibre('');
       setMontantRecu('');
@@ -102,34 +161,31 @@ export function PanneauPaiement({
     }
   }
 
-  if (detail.statut === 'PAYEE') {
-    return (
-      <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-3 text-center text-sm font-medium text-green-800">
-        Cette addition est entièrement soldée.
-      </p>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-3 border-t border-stone-100 pt-3">
       <div className="flex flex-wrap gap-2">
-        {(Object.keys(LIBELLES_MODE) as Mode[]).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              mode === m
-                ? 'bg-stone-900 text-white'
-                : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
-            }`}
-          >
-            {LIBELLES_MODE[m]}
-          </button>
-        ))}
+        {(Object.keys(LIBELLES_MODE) as Mode[]).map((m) => {
+          const indisponible = horsLigne && m === 'ARTICLES';
+          return (
+            <button
+              key={m}
+              type="button"
+              disabled={indisponible}
+              onClick={() => setMode(m)}
+              title={indisponible ? 'Le paiement par article revient avec le réseau' : undefined}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                modeEffectif === m
+                  ? 'bg-stone-900 text-white'
+                  : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+              }`}
+            >
+              {LIBELLES_MODE[m]}
+            </button>
+          );
+        })}
       </div>
 
-      {mode === 'POURCENTAGE' && (
+      {modeEffectif === 'POURCENTAGE' && (
         <div className="flex items-center gap-2">
           <input
             type="number"
@@ -143,7 +199,7 @@ export function PanneauPaiement({
         </div>
       )}
 
-      {mode === 'MONTANT' && (
+      {modeEffectif === 'MONTANT' && (
         <input
           type="number"
           min="0"
@@ -155,7 +211,7 @@ export function PanneauPaiement({
         />
       )}
 
-      {mode === 'ARTICLES' && (
+      {modeEffectif === 'ARTICLES' && (
         <ul className="flex flex-col gap-2 text-sm">
           {lignesDisponibles.map((l) => {
             const restant = l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte;
@@ -243,8 +299,8 @@ export function PanneauPaiement({
       <button
         type="button"
         onClick={handleEncaisser}
-        disabled={!journeeOuverte || enCours}
-        title={journeeOuverte ? undefined : 'Ouvrez la journée de caisse pour encaisser'}
+        disabled={(!journeeOuverte && !horsLigne) || enCours}
+        title={!journeeOuverte && !horsLigne ? 'Ouvrez la journée de caisse pour encaisser' : undefined}
         className={`${boutonPrimaire} py-3 text-base`}
       >
         {enCours ? 'Encaissement…' : `Encaisser ${montantPropose > 0 ? da(montantPropose) : ''}`}

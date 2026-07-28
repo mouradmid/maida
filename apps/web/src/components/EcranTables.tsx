@@ -35,9 +35,13 @@ import { htmlTicketCuisine, htmlTicketReclame, imprimerHtml } from '../lib/impre
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
 import { ModalStock } from './ModalStock';
-import { PanneauAddition, type InfosEtablissement } from './PanneauAddition';
+import {
+  PanneauAddition,
+  vueDepuisDetail,
+  type InfosEtablissement,
+  type VueAddition,
+} from './PanneauAddition';
 import { PanneauPaiement } from './PanneauPaiement';
-import { PanneauPaiementHorsLigne } from './PanneauPaiementHorsLigne';
 
 // Un produit est commandable s'il n'est pas en rupture et, s'il est suivi en
 // quantité, qu'il en reste. Reflète exactement la règle du serveur.
@@ -164,6 +168,7 @@ export function EcranTables({
       setTables(tablesActives);
       setCommandes(commandesRecentes);
       sauvegarderCache('tables', tablesActives);
+      sauvegarderCache('commandes', commandesRecentes);
     } catch {
       // hors ligne : on garde le dernier état connu
     }
@@ -237,12 +242,15 @@ export function EcranTables({
       setCategorieActiveId((actif) => actif ?? menu[0]?.id ?? null);
       sauvegarderCache('menu', menu);
       sauvegarderCache('tables', tablesActives);
+      sauvegarderCache('commandes', commandesRecentes);
     } catch (err) {
       // Coupure réseau : on continue avec le dernier menu connu.
       const menuCache = err instanceof ErreurReseau ? lireCache<CategorieMenu[]>('menu') : null;
       if (menuCache && menuCache.length > 0) {
         setCategories(menuCache);
         setTables(lireCache<TableCaisse[]>('tables') ?? []);
+        // Les articles déjà envoyés restent affichés (fiche table et addition).
+        setCommandes(lireCache<Commande[]>('commandes') ?? []);
         setCategorieActiveId((actif) => actif ?? menuCache[0]?.id ?? null);
       } else if (err instanceof ErreurReseau) {
         setErreur(
@@ -438,6 +446,28 @@ export function EcranTables({
   const ciblesEmporter = cibles.filter((c) => !c.tableId);
 
   const additionAccessible = horsLigne ? cibleCourante !== null : additionCouranteId !== null;
+
+  // Le volet Addition affiche toujours la même chose ; hors ligne, les chiffres
+  // viennent du dernier état connu de la table et les articles des commandes
+  // déjà envoyées, faute de pouvoir interroger le serveur.
+  const libelleAddition =
+    canal === 'SUR_PLACE' && tableSelectionnee
+      ? `Table ${tableSelectionnee.numero}`
+      : (cibleCourante?.libelle ?? 'À emporter');
+  let vueAddition: VueAddition | null = null;
+  if (horsLigne && cibleCourante) {
+    vueAddition = {
+      libelle: cibleCourante.libelle,
+      total: cibleCourante.total,
+      totalPaye: cibleCourante.dejaPaye,
+      solde: cibleCourante.solde,
+      montantRemises: 0,
+      lignes: canal === 'SUR_PLACE' ? lignesEnvoyees.map((e) => e.ligne) : [],
+      paiements: [],
+    };
+  } else if (!horsLigne && detailAddition) {
+    vueAddition = vueDepuisDetail(detailAddition, libelleAddition);
+  }
   const soldeCourant = horsLigne
     ? (cibleCourante?.solde ?? null)
     : canal === 'SUR_PLACE'
@@ -1023,55 +1053,56 @@ export function EcranTables({
             </button>
           </div>
 
-          {volet === 'addition' && horsLigne && cibleCourante && (
-            <PanneauPaiementHorsLigne
-              cible={cibleCourante}
-              moyensActifs={moyensActifs}
-              etablissement={etablissement}
-              onEncaisse={(message) => {
-                setConfirmation(message);
-                setVolet('commande');
-                setCleCibleEmporter(null);
-                if (canal === 'SUR_PLACE') setTableId('');
-              }}
-            />
-          )}
-
-          {volet === 'addition' && !horsLigne && (
+          {volet === 'addition' && (
             <>
-              {!journeeOuverte && (
+              {!journeeOuverte && !horsLigne && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   Aucune journée de caisse ouverte : ouvrez-la (onglet « Journée ») avant d'encaisser.
                 </p>
               )}
-              {chargementAddition && !detailAddition && (
+              {horsLigne && (
+                <p className="text-xs text-warn">
+                  Hors ligne — montant du dernier état connu, encaissement enregistré et synchronisé au
+                  retour du réseau.
+                </p>
+              )}
+              {!horsLigne && chargementAddition && !detailAddition && (
                 <p className="py-6 text-center text-sm text-stone-400">Chargement de l'addition...</p>
               )}
-              {detailAddition && (
+              {vueAddition && (
                 <>
                   <PanneauAddition
-                    detail={detailAddition}
+                    vue={vueAddition}
+                    detail={horsLigne ? null : detailAddition}
                     etablissement={etablissement}
                     droitRemiser={droitRemiser}
+                    horsLigne={horsLigne}
                     onGesteApplique={async () => {
                       setConfirmation('Geste commercial appliqué.');
-                      await rafraichirApresAddition(detailAddition.id);
+                      if (detailAddition) await rafraichirApresAddition(detailAddition.id);
                     }}
                   />
                   <PanneauPaiement
-                    detail={detailAddition}
+                    vue={vueAddition}
+                    additionId={horsLigne ? null : (detailAddition?.id ?? null)}
+                    cible={cibleCourante}
                     moyensActifs={moyensActifs}
                     journeeOuverte={journeeOuverte}
+                    horsLigne={horsLigne}
+                    etablissement={etablissement}
                     onErreur={setErreur}
-                    onEncaisse={async (message, additionCloturee) => {
+                    onEncaisse={async (message, additionSoldee) => {
                       setConfirmation(message);
                       setErreur(null);
-                      await rafraichirApresAddition(detailAddition.id);
-                      if (additionCloturee) {
-                        // Table soldée : elle se libère, on revient à la commande.
+                      if (!horsLigne && detailAddition) {
+                        await rafraichirApresAddition(detailAddition.id);
+                      }
+                      if (additionSoldee) {
+                        // Addition soldée : la table se libère, retour à la commande.
                         setVolet('commande');
                         setDetailAddition(null);
                         setAdditionEmporterId(null);
+                        setCleCibleEmporter(null);
                         if (canal === 'SUR_PLACE') setTableId('');
                       }
                     }}

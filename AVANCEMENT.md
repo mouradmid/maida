@@ -52,9 +52,12 @@
 ### Mode hors ligne — le différenciateur
 
 - La caisse **continue de fonctionner sans internet** : commandes, ticket cuisine, encaissement,
-  reçu client — **dans le même écran Tables qu'en ligne**, sans onglet de secours à connaître : le
-  volet « Addition » bascule sur le solde total, reconstruit à partir du dernier état connu des
-  tables et des commandes prises pendant la coupure
+  reçu client — **exactement au même endroit et de la même façon qu'en ligne**. Il n'y a pas de
+  « mode hors ligne » à connaître : le volet « Addition » de la table affiche le même détail
+  (articles, total, reste à payer) reconstruit depuis le dernier état connu, et encaisse en
+  solde total, en pourcentage ou en montant libre, y compris en plusieurs fois. Seuls le
+  paiement par article, la remise et le ticket détaillé — qui exigent le serveur — se
+  désactivent, avec l'explication au survol
 - Synchronisation automatique au retour du réseau, **sans jamais un doublon** (clés d'idempotence
   vérifiées côté serveur)
 - **Avertissement permanent en bas d'écran** rappelant à l'équipe qu'elle est hors ligne

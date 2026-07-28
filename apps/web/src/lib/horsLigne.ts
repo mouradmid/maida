@@ -250,6 +250,10 @@ export function lireCache<T>(cle: string): T | null {
 export interface CibleHorsLigne {
   cle: string;
   libelle: string;
+  // Montant facturable connu, avant déduction des paiements en file.
+  total: number;
+  // Déjà encaissé hors ligne sur cette addition (paiements encore en file).
+  dejaPaye: number;
   solde: number;
   // Cible du paiement : une addition connue du serveur, ou une commande prise
   // hors ligne dont l'addition n'existe pas encore.
@@ -261,7 +265,8 @@ export interface CibleHorsLigne {
 /**
  * Reconstruit les additions encaissables à partir du dernier état connu des
  * tables (qui porte le solde de chaque addition ouverte) et des commandes
- * prises hors ligne. Ce qui a déjà été encaissé hors ligne en est retiré.
+ * prises hors ligne. Les paiements déjà mis en file sont déduits — un
+ * encaissement partiel hors ligne laisse donc bien un reste à payer.
  */
 export function ciblesHorsLigne(): CibleHorsLigne[] {
   const arrondi = (n: number) => Math.round(n * 100) / 100;
@@ -272,6 +277,8 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
     .map((t) => ({
       cle: t.addition!.id,
       libelle: `Table ${t.numero}`,
+      total: t.addition!.solde,
+      dejaPaye: 0,
       solde: t.addition!.solde,
       additionId: t.addition!.id,
       tableId: t.id,
@@ -283,7 +290,7 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
     const tableId = commande.donnees.canal === 'SUR_PLACE' ? commande.donnees.tableId : undefined;
     const existante = tableId ? entrees.find((e) => e.tableId === tableId) : undefined;
     if (existante) {
-      existante.solde = arrondi(existante.solde + commande.total);
+      existante.total = arrondi(existante.total + commande.total);
       if (!existante.additionId && !existante.cleCommandeLocale) {
         existante.cleCommandeLocale = commande.cleIdempotence;
       }
@@ -297,6 +304,8 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
     entrees.push({
       cle: commande.cleIdempotence,
       libelle: table ? `Table ${table.numero}` : `À emporter (${heure})`,
+      total: commande.total,
+      dejaPaye: 0,
       solde: commande.total,
       cleCommandeLocale: commande.cleIdempotence,
       tableId,
@@ -304,12 +313,19 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
   }
 
   const paiements = lirePaiementsEnAttente();
-  return entrees.filter(
-    (e) =>
-      !paiements.some(
-        (p) =>
-          (e.additionId && p.additionId === e.additionId) ||
-          (e.cleCommandeLocale && p.cleCommandeLocale === e.cleCommandeLocale),
-      ),
-  );
+  for (const entree of entrees) {
+    entree.dejaPaye = arrondi(
+      paiements
+        .filter(
+          (p) =>
+            (entree.additionId && p.additionId === entree.additionId) ||
+            (entree.cleCommandeLocale && p.cleCommandeLocale === entree.cleCommandeLocale),
+        )
+        .reduce((s, p) => s + p.montant, 0),
+    );
+    entree.solde = Math.max(0, arrondi(entree.total - entree.dejaPaye));
+  }
+
+  // Une addition soldée hors ligne disparaît des cibles encaissables.
+  return entrees.filter((e) => e.solde > 0.01);
 }
