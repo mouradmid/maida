@@ -12,7 +12,14 @@ import {
   type TableCaisse,
   type Utilisateur,
 } from '../lib/api';
-import { lireCache, mettreEnAttente, sauvegarderCache } from '../lib/horsLigne';
+import {
+  ciblesHorsLigne,
+  lireCache,
+  mettreEnAttente,
+  sauvegarderCache,
+  type CibleHorsLigne,
+} from '../lib/horsLigne';
+import { useHorsLigne } from '../hooks/useHorsLigne';
 import {
   badgeBrand,
   badgeNeutre,
@@ -30,6 +37,7 @@ import { ModalAnnulation } from './ModalAnnulation';
 import { ModalStock } from './ModalStock';
 import { PanneauAddition, type InfosEtablissement } from './PanneauAddition';
 import { PanneauPaiement } from './PanneauPaiement';
+import { PanneauPaiementHorsLigne } from './PanneauPaiementHorsLigne';
 
 // Un produit est commandable s'il n'est pas en rupture et, s'il est suivi en
 // quantité, qu'il en reste. Reflète exactement la règle du serveur.
@@ -126,6 +134,16 @@ export function EcranTables({
   const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>(['ESPECES']);
   const [journeeOuverte, setJourneeOuverte] = useState(true);
   const [etablissement, setEtablissement] = useState<InfosEtablissement | null>(null);
+
+  // Hors ligne : l'addition détaillée n'est pas joignable, on encaisse le solde
+  // total sur le dernier état connu (tables en cache + commandes en file).
+  const { horsLigne, enAttente } = useHorsLigne();
+  const [cibles, setCibles] = useState<CibleHorsLigne[]>([]);
+  const [cleCibleEmporter, setCleCibleEmporter] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCibles(horsLigne ? ciblesHorsLigne() : []);
+  }, [horsLigne, enAttente]);
 
   async function chargerDemandes() {
     try {
@@ -410,8 +428,19 @@ export function EcranTables({
   // vente à emporter sélectionnée.
   const additionCouranteId =
     canal === 'SUR_PLACE' ? (tableSelectionnee?.addition?.id ?? additionIdTable) : additionEmporterId;
-  const soldeCourant =
-    canal === 'SUR_PLACE'
+
+  // Hors ligne, la même bascule s'appuie sur la cible reconstruite localement.
+  const cibleCourante = !horsLigne
+    ? null
+    : canal === 'SUR_PLACE'
+      ? (cibles.find((c) => c.tableId === tableId) ?? null)
+      : (cibles.find((c) => c.cle === cleCibleEmporter) ?? null);
+  const ciblesEmporter = cibles.filter((c) => !c.tableId);
+
+  const additionAccessible = horsLigne ? cibleCourante !== null : additionCouranteId !== null;
+  const soldeCourant = horsLigne
+    ? (cibleCourante?.solde ?? null)
+    : canal === 'SUR_PLACE'
       ? (tableSelectionnee?.addition?.solde ?? null)
       : (detailAddition?.solde ?? null);
 
@@ -823,6 +852,42 @@ export function EcranTables({
             </div>
           )}
 
+          {/* Ventes à emporter prises pendant la coupure : encaissables ici. */}
+          {canal === 'EMPORTER' && horsLigne && ciblesEmporter.length > 0 && (
+            <div className={carte}>
+              <h3 className="mb-2 text-sm font-semibold text-stone-900">
+                À emporter à encaisser (hors ligne)
+              </h3>
+              <ul className="flex flex-col divide-y divide-stone-100">
+                {ciblesEmporter.map((cible) => (
+                  <li
+                    key={cible.cle}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                  >
+                    <span className="font-medium text-stone-900">{cible.libelle}</span>
+                    <span className="flex shrink-0 items-center gap-3">
+                      <span className="font-semibold text-stone-900">{da(cible.solde)}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCleCibleEmporter(cible.cle);
+                          setVolet('addition');
+                        }}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                          cleCibleEmporter === cible.cle && volet === 'addition'
+                            ? 'bg-brand-600 text-white'
+                            : 'border border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100'
+                        }`}
+                      >
+                        Encaisser
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="flex gap-2 overflow-x-auto pb-1">
             {categories.map((cat) => (
               <button
@@ -943,10 +1008,10 @@ export function EcranTables({
             </button>
             <button
               type="button"
-              disabled={!additionCouranteId}
-              onClick={() => handleOuvrirAddition(additionCouranteId)}
+              disabled={!additionAccessible}
+              onClick={() => setVolet('addition')}
               title={
-                additionCouranteId
+                additionAccessible
                   ? "Voir l'addition, remiser et encaisser"
                   : 'Aucune addition ouverte sur cette table'
               }
@@ -958,7 +1023,21 @@ export function EcranTables({
             </button>
           </div>
 
-          {volet === 'addition' && (
+          {volet === 'addition' && horsLigne && cibleCourante && (
+            <PanneauPaiementHorsLigne
+              cible={cibleCourante}
+              moyensActifs={moyensActifs}
+              etablissement={etablissement}
+              onEncaisse={(message) => {
+                setConfirmation(message);
+                setVolet('commande');
+                setCleCibleEmporter(null);
+                if (canal === 'SUR_PLACE') setTableId('');
+              }}
+            />
+          )}
+
+          {volet === 'addition' && !horsLigne && (
             <>
               {!journeeOuverte && (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">

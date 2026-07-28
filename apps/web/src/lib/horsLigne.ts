@@ -2,7 +2,7 @@
 // sont stockées localement puis rejouées dès que la connexion revient.
 // Chaque commande porte une clé d'idempotence : la resynchroniser deux fois
 // ne crée jamais de doublon côté serveur.
-import { api, ErreurReseau } from './api';
+import { api, ErreurReseau, type TableCaisse } from './api';
 
 export interface CommandeEnAttente {
   cleIdempotence: string;
@@ -243,4 +243,73 @@ export function lireCache<T>(cle: string): T | null {
   } catch {
     return null;
   }
+}
+
+// --- Ce qui reste encaissable pendant une coupure ---
+
+export interface CibleHorsLigne {
+  cle: string;
+  libelle: string;
+  solde: number;
+  // Cible du paiement : une addition connue du serveur, ou une commande prise
+  // hors ligne dont l'addition n'existe pas encore.
+  additionId?: string;
+  cleCommandeLocale?: string;
+  tableId?: string;
+}
+
+/**
+ * Reconstruit les additions encaissables à partir du dernier état connu des
+ * tables (qui porte le solde de chaque addition ouverte) et des commandes
+ * prises hors ligne. Ce qui a déjà été encaissé hors ligne en est retiré.
+ */
+export function ciblesHorsLigne(): CibleHorsLigne[] {
+  const arrondi = (n: number) => Math.round(n * 100) / 100;
+  const tables = lireCache<TableCaisse[]>('tables') ?? [];
+
+  const entrees: CibleHorsLigne[] = tables
+    .filter((t) => t.addition !== null)
+    .map((t) => ({
+      cle: t.addition!.id,
+      libelle: `Table ${t.numero}`,
+      solde: t.addition!.solde,
+      additionId: t.addition!.id,
+      tableId: t.id,
+    }));
+
+  // Les commandes locales s'ajoutent à l'addition de leur table, ou créent leur
+  // propre entrée (nouvelle table occupée hors ligne, ou vente à emporter).
+  for (const commande of lireFileAttente()) {
+    const tableId = commande.donnees.canal === 'SUR_PLACE' ? commande.donnees.tableId : undefined;
+    const existante = tableId ? entrees.find((e) => e.tableId === tableId) : undefined;
+    if (existante) {
+      existante.solde = arrondi(existante.solde + commande.total);
+      if (!existante.additionId && !existante.cleCommandeLocale) {
+        existante.cleCommandeLocale = commande.cleIdempotence;
+      }
+      continue;
+    }
+    const table = tableId ? tables.find((t) => t.id === tableId) : undefined;
+    const heure = new Date(commande.creeLe).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    entrees.push({
+      cle: commande.cleIdempotence,
+      libelle: table ? `Table ${table.numero}` : `À emporter (${heure})`,
+      solde: commande.total,
+      cleCommandeLocale: commande.cleIdempotence,
+      tableId,
+    });
+  }
+
+  const paiements = lirePaiementsEnAttente();
+  return entrees.filter(
+    (e) =>
+      !paiements.some(
+        (p) =>
+          (e.additionId && p.additionId === e.additionId) ||
+          (e.cleCommandeLocale && p.cleCommandeLocale === e.cleCommandeLocale),
+      ),
+  );
 }

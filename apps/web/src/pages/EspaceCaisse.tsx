@@ -3,7 +3,6 @@ import { LoginPin } from '../components/LoginPin';
 import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
 import { EcranTables } from '../components/EcranTables';
-import { Encaissement } from '../components/Encaissement';
 import { JourneeCaisse } from '../components/JourneeCaisse';
 import { Reservations } from '../components/Reservations';
 import { IndicateurHorsLigne } from '../components/IndicateurHorsLigne';
@@ -11,12 +10,10 @@ import { demarrerSynchronisation } from '../lib/horsLigne';
 import { messageErreur, messageSucces } from '../lib/ui';
 import { useMe } from '../hooks/useMe';
 
-// « Tables » porte tout le service : commander, envoyer, réclamer, encaisser.
-// « Encaissement » ne subsiste que pour le mode hors ligne, le temps que
-// l'écran Tables sache encaisser sans réseau.
+// « Tables » porte tout le service : commander, envoyer, réclamer, encaisser,
+// avec ou sans réseau. Les deux autres onglets sont périphériques.
 const ONGLETS = [
   { id: 'tables', libelle: 'Tables' },
-  { id: 'encaissement', libelle: 'Encaissement (hors ligne)' },
   { id: 'reservations', libelle: 'Réservations' },
   { id: 'journee', libelle: 'Journée' },
 ] as const;
@@ -90,7 +87,6 @@ export function EspaceCaisse() {
               droitRemiser={user.droits.includes('REMISER')}
             />
           )}
-          {onglet === 'encaissement' && <Encaissement droitRemiser={user.droits.includes('REMISER')} />}
           {onglet === 'reservations' && <Reservations />}
           {onglet === 'journee' && <JourneeCaisse droitCloturer={user.droits.includes('CLOTURER')} />}
         </main>

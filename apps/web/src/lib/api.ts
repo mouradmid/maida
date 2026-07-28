@@ -580,8 +580,8 @@ export const api = {
     }>,
   ) => apiFetch<TablePlan>(`/gerant/tables/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
-  listAdditionsOuvertes: () => apiFetch<AdditionResume[]>('/caisse/additions'),
-
+  // Les additions ouvertes se lisent sur le plan de salle (/caisse/tables) :
+  // l'écran Tables ne charge le détail que de la table ouverte.
   getAddition: (id: string) => apiFetch<AdditionDetail>(`/caisse/additions/${id}`),
 
   creerPaiement: (
