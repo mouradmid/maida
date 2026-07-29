@@ -1,3 +1,12 @@
+import {
+  DELAI_REQUETE_COURT_MS,
+  DELAI_REQUETE_LONG_MS,
+  DELAI_REQUETE_MS,
+  reseauCoupe,
+  signalerCoupure,
+  signalerReponse,
+} from './reseau';
+
 const API_BASE = '/api';
 
 export type DroitUtilisateur = 'ANNULER' | 'CLOTURER' | 'REMISER' | 'GERER_STOCK';
@@ -328,17 +337,43 @@ export class ErreurReseau extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+// Toute requête a un délai maximal : sans lui, un réseau qui accepte la
+// connexion sans jamais répondre bloquait l'écran plusieurs minutes au lieu de
+// basculer sur la file locale. `delaiMs` s'allonge pour les écrans du gérant,
+// qui n'ont pas de repli hors ligne.
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  delaiMs: number = DELAI_REQUETE_MS,
+): Promise<T> {
+  // Réseau déjà connu comme muet : on échoue sans attendre, l'appelant bascule
+  // aussitôt sur son repli local. C'est la sonde de lib/reseau.ts qui rouvrira
+  // le passage dès que le serveur répond.
+  if (reseauCoupe()) {
+    throw new ErreurReseau();
+  }
+
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), delaiMs);
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...options,
       credentials: 'include',
+      signal: controleur.signal,
       headers: { 'Content-Type': 'application/json', ...options.headers },
     });
   } catch {
+    // Pas de réponse : le réseau est coupé ou muet, tout l'écran doit le savoir.
+    signalerCoupure();
     throw new ErreurReseau();
+  } finally {
+    clearTimeout(minuteur);
   }
+
+  // Le serveur a répondu, même une erreur métier : le réseau fonctionne.
+  signalerReponse();
 
   if (res.status === 204) {
     return undefined as T;
@@ -459,7 +494,7 @@ export const api = {
         annuleePar: { nom: string; prenom: string; role: string };
         demandeePar: { nom: string; prenom: string } | null;
       }>
-    >(`/gerant/annulations${queryPeriode(debut, fin)}`),
+    >(`/gerant/annulations${queryPeriode(debut, fin)}`, {}, DELAI_REQUETE_LONG_MS),
 
   caisseMenu: () => apiFetch<CategorieMenu[]>('/caisse/menu'),
 
@@ -476,9 +511,11 @@ export const api = {
       quantiteRestante: number | null;
     }>(`/caisse/produits/${produitId}/stock`, { method: 'PATCH', body: JSON.stringify(data) }),
 
-  caisseTables: () => apiFetch<TableCaisse[]>('/caisse/tables'),
+  // Rafraîchis en boucle par l'écran Tables : délai court, leur échec sert de
+  // détecteur de coupure.
+  caisseTables: () => apiFetch<TableCaisse[]>('/caisse/tables', {}, DELAI_REQUETE_COURT_MS),
 
-  listCommandes: () => apiFetch<Commande[]>('/caisse/commandes'),
+  listCommandes: () => apiFetch<Commande[]>('/caisse/commandes', {}, DELAI_REQUETE_COURT_MS),
 
   reclamerSuiteTable: (additionId: string) =>
     apiFetch<{ suiteReclamee: number; commandes: Commande[] }>(
@@ -597,6 +634,7 @@ export const api = {
           lignes: Array<{ ligneCommandeId: string; quantite: number }>;
           moyenPaiement: ModePaiement;
           montantRecu?: number;
+          cleIdempotence?: string;
         },
   ) =>
     apiFetch<ResultatPaiement>(`/caisse/additions/${additionId}/paiements`, {
@@ -664,7 +702,7 @@ export const api = {
         accordeePar: { nom: string; prenom: string; role: string };
         demandeePar: { nom: string; prenom: string } | null;
       }>
-    >(`/gerant/remises${queryPeriode(debut, fin)}`),
+    >(`/gerant/remises${queryPeriode(debut, fin)}`, {}, DELAI_REQUETE_LONG_MS),
 
   menuPublic: (etablissementId: string) =>
     apiFetch<{
@@ -703,7 +741,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  listDemandes: () => apiFetch<DemandeClient[]>('/caisse/demandes'),
+  listDemandes: () => apiFetch<DemandeClient[]>('/caisse/demandes', {}, DELAI_REQUETE_COURT_MS),
 
   accepterDemande: (id: string) =>
     apiFetch<Commande>(`/caisse/demandes/${id}/accepter`, { method: 'POST' }),
@@ -765,7 +803,7 @@ export const api = {
 
   // Sans période, l'API renvoie les 90 dernières journées.
   listJournees: (debut?: Date, fin?: Date) =>
-    apiFetch<JourneeGerant[]>(`/gerant/journees${queryPeriode(debut, fin)}`),
+    apiFetch<JourneeGerant[]>(`/gerant/journees${queryPeriode(debut, fin)}`, {}, DELAI_REQUETE_LONG_MS),
 
   reservationsGerant: () =>
     apiFetch<{
@@ -829,8 +867,11 @@ export const api = {
       body: JSON.stringify({ motDePasse }),
     }),
 
+  // Agrégations sur toute une période : plus long, et sans repli hors ligne.
   getRapports: (debut: Date, fin: Date) =>
     apiFetch<RapportVentes>(
       `/gerant/rapports?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`,
+      {},
+      DELAI_REQUETE_LONG_MS,
     ),
 };

@@ -3,6 +3,7 @@
 // Chaque commande porte une clé d'idempotence : la resynchroniser deux fois
 // ne crée jamais de doublon côté serveur.
 import { api, ErreurReseau, type TableCaisse } from './api';
+import { reseauCoupe, sAbonnerReseau } from './reseau';
 
 export interface CommandeEnAttente {
   cleIdempotence: string;
@@ -69,12 +70,23 @@ function ecrireFileAttente(file: CommandeEnAttente[]) {
   notifier();
 }
 
+/**
+ * Clé d'idempotence, générée AVANT l'envoi. La caisse la joint à sa requête en
+ * ligne et la réutilise si elle doit retomber sur la file : une requête partie
+ * mais restée sans réponse (réseau muet, délai dépassé) ne peut donc pas créer
+ * un doublon — le serveur reconnaît la clé et renvoie l'existant.
+ */
+export function nouvelleCle(prefixe: 'hl' | 'hlp'): string {
+  return `${prefixe}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function mettreEnAttente(
   commande: Omit<CommandeEnAttente, 'cleIdempotence' | 'creeLe'>,
+  cleIdempotence: string = nouvelleCle('hl'),
 ): CommandeEnAttente {
   const entree: CommandeEnAttente = {
     ...commande,
-    cleIdempotence: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    cleIdempotence,
     creeLe: new Date().toISOString(),
   };
   ecrireFileAttente([...lireFileAttente(), entree]);
@@ -142,6 +154,8 @@ export interface ResultatSync {
 // réseau ; une erreur métier est signalée mais ne bloque pas la suite.
 export async function synchroniser(): Promise<ResultatSync> {
   if (syncEnCours) return { commandes: 0, paiements: 0, erreurs: [] };
+  // Réseau connu comme muet : on ne rejoue rien, la sonde préviendra du retour.
+  if (reseauCoupe()) return { commandes: 0, paiements: 0, erreurs: [] };
   syncEnCours = true;
   const erreurs: string[] = [];
   let commandes = 0;
@@ -220,6 +234,11 @@ export function demarrerSynchronisation(onResultat?: (r: ResultatSync) => void) 
     }
   };
   window.addEventListener('online', lancer);
+  // Le retour du réseau détecté par la sonde déclenche la synchronisation sans
+  // attendre le prochain tour de minuterie : le service reprend tout de suite.
+  sAbonnerReseau(() => {
+    if (!reseauCoupe()) lancer();
+  });
   if (!minuterie) {
     minuterie = setInterval(lancer, 15_000);
   }

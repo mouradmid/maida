@@ -59,8 +59,13 @@
   solde total, en pourcentage ou en montant libre, y compris en plusieurs fois. Seuls le
   paiement par article, la remise et le ticket détaillé — qui exigent le serveur — se
   désactivent, avec l'explication au survol
-- Synchronisation automatique au retour du réseau, **sans jamais un doublon** (clés d'idempotence
-  vérifiées côté serveur)
+- **Coupure détectée en quelques secondes, même quand le wifi « marche »** : un réseau qui accepte
+  la connexion sans jamais répondre ne trompe plus la caisse (`navigator.onLine` n'y voit rien).
+  Chaque requête a un délai maximal, la première sans réponse fait basculer tout l'écran en local,
+  et les actions suivantes sont immédiates — plus d'attente devant un serveur muet
+- Synchronisation automatique au retour du réseau (détecté par une sonde en quelques secondes),
+  **sans jamais un doublon** : la clé d'idempotence est générée avant l'envoi, donc une requête
+  partie mais dont la réponse s'est perdue ne crée pas une seconde commande
 - **Avertissement permanent en bas d'écran** rappelant à l'équipe qu'elle est hors ligne
   (en plus du bandeau d'en-tête), avec le nombre d'opérations en attente
 - Application installable sur tablette (PWA)

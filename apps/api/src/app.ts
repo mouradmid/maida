@@ -25,6 +25,13 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Sonde de la caisse : sans base de données, pour que le retour du réseau soit
+// détecté même quand le serveur est encore chargé. Sous /api pour passer par le
+// proxy du front en développement.
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Tout est sous /api : même origine que le front en production,
 // et le proxy Vite transmet tel quel en développement.
 app.use('/api/public', publicRouter);

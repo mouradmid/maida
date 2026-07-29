@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react';
 import { nombreEnAttente, sAbonnerFileAttente } from '../lib/horsLigne';
+import { reseauCoupe, sAbonnerReseau } from '../lib/reseau';
 
-// État réseau du navigateur + nombre d'opérations (commandes et paiements)
-// en attente de synchronisation.
+// État réseau réel + nombre d'opérations (commandes et paiements) en attente de
+// synchronisation. « Hors ligne » ne se limite pas à navigator.onLine : un
+// serveur qui ne répond plus compte aussi (voir lib/reseau.ts).
 export function useHorsLigne() {
-  const [horsLigne, setHorsLigne] = useState(() => !navigator.onLine);
+  const [horsLigne, setHorsLigne] = useState(() => reseauCoupe());
   const [enAttente, setEnAttente] = useState(() => nombreEnAttente());
 
   useEffect(() => {
-    const surReseau = () => setHorsLigne(!navigator.onLine);
+    const surReseau = () => setHorsLigne(reseauCoupe());
     window.addEventListener('online', surReseau);
     window.addEventListener('offline', surReseau);
-    const desabonner = sAbonnerFileAttente(() => setEnAttente(nombreEnAttente()));
+    const desabonnerReseau = sAbonnerReseau(surReseau);
+    const desabonnerFile = sAbonnerFileAttente(() => setEnAttente(nombreEnAttente()));
     return () => {
       window.removeEventListener('online', surReseau);
       window.removeEventListener('offline', surReseau);
-      desabonner();
+      desabonnerReseau();
+      desabonnerFile();
     };
   }, []);
 

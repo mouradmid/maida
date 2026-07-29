@@ -16,6 +16,7 @@ import {
   ciblesHorsLigne,
   lireCache,
   mettreEnAttente,
+  nouvelleCle,
   sauvegarderCache,
   type CibleHorsLigne,
 } from '../lib/horsLigne';
@@ -195,15 +196,20 @@ export function EcranTables({
     }
   }
 
+  // Rafraîchissement périodique, suspendu pendant une coupure : inutile
+  // d'encombrer un réseau muet, la sonde de lib/reseau.ts guette le retour. Dès
+  // qu'il revient, on recharge tout de suite pour rattraper le service.
   useEffect(() => {
+    if (horsLigne) return;
     chargerDemandes();
     chargerContexteEncaissement();
+    rafraichirCommandes();
     const minuterie = setInterval(() => {
       chargerDemandes();
       rafraichirCommandes();
     }, 15_000);
     return () => clearInterval(minuterie);
-  }, []);
+  }, [horsLigne]);
 
   async function handleAccepterDemande(demande: DemandeClient) {
     setErreur(null);
@@ -480,13 +486,11 @@ export function EcranTables({
       setDetailAddition(await api.getAddition(id));
     } catch (err) {
       setDetailAddition(null);
-      setErreur(
-        err instanceof ErreurReseau
-          ? "Hors ligne : l'addition détaillée revient avec le réseau (encaissez depuis l'onglet Encaissement)."
-          : err instanceof Error
-            ? err.message
-            : 'Erreur de chargement',
-      );
+      // Coupure : pas de message d'erreur à afficher, le volet vient de basculer
+      // sur le solde connu et reste utilisable.
+      if (!(err instanceof ErreurReseau)) {
+        setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
+      }
     } finally {
       setChargementAddition(false);
     }
@@ -576,10 +580,14 @@ export function EcranTables({
       noteCuisine: noteCuisine.trim() || undefined,
       lignes: [...lignesProduits, ...lignesSources],
     };
+    // Clé générée avant l'envoi et réutilisée si l'on retombe sur la file : une
+    // requête arrivée au serveur mais dont la réponse s'est perdue ne créera
+    // jamais une seconde commande.
+    const cleIdempotence = nouvelleCle('hl');
 
     setEnvoiEnCours(true);
     try {
-      const commande = await api.creerCommande(donnees);
+      const commande = await api.creerCommande({ ...donnees, cleIdempotence });
       setConfirmation(`Commande envoyée — total ${commande.total} DA`);
       setTicketAImprimer({ libelle: '🖨 Bon cuisine', html: htmlTicketCuisine(commande) });
       setPanier({});
@@ -598,17 +606,23 @@ export function EcranTables({
           );
           return;
         }
-        // Coupure réseau : la commande part dans la file locale, le service continue.
-        const entree = mettreEnAttente({
-          description: `${tableSelectionnee ? `Table ${tableSelectionnee.numero}` : 'À emporter'} — ${totalPanier} DA`,
-          total: totalPanier,
-          donnees: {
-            canal,
-            tableId: donnees.tableId,
-            noteCuisine: donnees.noteCuisine,
-            lignes: lignesProduits,
+        // Coupure réseau : la commande part dans la file locale, le service
+        // continue. Même clé que la tentative en ligne — si celle-ci a en
+        // réalité abouti, la resynchronisation retrouvera la commande existante
+        // au lieu d'en créer une seconde.
+        const entree = mettreEnAttente(
+          {
+            description: `${tableSelectionnee ? `Table ${tableSelectionnee.numero}` : 'À emporter'} — ${totalPanier} DA`,
+            total: totalPanier,
+            donnees: {
+              canal,
+              tableId: donnees.tableId,
+              noteCuisine: donnees.noteCuisine,
+              lignes: lignesProduits,
+            },
           },
-        });
+          cleIdempotence,
+        );
         const utilisateurLocal = lireCache<Utilisateur>('utilisateur');
         // Reconstitution locale de la commande : permet d'imprimer le ticket
         // cuisine même sans réseau.

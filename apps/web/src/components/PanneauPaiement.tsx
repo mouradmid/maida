@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type ModePaiement } from '../lib/api';
-import { mettrePaiementEnAttente, type CibleHorsLigne } from '../lib/horsLigne';
+import { mettrePaiementEnAttente, nouvelleCle, type CibleHorsLigne } from '../lib/horsLigne';
 import { htmlRecuHorsLigne, imprimerHtml } from '../lib/impression';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { boutonPrimaire, champ, da } from '../lib/ui';
@@ -127,6 +127,10 @@ export function PanneauPaiement({
     }
     setEnCours(true);
     try {
+      // Clé d'idempotence : un encaissement dont la réponse se perd (réseau
+      // muet, délai dépassé) ne peut pas être compté deux fois si le serveur
+      // l'avait déjà enregistré.
+      const cleIdempotence = nouvelleCle('hlp');
       const data =
         modeEffectif === 'ARTICLES'
           ? {
@@ -136,12 +140,14 @@ export function PanneauPaiement({
                 .map(([ligneCommandeId, quantite]) => ({ ligneCommandeId, quantite })),
               moyenPaiement,
               montantRecu: montantRecu ? Number(montantRecu) : undefined,
+              cleIdempotence,
             }
           : {
               mode: 'MONTANT' as const,
               montant: montantPropose,
               moyenPaiement,
               montantRecu: montantRecu ? Number(montantRecu) : undefined,
+              cleIdempotence,
             };
 
       const res = await api.creerPaiement(additionId, data);

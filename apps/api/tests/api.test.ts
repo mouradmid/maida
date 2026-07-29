@@ -157,6 +157,16 @@ afterAll(async () => {
   await prisma.$disconnect();
 }, 60_000);
 
+// La caisse s'appuie sur cette sonde pour détecter le retour du réseau pendant
+// une coupure : elle doit répondre sans authentification et sans base.
+describe('Sonde de disponibilité', () => {
+  it('répond sur /api/health, sans session', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+  });
+});
+
 describe('Authentification', () => {
   it('refuse un mauvais mot de passe', async () => {
     const res = await request(app)
