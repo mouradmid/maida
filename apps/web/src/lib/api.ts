@@ -144,12 +144,9 @@ export interface Commande {
   additionId: string;
   additionStatut: 'OUVERTE' | 'PAYEE';
   table: { numero: string } | null;
-  // PRETE et preteLe ne sont plus produits depuis le retrait de l'écran
-  // cuisine : ils ne subsistent que sur les commandes historiques.
-  statut: 'ENVOYEE' | 'PRETE' | 'ANNULEE';
+  statut: 'ENVOYEE' | 'ANNULEE';
   suiteReclamee: number;
   creeLe: string;
-  preteLe: string | null;
   serveur: { nom: string; prenom: string };
   lignes: LigneCommande[];
   total: number;

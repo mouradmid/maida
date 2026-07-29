@@ -622,7 +622,6 @@ export function EcranTables({
           statut: 'ENVOYEE',
           suiteReclamee: 1,
           creeLe: entree.creeLe,
-          preteLe: null,
           serveur: {
             nom: utilisateurLocal?.nom ?? '',
             prenom: utilisateurLocal?.prenom ?? 'Caisse',
@@ -815,7 +814,6 @@ export function EcranTables({
                   const annulable =
                     c.statut !== 'ANNULEE' &&
                     c.lignes.some((l) => l.quantite - l.quantitePayee - l.quantiteAnnulee > 0);
-                  const suiteMax = Math.max(1, ...c.lignes.map((l) => l.suite));
                   return (
                     <li
                       key={c.id}
@@ -856,15 +854,6 @@ export function EcranTables({
                         >
                           Addition
                         </button>
-                        {c.statut === 'ENVOYEE' && c.suiteReclamee < suiteMax && (
-                          <button
-                            type="button"
-                            onClick={() => handleReclamerTable(c.additionId)}
-                            className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
-                          >
-                            Réclamer la suite {c.suiteReclamee + 1}
-                          </button>
-                        )}
                         {annulable && (
                           <button
                             type="button"
@@ -1277,14 +1266,16 @@ export function EcranTables({
                           )}
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
                             {ligne.produit.prix * ligne.quantite} DA
-                            <button
-                              type="button"
-                              onClick={() => changerSuiteLignePanier(ligne.cle)}
-                              title="Changer l'article de service (entrée / plat / dessert)"
-                              className="rounded-full border border-stone-300 bg-white px-2 py-px text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
-                            >
-                              Suite {ligne.suite}
-                            </button>
+                            {canal === 'SUR_PLACE' && (
+                              <button
+                                type="button"
+                                onClick={() => changerSuiteLignePanier(ligne.cle)}
+                                title="Changer l'article de service (entrée / plat / dessert)"
+                                className="rounded-full border border-stone-300 bg-white px-2 py-px text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                              >
+                                Suite {ligne.suite}
+                              </button>
+                            )}
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
@@ -1311,31 +1302,35 @@ export function EcranTables({
                   ))}
               </ul>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSuiteSaisie((s) => Math.min(s + 1, 3))}
-                  disabled={suiteSaisie >= 3}
-                  title="Passer au service suivant : les prochains articles partiront à suivre"
-                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
-                >
-                  À suivre →
-                </button>
-                {suiteSaisie > 1 && (
-                  <span className="flex items-center gap-1.5 text-xs text-sky-800">
-                    saisie en suite {suiteSaisie}
-                    <button
-                      type="button"
-                      onClick={() => setSuiteSaisie(1)}
-                      aria-label="Revenir à la suite 1"
-                      title="Revenir à la suite 1"
-                      className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                )}
-              </div>
+              {/* Les services ne concernent qu'une table : une vente à emporter
+                  part d'un bloc. */}
+              {canal === 'SUR_PLACE' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSuiteSaisie((s) => Math.min(s + 1, 3))}
+                    disabled={suiteSaisie >= 3}
+                    title="Passer au service suivant : les prochains articles partiront à suivre"
+                    className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
+                  >
+                    À suivre →
+                  </button>
+                  {suiteSaisie > 1 && (
+                    <span className="flex items-center gap-1.5 text-xs text-sky-800">
+                      saisie en suite {suiteSaisie}
+                      <button
+                        type="button"
+                        onClick={() => setSuiteSaisie(1)}
+                        aria-label="Revenir à la suite 1"
+                        title="Revenir à la suite 1"
+                        className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                </div>
+              )}
 
               {nbArticles > 0 && (
                 <div className="flex items-center justify-between border-t border-stone-100 pt-3">

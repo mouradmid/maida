@@ -80,7 +80,6 @@ enum CanalCommande {
 
 enum StatutCommande {
   ENVOYEE
-  PRETE
   ANNULEE
 }
 
@@ -281,7 +280,6 @@ model Commande {
   // la suivante quand la table est prête.
   suiteReclamee  Int         @default(1)
   creeLe      DateTime       @default(now())
-  preteLe     DateTime?
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])

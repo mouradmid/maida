@@ -37,7 +37,8 @@
   par chaque gérant
 - **Suites de service** : entrée / plat / dessert hérités des catégories (commandes caisse et
   QR client), cuisine par suites avec « en attente de réclame », réclame **par table**,
-  correction d'un article par glisser-déposer ou toucher-toucher (tablette)
+  correction d'un article par glisser-déposer ou toucher-toucher (tablette) — les **ventes à
+  emporter** partent d'un bloc, sans suite ni réclame
 - **Fiche table unifiée** (style Lightspeed) : tout se passe dans un seul cadre par table —
   articles déjà en cuisine groupés par suite, rajout rapide (« un 2e Hamoud »), nouveaux
   articles du menu, annulation, réclame — un seul bouton « Envoyer en cuisine », un seul

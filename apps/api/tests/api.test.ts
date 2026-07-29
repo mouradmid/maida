@@ -988,6 +988,25 @@ describe('Suites de service', () => {
     lignePlatId = plat.id;
   });
 
+  // Une vente à emporter part d'un bloc : pas de service en plusieurs temps,
+  // donc pas de suite à réclamer — même si la catégorie est réglée sur 2.
+  it('force la suite 1 sur une vente à emporter', async () => {
+    const res = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [
+        { produitId: produitPlatId, quantite: 1 },
+        { produitId: produitBoissonId, quantite: 1 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.lignes.every((l: { suite: number }) => l.suite === 1)).toBe(true);
+    expect(res.body.suiteReclamee).toBe(1);
+
+    // Rien à réclamer : la réclame est refusée.
+    const reclame = await serveur.post(`/api/caisse/additions/${res.body.additionId}/reclamer`);
+    expect(reclame.status).toBe(409);
+  });
+
   it("corrige la suite d'une ligne (glisser-déposer côté caisse)", async () => {
     const res = await serveur.patch(`/api/caisse/lignes/${lignePlatId}/suite`).send({ suite: 3 });
     expect(res.status).toBe(200);

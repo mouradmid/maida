@@ -678,7 +678,6 @@ function toPublicCommande(commande: {
   statut: string;
   suiteReclamee: number;
   creeLe: Date;
-  preteLe: Date | null;
   serveur: { nom: string; prenom: string };
   addition: { id: string; statut: string; table: { numero: string } | null };
   lignes: Array<{
@@ -722,7 +721,6 @@ function toPublicCommande(commande: {
     statut: commande.statut,
     suiteReclamee: commande.suiteReclamee,
     creeLe: commande.creeLe,
-    preteLe: commande.preteLe,
     serveur: commande.serveur,
     lignes,
     total,
@@ -938,9 +936,9 @@ caisseRouter.post('/commandes/:id/annulation', async (req, res) => {
 
   const lignesParId = new Map(commande.lignes.map((l) => [l.id, l]));
   // C'est le serveur qui déclare si le plat était déjà préparé : lui seul le
-  // sait, la cuisine travaillant sur les bons imprimés. À défaut (client qui
-  // n'envoie pas le champ), on retombe sur le statut de la commande.
-  const apresPreparation = dejaPrepareDeclare ?? commande.statut === 'PRETE';
+  // sait, la cuisine travaillant sur les bons imprimés. Sans déclaration (vieux
+  // client en cache), on suppose que non, comme avant l'écran cuisine.
+  const apresPreparation = dejaPrepareDeclare ?? false;
   const motifFinal = motif.trim();
   const commentaireFinal =
     typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null;
@@ -1287,7 +1285,11 @@ caisseRouter.post('/commandes', async (req, res) => {
     res.status(400).json({ error: resolution.erreur });
     return;
   }
-  const lignesAvecOptions = resolution.lignes;
+  // Une vente à emporter part d'un bloc : pas de service en plusieurs temps,
+  // donc pas de suite à réclamer. On ignore la suite par défaut des catégories,
+  // sinon un plat attendrait une réclame qui ne viendra jamais.
+  const lignesAvecOptions =
+    canal === 'EMPORTER' ? resolution.lignes.map((l) => ({ ...l, suite: 1 })) : resolution.lignes;
 
   // Duplication des articles existants : mêmes produit, options et suite que
   // la ligne d'origine (qui doit appartenir à la même addition, encore ouverte) ;
@@ -1335,7 +1337,7 @@ caisseRouter.post('/commandes', async (req, res) => {
         prixUnitaire: source.produit.prix,
         coutRevientUnitaire: source.produit.coutRevient,
         tauxTva: source.produit.tauxTva,
-        suite: source.suite,
+        suite: canal === 'EMPORTER' ? 1 : source.suite,
         quantite,
         options: source.options.map((o) => ({
           optionValeurId: o.optionValeurId,

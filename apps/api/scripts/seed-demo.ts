@@ -484,7 +484,9 @@ async function main() {
       fermeeLe: ilYA(1200),
     },
   });
-  const commandeHier = await creerCommande(
+  // Service d'hier : son addition est soldée plus bas, elle ne traîne donc pas
+  // parmi les tables du jour.
+  await creerCommande(
     addHier.id,
     serveurs[1].id,
     [
@@ -495,12 +497,6 @@ async function main() {
     undefined,
     ilYA(1315),
   );
-  // Servie hier soir (statut historique, plus produit depuis le retrait de
-  // l'écran cuisine) : la commande ne traîne pas parmi les envois du jour.
-  await prisma.commande.update({
-    where: { id: commandeHier.id },
-    data: { statut: 'PRETE', preteLe: ilYA(1290) },
-  });
   await prisma.paiement.create({
     data: {
       additionId: addHier.id,
