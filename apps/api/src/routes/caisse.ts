@@ -420,11 +420,27 @@ caisseRouter.get('/reservations', async (req, res) => {
 });
 
 caisseRouter.post('/reservations', async (req, res) => {
-  const { nomClient, telephone, email, nombreCouverts, date, dureeMinutes, note, tableId } =
-    req.body ?? {};
+  const {
+    nomClient,
+    telephone,
+    email,
+    nombreCouverts,
+    date,
+    dureeMinutes,
+    note,
+    tableId,
+    cleIdempotence,
+  } = req.body ?? {};
 
   if (typeof nomClient !== 'string' || !nomClient.trim() || nomClient.length > 100) {
     res.status(400).json({ error: 'Le nom du client est requis' });
+    return;
+  }
+  if (
+    cleIdempotence !== undefined &&
+    (typeof cleIdempotence !== 'string' || !cleIdempotence.trim() || cleIdempotence.length > 100)
+  ) {
+    res.status(400).json({ error: "Clé d'idempotence invalide" });
     return;
   }
   if (telephone !== undefined && (typeof telephone !== 'string' || telephone.length > 30)) {
@@ -445,10 +461,14 @@ caisseRouter.post('/reservations', async (req, res) => {
   }
   const dateReservation = typeof date === 'string' ? new Date(date) : null;
   const maintenant = Date.now();
+  // Une réservation prise hors ligne peut n'arriver qu'après l'heure prévue, si
+  // la tablette est restée coupée pendant le service : on accepte alors le
+  // passé récent plutôt que de perdre la réservation à la resynchronisation.
+  const tolerancePasse = typeof cleIdempotence === 'string' ? 24 * 60 * 60_000 : 30 * 60_000;
   if (
     !dateReservation ||
     Number.isNaN(dateReservation.getTime()) ||
-    dateReservation.getTime() < maintenant - 30 * 60_000 ||
+    dateReservation.getTime() < maintenant - tolerancePasse ||
     dateReservation.getTime() > maintenant + 365 * 24 * 60 * 60_000
   ) {
     res.status(400).json({ error: 'Date de réservation invalide (elle doit être à venir)' });
@@ -465,6 +485,22 @@ caisseRouter.post('/reservations', async (req, res) => {
   }
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
+
+  // Rejeu d'une réservation déjà synchronisée : on renvoie l'existante.
+  if (typeof cleIdempotence === 'string') {
+    const existante = await prisma.reservation.findUnique({
+      where: { cleIdempotence: cleIdempotence.trim() },
+      include: INCLUDE_RESERVATION,
+    });
+    if (existante) {
+      if (existante.etablissementId !== etablissementId) {
+        res.status(409).json({ error: "Clé d'idempotence déjà utilisée" });
+        return;
+      }
+      res.json(toPublicReservation(existante));
+      return;
+    }
+  }
 
   const table = await prisma.table.findUnique({ where: { id: tableId } });
   if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
@@ -486,23 +522,42 @@ caisseRouter.post('/reservations', async (req, res) => {
     return;
   }
 
-  const reservation = await prisma.reservation.create({
-    data: {
-      nomClient: nomClient.trim(),
-      telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
-      email: typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null,
-      nombreCouverts,
-      date: dateReservation,
-      dureeMinutes: duree,
-      note: typeof note === 'string' && note.trim() ? note.trim() : null,
-      tableId: table.id,
-      etablissementId,
-      priseParId: req.user!.id,
-    },
-    include: INCLUDE_RESERVATION,
-  });
-
-  res.status(201).json(toPublicReservation(reservation));
+  try {
+    const reservation = await prisma.reservation.create({
+      data: {
+        nomClient: nomClient.trim(),
+        telephone: typeof telephone === 'string' && telephone.trim() ? telephone.trim() : null,
+        email: typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null,
+        nombreCouverts,
+        date: dateReservation,
+        dureeMinutes: duree,
+        note: typeof note === 'string' && note.trim() ? note.trim() : null,
+        tableId: table.id,
+        etablissementId,
+        priseParId: req.user!.id,
+        cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
+      },
+      include: INCLUDE_RESERVATION,
+    });
+    res.status(201).json(toPublicReservation(reservation));
+  } catch (error) {
+    // Deux synchronisations simultanées de la même réservation hors ligne.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      typeof cleIdempotence === 'string'
+    ) {
+      const existante = await prisma.reservation.findUnique({
+        where: { cleIdempotence: cleIdempotence.trim() },
+        include: INCLUDE_RESERVATION,
+      });
+      if (existante) {
+        res.json(toPublicReservation(existante));
+        return;
+      }
+    }
+    throw error;
+  }
 });
 
 caisseRouter.patch('/reservations/:id', async (req, res) => {

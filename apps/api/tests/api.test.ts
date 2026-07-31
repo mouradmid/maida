@@ -645,6 +645,54 @@ describe('Réservations', () => {
     reservationId = res.body.id;
   });
 
+  // Réservation prise pendant une coupure : la resynchronisation peut être
+  // rejouée sans créer de doublon.
+  it('rejoue une réservation hors ligne sans la dupliquer', async () => {
+    const donnees = {
+      nomClient: 'Client Hors Ligne',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 5 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      cleIdempotence: `hlr-test-${Date.now()}`,
+    };
+
+    const premier = await serveur.post('/api/caisse/reservations').send(donnees);
+    expect(premier.status).toBe(201);
+
+    // Même clé rejouée : on retrouve la même réservation, pas une seconde.
+    const rejeu = await serveur.post('/api/caisse/reservations').send(donnees);
+    expect(rejeu.status).toBe(200);
+    expect(rejeu.body.id).toBe(premier.body.id);
+
+    const debut = new Date(Date.now() + 4 * 60 * 60_000).toISOString();
+    const fin = new Date(Date.now() + 6 * 60 * 60_000).toISOString();
+    const liste = await serveur.get(`/api/caisse/reservations?debut=${debut}&fin=${fin}`);
+    expect(
+      liste.body.filter((r: { nomClient: string }) => r.nomClient === 'Client Hors Ligne'),
+    ).toHaveLength(1);
+  });
+
+  // La tablette peut n'être reconnectée qu'après l'heure prévue.
+  it('accepte une réservation hors ligne dont le créneau vient de passer', async () => {
+    const res = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Créneau Passé',
+      nombreCouverts: 2,
+      date: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+      cleIdempotence: `hlr-passe-${Date.now()}`,
+    });
+    expect(res.status).toBe(201);
+
+    // Sans clé (prise en direct), le passé reste refusé.
+    const direct = await serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Créneau Passé',
+      nombreCouverts: 2,
+      date: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+    });
+    expect(direct.status).toBe(400);
+  });
+
   it('refuse un chevauchement sur la même table', async () => {
     const res = await serveur.post('/api/caisse/reservations').send({
       nomClient: 'Doublon',

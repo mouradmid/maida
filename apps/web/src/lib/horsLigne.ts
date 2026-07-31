@@ -38,6 +38,7 @@ export interface PaiementEnAttente {
 
 const CLE_FILE = 'maida.commandesEnAttente';
 const CLE_FILE_PAIEMENTS = 'maida.paiementsEnAttente';
+const CLE_FILE_RESERVATIONS = 'maida.reservationsEnAttente';
 // Correspondance clé de commande locale → additionId serveur, persistée pour
 // survivre à une coupure qui reviendrait en plein milieu d'une synchronisation.
 const CLE_MAP_ADDITIONS = 'maida.additionsSynchronisees';
@@ -76,7 +77,7 @@ function ecrireFileAttente(file: CommandeEnAttente[]) {
  * mais restée sans réponse (réseau muet, délai dépassé) ne peut donc pas créer
  * un doublon — le serveur reconnaît la clé et renvoie l'existant.
  */
-export function nouvelleCle(prefixe: 'hl' | 'hlp'): string {
+export function nouvelleCle(prefixe: 'hl' | 'hlp' | 'hlr'): string {
   return `${prefixe}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -120,8 +121,51 @@ export function mettrePaiementEnAttente(
   return entree;
 }
 
+// --- File des réservations hors ligne ---
+
+export interface ReservationEnAttente {
+  cleIdempotence: string;
+  creeLe: string;
+  description: string;
+  donnees: {
+    nomClient: string;
+    telephone?: string;
+    email?: string;
+    nombreCouverts: number;
+    date: string;
+    note?: string;
+    tableId: string;
+  };
+}
+
+export function lireReservationsEnAttente(): ReservationEnAttente[] {
+  try {
+    return JSON.parse(localStorage.getItem(CLE_FILE_RESERVATIONS) ?? '[]') as ReservationEnAttente[];
+  } catch {
+    return [];
+  }
+}
+
+function ecrireReservationsEnAttente(file: ReservationEnAttente[]) {
+  localStorage.setItem(CLE_FILE_RESERVATIONS, JSON.stringify(file));
+  notifier();
+}
+
+export function mettreReservationEnAttente(
+  reservation: Omit<ReservationEnAttente, 'cleIdempotence' | 'creeLe'>,
+  cleIdempotence: string = nouvelleCle('hlr'),
+): ReservationEnAttente {
+  const entree: ReservationEnAttente = {
+    ...reservation,
+    cleIdempotence,
+    creeLe: new Date().toISOString(),
+  };
+  ecrireReservationsEnAttente([...lireReservationsEnAttente(), entree]);
+  return entree;
+}
+
 export function nombreEnAttente(): number {
-  return lireFileAttente().length + lirePaiementsEnAttente().length;
+  return lireFileAttente().length + lirePaiementsEnAttente().length + lireReservationsEnAttente().length;
 }
 
 function lireMapAdditions(): Record<string, string> {
@@ -146,20 +190,24 @@ function memoriserAddition(cleCommande: string, additionId: string) {
 export interface ResultatSync {
   commandes: number;
   paiements: number;
+  reservations: number;
   erreurs: string[];
 }
 
 // Rejoue les files dans l'ordre : les commandes d'abord (leur synchronisation
-// donne l'additionId), puis les paiements. S'arrête à la première coupure
-// réseau ; une erreur métier est signalée mais ne bloque pas la suite.
+// donne l'additionId), puis les paiements, puis les réservations. S'arrête à la
+// première coupure réseau ; une erreur métier est signalée mais ne bloque pas
+// la suite.
 export async function synchroniser(): Promise<ResultatSync> {
-  if (syncEnCours) return { commandes: 0, paiements: 0, erreurs: [] };
+  const rienAFaire = { commandes: 0, paiements: 0, reservations: 0, erreurs: [] };
+  if (syncEnCours) return rienAFaire;
   // Réseau connu comme muet : on ne rejoue rien, la sonde préviendra du retour.
-  if (reseauCoupe()) return { commandes: 0, paiements: 0, erreurs: [] };
+  if (reseauCoupe()) return rienAFaire;
   syncEnCours = true;
   const erreurs: string[] = [];
   let commandes = 0;
   let paiements = 0;
+  let reservations = 0;
   try {
     for (const entree of lireFileAttente()) {
       try {
@@ -174,7 +222,7 @@ export async function synchroniser(): Promise<ResultatSync> {
       } catch (err) {
         if (err instanceof ErreurReseau) {
           syncEnCours = false;
-          return { commandes, paiements, erreurs }; // toujours hors ligne
+          return { commandes, paiements, reservations, erreurs }; // toujours hors ligne
         }
         erreurs.push(
           `${entree.description} : ${err instanceof Error ? err.message : 'erreur inconnue'}`,
@@ -215,10 +263,31 @@ export async function synchroniser(): Promise<ResultatSync> {
         retirer();
       }
     }
+
+    // Les réservations ne dépendent de rien d'autre : elles partent en dernier.
+    for (const entree of lireReservationsEnAttente()) {
+      const retirer = () =>
+        ecrireReservationsEnAttente(
+          lireReservationsEnAttente().filter((e) => e.cleIdempotence !== entree.cleIdempotence),
+        );
+      try {
+        await api.creerReservation({ ...entree.donnees, cleIdempotence: entree.cleIdempotence });
+        reservations += 1;
+        retirer();
+      } catch (err) {
+        if (err instanceof ErreurReseau) break;
+        // Créneau pris entre-temps sur une autre tablette, table retirée du
+        // plan… : signalé au serveur, qui rappellera le client.
+        erreurs.push(
+          `${entree.description} : ${err instanceof Error ? err.message : 'erreur inconnue'}`,
+        );
+        retirer();
+      }
+    }
   } finally {
     syncEnCours = false;
   }
-  return { commandes, paiements, erreurs };
+  return { commandes, paiements, reservations, erreurs };
 }
 
 // À appeler une fois au démarrage de l'espace caisse.
@@ -227,7 +296,10 @@ export function demarrerSynchronisation(onResultat?: (r: ResultatSync) => void) 
     if (nombreEnAttente() === 0) return;
     const resultat = await synchroniser();
     if (
-      (resultat.commandes > 0 || resultat.paiements > 0 || resultat.erreurs.length > 0) &&
+      (resultat.commandes > 0 ||
+        resultat.paiements > 0 ||
+        resultat.reservations > 0 ||
+        resultat.erreurs.length > 0) &&
       onResultat
     ) {
       onResultat(resultat);

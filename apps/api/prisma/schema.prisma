@@ -561,6 +561,9 @@ model Reservation {
   note           String?
   statut         StatutReservation @default(A_VENIR)
   creeLe         DateTime          @default(now())
+  // Générée par la caisse pour les réservations prises hors ligne : garantit
+  // qu'une resynchronisation répétée ne crée jamais de doublon.
+  cleIdempotence String?           @unique
 
   tableId String
   table   Table @relation(fields: [tableId], references: [id])

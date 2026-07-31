@@ -762,6 +762,8 @@ export const api = {
     dureeMinutes?: number;
     note?: string;
     tableId: string;
+    // Présente quand la réservation a été prise hors ligne : rejouable sans doublon.
+    cleIdempotence?: string;
   }) => apiFetch<Reservation>('/caisse/reservations', { method: 'POST', body: JSON.stringify(data) }),
 
   updateReservation: (id: string, statut: 'ARRIVEE' | 'ANNULEE' | 'NO_SHOW') =>

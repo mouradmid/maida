@@ -27,19 +27,23 @@ export function EspaceCaisse() {
 
   // Rejoue automatiquement les commandes prises hors ligne dès que possible.
   useEffect(() => {
-    demarrerSynchronisation(({ commandes, paiements, erreurs }) => {
+    demarrerSynchronisation(({ commandes, paiements, reservations, erreurs }) => {
       if (erreurs.length > 0) {
         setMessageSync({
           texte: `Synchronisation : ${erreurs.length} opération${erreurs.length > 1 ? 's' : ''} refusée${erreurs.length > 1 ? 's' : ''} — ${erreurs.join(' · ')}`,
           erreur: true,
         });
-      } else if (commandes > 0 || paiements > 0) {
+      } else if (commandes > 0 || paiements > 0 || reservations > 0) {
         const parties = [
           commandes > 0 ? `${commandes} commande${commandes > 1 ? 's' : ''}` : null,
           paiements > 0 ? `${paiements} paiement${paiements > 1 ? 's' : ''}` : null,
+          reservations > 0 ? `${reservations} réservation${reservations > 1 ? 's' : ''}` : null,
         ].filter(Boolean);
+        // Tournure invariable : la liste mêle des mots masculins et féminins
+        // (« 1 commande et 2 paiements »), l'accord d'un participe final serait
+        // faux dans un cas sur deux.
         setMessageSync({
-          texte: `Réseau retrouvé : ${parties.join(' et ')} hors ligne synchronisé${commandes + paiements > 1 ? 's' : ''}.`,
+          texte: `Réseau retrouvé — envoyé au serveur : ${parties.join(' et ')}.`,
           erreur: false,
         });
       }

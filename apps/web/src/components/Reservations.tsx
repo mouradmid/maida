@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react';
-import { api, type Reservation, type StatutReservation, type TableCaisse } from '../lib/api';
+import {
+  api,
+  ErreurReseau,
+  type Reservation,
+  type StatutReservation,
+  type TableCaisse,
+} from '../lib/api';
+import {
+  lireCache,
+  lireReservationsEnAttente,
+  mettreReservationEnAttente,
+  nouvelleCle,
+  sauvegarderCache,
+  type ReservationEnAttente,
+} from '../lib/horsLigne';
+import { useHorsLigne } from '../hooks/useHorsLigne';
 import { badgeNeutre, boutonPrimaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
 
 const LIBELLES_STATUT: Record<StatutReservation, { texte: string; classes: string }> = {
@@ -20,8 +35,11 @@ function heureLocale(iso: string) {
 }
 
 export function Reservations() {
+  const { horsLigne, enAttente } = useHorsLigne();
   const [jour, setJour] = useState(jourISO(new Date()));
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  // Réservations prises hors ligne, pas encore parties au serveur.
+  const [enFile, setEnFile] = useState<ReservationEnAttente[]>([]);
   const [tables, setTables] = useState<TableCaisse[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -55,9 +73,20 @@ export function Reservations() {
       ]);
       setReservations(liste);
       setTables(tablesActives);
+      // Mis de côté pour pouvoir réserver pendant une coupure : sans le plan de
+      // salle, impossible de choisir une table.
+      sauvegarderCache('tables', tablesActives);
+      sauvegarderCache(`reservations.${jour}`, liste);
       setErreur(null);
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
+      if (err instanceof ErreurReseau) {
+        // Coupure : on travaille sur le dernier état connu du jour affiché.
+        setTables(lireCache<TableCaisse[]>('tables') ?? []);
+        setReservations(lireCache<Reservation[]>(`reservations.${jour}`) ?? []);
+        setErreur(null);
+      } else {
+        setErreur(err instanceof Error ? err.message : 'Erreur de chargement');
+      }
     } finally {
       setChargement(false);
     }
@@ -65,7 +94,15 @@ export function Reservations() {
 
   useEffect(() => {
     charger();
-  }, [jour]);
+    // Se relance au retour du réseau, et quand la file locale se vide : la
+    // réservation prise hors ligne apparaît alors dans la vraie liste, à la
+    // place de sa ligne « à synchroniser ».
+  }, [jour, horsLigne, enAttente]);
+
+  // La file locale bouge à la prise d'une réservation et à sa synchronisation.
+  useEffect(() => {
+    setEnFile(lireReservationsEnAttente().filter((r) => jourISO(new Date(r.donnees.date)) === jour));
+  }, [jour, enAttente]);
 
   async function handleCreer(e: React.FormEvent) {
     e.preventDefault();
@@ -75,25 +112,80 @@ export function Reservations() {
       setErreur('Choisissez une table');
       return;
     }
-    try {
-      const reservation = await api.creerReservation({
-        nomClient,
-        telephone: telephone.trim() || undefined,
-        email: email.trim() || undefined,
-        nombreCouverts: Number(couverts),
-        date: new Date(`${jour}T${heure}:00`).toISOString(),
-        note: note.trim() || undefined,
-        tableId,
-      });
-      setMessage(`Table ${reservation.table.numero} réservée pour ${reservation.nomClient} à ${heure}.`);
+    const donnees = {
+      nomClient,
+      telephone: telephone.trim() || undefined,
+      email: email.trim() || undefined,
+      nombreCouverts: Number(couverts),
+      date: new Date(`${jour}T${heure}:00`).toISOString(),
+      note: note.trim() || undefined,
+      tableId,
+    };
+    // Clé générée avant l'envoi et réutilisée en cas de repli : une requête
+    // partie mais sans réponse ne créera pas une seconde réservation.
+    const cleIdempotence = nouvelleCle('hlr');
+    const numeroTable = tables.find((t) => t.id === tableId)?.numero ?? '?';
+
+    const viderFormulaire = () => {
       setNomClient('');
       setTelephone('');
       setEmail('');
       setNote('');
+    };
+
+    const enregistrerEnFile = () => {
+      mettreReservationEnAttente(
+        { description: `Table ${numeroTable} — ${nomClient} à ${heure}`, donnees },
+        cleIdempotence,
+      );
+      setMessage(
+        `Hors ligne — table ${numeroTable} réservée pour ${nomClient} à ${heure}, elle partira au retour du réseau.`,
+      );
+      viderFormulaire();
+    };
+
+    // Créneau déjà pris à notre connaissance : le serveur refuserait, autant le
+    // dire tout de suite plutôt qu'à la resynchronisation.
+    if (horsLigne && conflitLocal(tableId, donnees.date)) {
+      setErreur(`La table ${numeroTable} est déjà réservée sur ce créneau.`);
+      return;
+    }
+    if (horsLigne) {
+      enregistrerEnFile();
+      return;
+    }
+
+    try {
+      const reservation = await api.creerReservation({ ...donnees, cleIdempotence });
+      setMessage(`Table ${reservation.table.numero} réservée pour ${reservation.nomClient} à ${heure}.`);
+      viderFormulaire();
       await charger();
     } catch (err) {
+      // Coupure pendant l'envoi : la réservation part dans la file, avec la
+      // même clé — si la requête avait abouti, elle ne sera pas dupliquée.
+      if (err instanceof ErreurReseau) {
+        enregistrerEnFile();
+        return;
+      }
       setErreur(err instanceof Error ? err.message : 'Erreur');
     }
+  }
+
+  // Chevauchement avec ce que la tablette connaît : réservations du jour déjà
+  // chargées et celles prises hors ligne. Une réservation posée entre-temps sur
+  // une autre tablette reste invisible — le serveur tranchera à la synchro.
+  function conflitLocal(tableCible: string, dateISO: string): boolean {
+    const debut = new Date(dateISO).getTime();
+    const fin = debut + 120 * 60_000;
+    const creneaux = [
+      ...reservations
+        .filter((r) => r.table.id === tableCible && r.statut !== 'ANNULEE')
+        .map((r) => ({ debut: new Date(r.date).getTime(), duree: r.dureeMinutes })),
+      ...lireReservationsEnAttente()
+        .filter((r) => r.donnees.tableId === tableCible)
+        .map((r) => ({ debut: new Date(r.donnees.date).getTime(), duree: 120 })),
+    ];
+    return creneaux.some((c) => debut < c.debut + c.duree * 60_000 && c.debut < fin);
   }
 
   async function handleStatut(reservation: Reservation, statut: 'ARRIVEE' | 'ANNULEE' | 'NO_SHOW') {
@@ -215,10 +307,41 @@ export function Reservations() {
             />
           </div>
 
-          {reservations.length === 0 && (
+          {reservations.length === 0 && enFile.length === 0 && (
             <p className="py-6 text-center text-sm text-stone-400">
               Aucune réservation ce jour-là pour l'instant.
             </p>
+          )}
+
+          {/* Prises hors ligne : visibles tout de suite pour ne pas réserver
+              deux fois la même table, en attendant leur départ au serveur. */}
+          {enFile.length > 0 && (
+            <ul className="flex flex-col divide-y divide-amber-100 border-b border-stone-100">
+              {enFile.map((r) => (
+                <li
+                  key={r.cleIdempotence}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                >
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-stone-900">{heureLocale(r.donnees.date)}</span>
+                      <span className="font-medium text-stone-900">{r.donnees.nomClient}</span>
+                      <span className={badgeNeutre}>
+                        Table {tables.find((t) => t.id === r.donnees.tableId)?.numero ?? '?'}
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-warn-bg px-2.5 py-0.5 text-xs font-medium text-warn">
+                        à synchroniser
+                      </span>
+                    </span>
+                    <span className="text-xs text-stone-500">
+                      {r.donnees.nombreCouverts} couvert{r.donnees.nombreCouverts > 1 ? 's' : ''}
+                      {r.donnees.telephone ? ` · ${r.donnees.telephone}` : ''}
+                      {r.donnees.note ? ` · « ${r.donnees.note} »` : ''}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
 
           <ul className="flex flex-col divide-y divide-stone-100">

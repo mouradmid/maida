@@ -20,7 +20,8 @@
   décide de la perte sèche au rapport et du retour au stock
 - **Remises & offerts** : % ou montant, article offert, motifs, droit REMISER, tout tracé
 - **Réservations** : prise au téléphone, anti-conflit de créneau, badge sur le plan de salle,
-  arrivée / annulation / no-show
+  arrivée / annulation / no-show — **prise possible sans réseau** (le plan de salle vient du
+  cache, la réservation attend dans la file et part à la reconnexion)
 - **Ruptures & quantités** : marquer un article « en rupture » en un geste (grisé à la caisse,
   masqué au menu QR), ou suivre une quantité par service qui se décompte à chaque envoi et passe
   en rupture à zéro — la quantité revient au stock si on annule avant préparation ; géré depuis le
@@ -53,7 +54,7 @@
 ### Mode hors ligne — le différenciateur
 
 - La caisse **continue de fonctionner sans internet** : commandes, ticket cuisine, encaissement,
-  reçu client — **exactement au même endroit et de la même façon qu'en ligne**. Il n'y a pas de
+  reçu client et **réservations** — **exactement au même endroit et de la même façon qu'en ligne**. Il n'y a pas de
   « mode hors ligne » à connaître : le volet « Addition » de la table affiche le même détail
   (articles, total, reste à payer) reconstruit depuis le dernier état connu, et encaisse en
   solde total, en pourcentage ou en montant libre, y compris en plusieurs fois. Seuls le
