@@ -1,20 +1,14 @@
-// Impression de tickets sur imprimante thermique (72 mm) via l'impression
-// navigateur : on rend le ticket dans une iframe cachée puis window.print().
-import type { AdditionDetail, Commande, ModePaiement } from './api';
-import { LIBELLES_MOYEN } from './libelles';
+// Rendu d'un ticket en HTML, pour l'impression via le navigateur : on pose le
+// ticket dans une iframe cachée puis on appelle window.print().
+//
+// C'est le chemin de repli, utilisé quand aucune imprimante n'est appairée en
+// direct (voir lib/imprimante.ts) — il passe par la boîte de dialogue du
+// navigateur, mais il sait tout afficher, y compris l'arabe.
+
+import type { BlocTicket, Ticket } from './ticket';
 
 function echapper(texte: string) {
   return texte.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function dateHeure(date: string | Date) {
-  return new Date(date).toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 const STYLE_TICKET = `
@@ -49,194 +43,32 @@ const STYLE_TICKET = `
   }
 `;
 
-function envelopper(corps: string, titre: string) {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${echapper(titre)}</title><style>${STYLE_TICKET}</style></head><body>${corps}</body></html>`;
-}
-
-// Une ligne d'article façon cuisine : quantité et nom en gros, options dessous.
-function blocLigneCuisine(l: {
-  quantite: number;
-  quantiteAnnulee: number;
-  nomProduit: string;
-  options: Array<{ valeur: string }>;
-}): string {
-  const options = l.options.map((o) => `<div class="option">&gt; ${echapper(o.valeur)}</div>`).join('');
-  return `<div class="grand">${l.quantite - l.quantiteAnnulee} x ${echapper(l.nomProduit.toUpperCase())}</div>${options}`;
-}
-
-// Ticket destiné à la cuisine : lisible de loin, sans les prix. Quand la
-// commande couvre plusieurs services, chaque suite est encadrée avec son
-// état : « à préparer » maintenant, ou « À SUIVRE » en attendant la réclame.
-export function htmlTicketCuisine(commande: Commande): string {
-  const destination = commande.table ? `TABLE ${commande.table.numero}` : 'À EMPORTER';
-  const actives = commande.lignes.filter((l) => l.quantite - l.quantiteAnnulee > 0);
-  const suites = [...new Set(actives.map((l) => l.suite))].sort((a, b) => a - b);
-
-  const lignes =
-    suites.length <= 1 && (suites[0] ?? 1) <= commande.suiteReclamee
-      ? actives.map(blocLigneCuisine).join('')
-      : suites
-          .map((suite) => {
-            const etat =
-              suite <= commande.suiteReclamee ? 'À PRÉPARER' : 'À SUIVRE — ATTENDRE LA RÉCLAME';
-            return (
-              `<div class="suite">SUITE ${suite} · ${etat}</div>` +
-              actives
-                .filter((l) => l.suite === suite)
-                .map(blocLigneCuisine)
-                .join('')
-            );
-          })
-          .join('');
-
-  const corps = `
-    <div class="centre petit">— CUISINE —</div>
-    <div class="centre enorme">${echapper(destination)}</div>
-    <div class="centre petit">${dateHeure(commande.creeLe)} · ${echapper(commande.serveur.prenom)}</div>
-    <div class="sep"></div>
-    ${lignes}
-    ${commande.noteCuisine ? `<div class="sep"></div><div class="note">NOTE : ${echapper(commande.noteCuisine)}</div>` : ''}
-  `;
-  return envelopper(corps, `Cuisine ${destination}`);
-}
-
-// Bon de réclame : la table demande la suite N — la cuisine lance ces plats.
-export function htmlTicketReclame(
-  destination: string,
-  suite: number,
-  lignes: Array<{
-    quantite: number;
-    quantiteAnnulee: number;
-    nomProduit: string;
-    options: Array<{ valeur: string }>;
-  }>,
-): string {
-  const corps = `
-    <div class="centre petit">— CUISINE —</div>
-    <div class="centre enorme">RÉCLAME</div>
-    <div class="centre enorme">${echapper(destination.toUpperCase())}</div>
-    <div class="centre petit">${dateHeure(new Date())}</div>
-    <div class="suite">SUITE ${suite} · À PRÉPARER MAINTENANT</div>
-    ${lignes
-      .filter((l) => l.quantite - l.quantiteAnnulee > 0)
-      .map(blocLigneCuisine)
-      .join('')}
-  `;
-  return envelopper(corps, `Réclame ${destination}`);
-}
-
-// Ticket client : l'addition complète, avec paiements et reste à payer.
-export function htmlTicketClient(
-  detail: AdditionDetail,
-  etablissement: { nom: string; adresse: string | null; ville: string | null },
-): string {
-  const lignes = detail.commandes
-    .flatMap((c) => c.lignes)
-    .filter((l) => l.quantite - l.quantiteAnnulee > 0)
-    .map((l) => {
-      const quantiteFacturable = l.quantite - l.quantiteAnnulee - l.quantiteOfferte;
-      const options = l.options.length
-        ? `<div class="option petit">(${echapper(l.options.map((o) => o.valeur).join(', '))})</div>`
-        : '';
-      const facturable =
-        quantiteFacturable > 0
-          ? `<div class="ligne"><span class="lib">${quantiteFacturable} x ${echapper(l.nomProduit)}</span><span>${l.prixUnitaire * quantiteFacturable} DA</span></div>${options}`
-          : '';
-      const offert =
-        l.quantiteOfferte > 0
-          ? `<div class="ligne"><span class="lib">${l.quantiteOfferte} x ${echapper(l.nomProduit)} — OFFERT</span><span>0 DA</span></div>`
-          : '';
-      return facturable + offert;
-    })
-    .join('');
-
-  const remisesAddition = detail.remises
-    .filter((r) => r.type === 'REMISE')
-    .map(
-      (r) =>
-        `<div class="ligne"><span class="lib">Remise${r.pourcentage ? ` ${r.pourcentage} %` : ''} (${echapper(r.motif)})</span><span>-${r.montant} DA</span></div>`,
-    )
-    .join('');
-
-  // Récapitulatif TVA (prix TTC : la TVA est extraite, remises réparties au prorata).
-  const ttcParTaux = new Map<number, number>();
-  for (const l of detail.commandes.flatMap((c) => c.lignes)) {
-    const quantiteFacturable = l.quantite - l.quantiteAnnulee - l.quantiteOfferte;
-    if (quantiteFacturable > 0 && l.tauxTva !== null) {
-      ttcParTaux.set(l.tauxTva, (ttcParTaux.get(l.tauxTva) ?? 0) + l.prixUnitaire * quantiteFacturable);
-    }
+function rendreBloc(bloc: BlocTicket): string {
+  switch (bloc.t) {
+    case 'titre':
+      return `<div class="centre ${bloc.taille}">${echapper(bloc.texte)}</div>`;
+    case 'centre':
+      return `<div class="centre${bloc.petit ? ' petit' : ''}">${echapper(bloc.texte)}</div>`;
+    case 'article':
+      return `<div class="grand">${echapper(bloc.texte)}</div>`;
+    case 'option':
+      return `<div class="option">${echapper(bloc.texte)}</div>`;
+    case 'cadre':
+      return `<div class="suite">${echapper(bloc.texte)}</div>`;
+    case 'colonnes':
+      return `<div class="ligne${bloc.gras ? ' gras' : ''}${bloc.petit ? ' petit' : ''}"><span class="lib">${echapper(
+        bloc.libelle,
+      )}</span><span>${echapper(bloc.valeur)}</span></div>`;
+    case 'note':
+      return `<div class="note">${echapper(bloc.texte)}</div>`;
+    case 'separateur':
+      return '<div class="sep"></div>';
   }
-  const totalVentile = [...ttcParTaux.values()].reduce((s, v) => s + v, 0);
-  const arrondir = (n: number) => Math.round(n * 100) / 100;
-  const recapTva = [...ttcParTaux.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([taux, ttcBrut]) => {
-      const ttc = Math.max(
-        0,
-        arrondir(ttcBrut - (totalVentile > 0 ? (detail.montantRemises * ttcBrut) / totalVentile : 0)),
-      );
-      const ht = arrondir(ttc / (1 + taux / 100));
-      return `<div class="ligne petit"><span class="lib">TVA ${taux} % (HT ${ht})</span><span>${arrondir(ttc - ht)} DA</span></div>`;
-    })
-    .join('');
-
-  const paiements = detail.paiements
-    .map((p) => {
-      const rendu =
-        p.montantRecu !== null && p.montantRecu > p.montant
-          ? ` (reçu ${p.montantRecu}, rendu ${Math.round((p.montantRecu - p.montant) * 100) / 100})`
-          : '';
-      return `<div class="ligne petit"><span class="lib">${LIBELLES_MOYEN[p.moyenPaiement]}${rendu}</span><span>${p.montant} DA</span></div>`;
-    })
-    .join('');
-
-  const adresse = [etablissement.adresse, etablissement.ville].filter(Boolean).join(', ');
-
-  const corps = `
-    <div class="centre grand">${echapper(etablissement.nom)}</div>
-    ${adresse ? `<div class="centre petit">${echapper(adresse)}</div>` : ''}
-    <div class="sep"></div>
-    <div class="centre petit">${dateHeure(new Date())} · ${detail.table ? `Table ${echapper(detail.table.numero)}` : 'À emporter'}</div>
-    <div class="sep"></div>
-    ${lignes}
-    <div class="sep"></div>
-    ${remisesAddition}
-    <div class="ligne gras"><span>TOTAL</span><span>${detail.total} DA</span></div>
-    ${recapTva}
-    ${paiements ? `<div class="ligne"><span>Payé</span><span>${detail.totalPaye} DA</span></div>${paiements}` : ''}
-    ${detail.solde > 0 ? `<div class="ligne gras"><span>RESTE À PAYER</span><span>${detail.solde} DA</span></div>` : ''}
-    <div class="sep"></div>
-    <div class="centre">Merci de votre visite !</div>
-  `;
-  return envelopper(corps, `Ticket ${detail.table ? `table ${detail.table.numero}` : 'à emporter'}`);
 }
 
-// Reçu simplifié pour un encaissement hors ligne : pas de détail des lignes
-// (l'addition complète vit sur le serveur), mais le client repart avec une preuve.
-export function htmlRecuHorsLigne(
-  etablissement: { nom: string; adresse: string | null; ville: string | null },
-  libelle: string,
-  montant: number,
-  moyen: ModePaiement,
-  montantRecu: number | null,
-): string {
-  const rendu =
-    montantRecu !== null && montantRecu > montant
-      ? Math.round((montantRecu - montant) * 100) / 100
-      : null;
-  const adresse = [etablissement.adresse, etablissement.ville].filter(Boolean).join(', ');
-  const corps = `
-    <div class="centre grand">${echapper(etablissement.nom)}</div>
-    ${adresse ? `<div class="centre petit">${echapper(adresse)}</div>` : ''}
-    <div class="sep"></div>
-    <div class="centre petit">${dateHeure(new Date())} · ${echapper(libelle)}</div>
-    <div class="sep"></div>
-    <div class="ligne gras"><span>PAYÉ</span><span>${montant} DA</span></div>
-    <div class="ligne petit"><span class="lib">${LIBELLES_MOYEN[moyen]}${montantRecu !== null ? ` (reçu ${montantRecu}${rendu !== null ? `, rendu ${rendu}` : ''})` : ''}</span><span></span></div>
-    <div class="sep"></div>
-    <div class="centre">Merci de votre visite !</div>
-  `;
-  return envelopper(corps, `Reçu ${libelle}`);
+export function rendreHtml(ticket: Ticket): string {
+  const corps = ticket.blocs.map(rendreBloc).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${echapper(ticket.titre)}</title><style>${STYLE_TICKET}</style></head><body>${corps}</body></html>`;
 }
 
 // Imprime un HTML de ticket via une iframe cachée (compatible imprimantes

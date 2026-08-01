@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api, type ModePaiement } from '../lib/api';
 import { mettrePaiementEnAttente, nouvelleCle, type CibleHorsLigne } from '../lib/horsLigne';
-import { htmlRecuHorsLigne, imprimerHtml } from '../lib/impression';
+import { imprimerTicket } from '../lib/imprimante';
+import { ticketRecuHorsLigne } from '../lib/ticket';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { boutonPrimaire, champ, da } from '../lib/ui';
 import type { InfosEtablissement, VueAddition } from './PanneauAddition';
@@ -92,8 +93,8 @@ export function PanneauPaiement({
       additionId: cible.additionId,
       cleCommandeLocale: cible.additionId ? undefined : cible.cleCommandeLocale,
     });
-    imprimerHtml(
-      htmlRecuHorsLigne(
+    imprimerTicket(
+      ticketRecuHorsLigne(
         etablissement ?? { nom: 'Maïda', adresse: null, ville: null },
         cible.libelle,
         montantPropose,

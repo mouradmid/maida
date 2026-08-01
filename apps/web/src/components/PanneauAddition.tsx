@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AdditionDetail, LigneCommande, ModePaiement } from '../lib/api';
-import { htmlTicketClient, imprimerHtml } from '../lib/impression';
+import { imprimerTicket } from '../lib/imprimante';
+import { ticketClient } from '../lib/ticket';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { badgeVert, da } from '../lib/ui';
 import { ModalGesteCommercial } from './ModalGesteCommercial';
@@ -163,8 +164,8 @@ export function PanneauAddition({
           disabled={horsLigne || !detail}
           onClick={() =>
             detail &&
-            imprimerHtml(
-              htmlTicketClient(detail, etablissement ?? { nom: 'Maïda', adresse: null, ville: null }),
+            imprimerTicket(
+              ticketClient(detail, etablissement ?? { nom: 'Maïda', adresse: null, ville: null }),
             )
           }
           title={horsLigne ? 'Le reçu hors ligne est imprimé au moment du paiement' : undefined}

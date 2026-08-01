@@ -22,7 +22,8 @@ import {
 import { useHorsLigne } from '../hooks/useHorsLigne';
 import { usePanier, type ChoixOption } from '../hooks/usePanier';
 import { badgeBrand, badgeNeutre, carte, da, messageErreur, messageSucces } from '../lib/ui';
-import { htmlTicketCuisine, htmlTicketReclame, imprimerHtml } from '../lib/impression';
+import { imprimerTicket } from '../lib/imprimante';
+import { ticketCuisine, ticketReclame, type Ticket } from '../lib/ticket';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
 import { ModalAnnulation } from './ModalAnnulation';
 import { ModalStock } from './ModalStock';
@@ -83,7 +84,7 @@ export function EcranTables({
   // après un envoi, bon de réclame après une réclame.
   const [ticketAImprimer, setTicketAImprimer] = useState<{
     libelle: string;
-    html: string;
+    ticket: Ticket;
   } | null>(null);
   const [demandes, setDemandes] = useState<DemandeClient[]>([]);
   // Article en cours de déplacement vers une autre suite (toucher-toucher).
@@ -405,7 +406,7 @@ export function EcranTables({
       setConfirmation(`Suite ${res.suiteReclamee} réclamée en cuisine — ${destination}.`);
       setTicketAImprimer({
         libelle: '🖨 Bon de réclame',
-        html: htmlTicketReclame(destination, res.suiteReclamee, lignesSuite),
+        ticket: ticketReclame(destination, res.suiteReclamee, lignesSuite),
       });
       await rafraichirCommandes();
     } catch (err) {
@@ -463,7 +464,7 @@ export function EcranTables({
     try {
       const commande = await api.creerCommande({ ...donnees, cleIdempotence });
       setConfirmation(`Commande envoyée — total ${commande.total} DA`);
-      setTicketAImprimer({ libelle: '🖨 Bon cuisine', html: htmlTicketCuisine(commande) });
+      setTicketAImprimer({ libelle: '🖨 Bon cuisine', ticket: ticketCuisine(commande) });
       panier.viderPanier();
       panier.viderRajouts();
       setNoteCuisine('');
@@ -527,7 +528,7 @@ export function EcranTables({
           })),
           total: totalPanier,
         };
-        setTicketAImprimer({ libelle: '🖨 Bon cuisine', html: htmlTicketCuisine(commandeLocale) });
+        setTicketAImprimer({ libelle: '🖨 Bon cuisine', ticket: ticketCuisine(commandeLocale) });
         setConfirmation(
           `Hors ligne — commande enregistrée (${totalPanier} DA), elle sera envoyée au retour du réseau`,
         );
@@ -563,7 +564,7 @@ export function EcranTables({
           {ticketAImprimer && (
             <button
               type="button"
-              onClick={() => imprimerHtml(ticketAImprimer.html)}
+              onClick={() => imprimerTicket(ticketAImprimer.ticket)}
               className="shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition-colors hover:bg-green-100"
             >
               {ticketAImprimer.libelle}

@@ -6,6 +6,7 @@ import { EcranTables } from '../components/EcranTables';
 import { JourneeCaisse } from '../components/JourneeCaisse';
 import { Reservations } from '../components/Reservations';
 import { IndicateurHorsLigne } from '../components/IndicateurHorsLigne';
+import { ReglageImprimante } from '../components/ReglageImprimante';
 import { demarrerSynchronisation } from '../lib/horsLigne';
 import { messageErreur, messageSucces } from '../lib/ui';
 import { useMe } from '../hooks/useMe';
@@ -92,7 +93,14 @@ export function EspaceCaisse() {
             />
           )}
           {onglet === 'reservations' && <Reservations />}
-          {onglet === 'journee' && <JourneeCaisse droitCloturer={user.droits.includes('CLOTURER')} />}
+          {onglet === 'journee' && (
+            <div className="flex flex-col gap-6">
+              <JourneeCaisse droitCloturer={user.droits.includes('CLOTURER')} />
+              {/* Réglage du poste, pas de la journée : il vit ici parce que
+                  c'est l'onglet du comptoir. */}
+              <ReglageImprimante />
+            </div>
+          )}
         </main>
         <IndicateurHorsLigne />
       </div>

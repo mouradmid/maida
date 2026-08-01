@@ -23,11 +23,12 @@ jobs:
           npm ci
           npm run lint
 
-      - name: Front — compilation et build
+      - name: Front — compilation, tests et build
         working-directory: apps/web
         run: |
           npm ci
           npx tsc --noEmit
+          npm test
           npm run build
 
       - name: API — compilation et tests
