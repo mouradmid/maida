@@ -1674,6 +1674,98 @@ describe('Gestion du stock (ruptures et quantités)', () => {
   });
 });
 
+// Un vrai client s'appellera « Le Café Étoilé » et servira des « crèmes
+// brûlées » rue des « Frères Boudjema ». L'établissement de démo a été créé
+// avec une adresse cassée (« Fr?res ») : on verrouille ici tout le chemin, de
+// la saisie du gérant jusqu'aux données du ticket, pour que ça ne se
+// reproduise pas chez un client payant.
+describe('Caractères accentués et non latins', () => {
+  const NOM_CATEGORIE = 'Desserts & douceurs';
+  const NOM_PRODUIT = 'Crème brûlée à l’œuf';
+  const NOM_ARABE = 'مطعم الأصالة';
+  const NOM_ETABLISSEMENT = 'Le Café Étoilé';
+  const ADRESSE = '12 rue des Frères Boudjema, Château-Neuf';
+
+  let categorieAccentsId = '';
+  let produitAccentsId = '';
+
+  it('conserve les accents de la saisie du gérant à la relecture', async () => {
+    const categorie = await gerant.post('/api/gerant/categories').send({ nom: NOM_CATEGORIE });
+    expect(categorie.status).toBe(201);
+    expect(categorie.body.nom).toBe(NOM_CATEGORIE);
+    categorieAccentsId = categorie.body.id;
+
+    const produit = await gerant
+      .post('/api/gerant/produits')
+      .send({ nom: NOM_PRODUIT, prix: 450, categorieId: categorieAccentsId });
+    expect(produit.status).toBe(201);
+    expect(produit.body.nom).toBe(NOM_PRODUIT);
+    produitAccentsId = produit.body.id;
+
+    // En base, sans passer par la couche HTTP.
+    const enBase = await prisma.produit.findUniqueOrThrow({ where: { id: produitAccentsId } });
+    expect(enBase.nom).toBe(NOM_PRODUIT);
+  });
+
+  it('sert les accents intacts à la caisse et au menu public (QR)', async () => {
+    const menuCaisse = await serveur.get('/api/caisse/menu');
+    expect(menuCaisse.headers['content-type']).toMatch(/charset=utf-8/i);
+    const produitCaisse = menuCaisse.body
+      .flatMap((c: { produits: Array<{ id: string; nom: string }> }) => c.produits)
+      .find((p: { id: string }) => p.id === produitAccentsId);
+    expect(produitCaisse?.nom).toBe(NOM_PRODUIT);
+
+    const menuPublic = await request(app).get(`/api/public/menu/${etablissementId}`);
+    const produitPublic = menuPublic.body.categories
+      .flatMap((c: { produits: Array<{ id: string; nom: string }> }) => c.produits)
+      .find((p: { id: string }) => p.id === produitAccentsId);
+    expect(produitPublic?.nom).toBe(NOM_PRODUIT);
+  });
+
+  // Le nom du produit est figé sur la ligne de commande : c'est lui qui
+  // s'imprime sur le bon cuisine et le ticket client, des mois plus tard.
+  it('fige les accents dans les données du ticket', async () => {
+    const commande = await serveur
+      .post('/api/caisse/commandes')
+      .send({ canal: 'EMPORTER', lignes: [{ produitId: produitAccentsId, quantite: 1 }] });
+    expect(commande.status).toBe(201);
+    expect(commande.body.lignes[0].nomProduit).toBe(NOM_PRODUIT);
+
+    const addition = await serveur.get(`/api/caisse/additions/${commande.body.additionId}`);
+    expect(addition.body.commandes[0].lignes[0].nomProduit).toBe(NOM_PRODUIT);
+  });
+
+  it("conserve les accents de l'en-tête d'établissement imprimée sur les tickets", async () => {
+    const avant = await prisma.etablissement.findUniqueOrThrow({ where: { id: etablissementId } });
+    await prisma.etablissement.update({
+      where: { id: etablissementId },
+      data: { nom: NOM_ETABLISSEMENT, adresse: ADRESSE, ville: 'Aïn Témouchent' },
+    });
+
+    const entete = await serveur.get('/api/caisse/etablissement');
+    expect(entete.body.nom).toBe(NOM_ETABLISSEMENT);
+    expect(entete.body.adresse).toBe(ADRESSE);
+    expect(entete.body.ville).toBe('Aïn Témouchent');
+
+    await prisma.etablissement.update({
+      where: { id: etablissementId },
+      data: { nom: avant.nom, adresse: avant.adresse, ville: avant.ville },
+    });
+  });
+
+  // Le marché algérien nomme aussi ses établissements en arabe.
+  it('accepte les caractères non latins', async () => {
+    const maj = await gerant.patch(`/api/gerant/produits/${produitAccentsId}`).send({
+      nom: NOM_ARABE,
+    });
+    expect(maj.status).toBe(200);
+    expect(maj.body.nom).toBe(NOM_ARABE);
+
+    const enBase = await prisma.produit.findUniqueOrThrow({ where: { id: produitAccentsId } });
+    expect(enBase.nom).toBe(NOM_ARABE);
+  });
+});
+
 describe.skipIf(!identifiantsAdmin)('Suspension par le super-admin', () => {
   const admin = request.agent(app);
 
