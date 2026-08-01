@@ -30,6 +30,11 @@
   remises ; le bon cuisine encadre chaque service (« SUITE 1 · À PRÉPARER » / « SUITE 2 ·
   À SUIVRE — ATTENDRE LA RÉCLAME ») et chaque réclame imprime un **bon de réclame** dédié
   (« RÉCLAME — TABLE N — SUITE 2 · À PRÉPARER MAINTENANT » avec les articles à lancer)
+- **Impression directe, sans fenêtre à valider** : l'imprimante USB est désignée une fois
+  (onglet Journée), puis les tickets sortent seuls et le papier est coupé automatiquement.
+  Tout se dégrade proprement — imprimante éteinte, câble débranché, navigateur incompatible :
+  on retombe sur l'impression du navigateur, le ticket sort quoi qu'il arrive.
+  Guide matériel dans `IMPRESSION.md`
 - **QR code à table** : menu public consultable par le client sur son téléphone (sans connexion),
   QR par table et planche imprimable dans l'espace gérant — **module optionnel par compte client**,
   comme le food cost
@@ -110,16 +115,22 @@
 
 - Hébergement Railway avec déploiement automatique à chaque push
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter et 94 tests d'intégration à chaque push
+- **CI GitHub Actions** : compilation, linter, **108 tests d'intégration** (API) et **12 tests
+  unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
+- **Accents verrouillés de bout en bout** : un établissement nommé « Le Café Étoilé » traverse
+  intact la saisie, la base, le menu QR et les tickets — vérifié par des tests dédiés
 
 ## 🔜 Prochaines étapes envisagées
 
 - [ ] **Premier restaurant pilote** (le produit est prêt)
 - [ ] Réservation en ligne par le client + email de confirmation
 - [ ] Hors-ligne : paiement par article et remises
-- [ ] Impression thermique directe (ESC/POS) sans boîte de dialogue
+- [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
+      aucun ticket n'est encore sorti d'une machine physique)
+- [ ] Rafraîchir la démo en ligne (elle date, et son adresse contient encore un « Fr?res »
+      hérité de la création du projet)
 - [ ] Multi-établissement pour un même compte client
 
 ## 🔗 Liens utiles
