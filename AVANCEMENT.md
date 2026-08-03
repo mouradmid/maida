@@ -102,8 +102,11 @@
 
 - Comptes clients : création complète, suspension **réellement appliquée** (accès coupés
   immédiatement), modules par compte, réinitialisation de mot de passe gérant
-- Activité par client (commandes 7 jours, dernière activité)
+- Activité par client (commandes 7 jours, dernière activité) et code d'installation de chaque
+  établissement, à dicter au client qui monte sa première caisse
 - **Journal des erreurs serveur**
+- **Journal des connexions** : qui s'est connecté, où, depuis quelle adresse, et surtout les
+  tentatives refusées — filtrables d'un clic pour repérer un acharnement sur un code PIN
 
 ### Identité visuelle
 
@@ -115,10 +118,15 @@
 
 - Hébergement Railway avec déploiement automatique à chaque push
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **108 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **118 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
+- **Sécurité des accès** : la tablette se rattache à son restaurant par un **code d'installation**
+  tapé une seule fois (le gérant le régénère si un appareil est perdu) — la liste des
+  établissements n'est plus publique ; le freinage des codes PIN compte désormais **par
+  restaurant** et non par adresse, pour qu'un serveur maladroit ne bloque plus toute la salle ;
+  et un employé désactivé perd la main **immédiatement**, sans attendre l'expiration de sa session
 - **Accents verrouillés de bout en bout** : un établissement nommé « Le Café Étoilé » traverse
   intact la saisie, la base, le menu QR et les tickets — vérifié par des tests dédiés
 
@@ -129,8 +137,8 @@
 - [ ] Hors-ligne : paiement par article et remises
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
-- [ ] Rafraîchir la démo en ligne (elle date, et son adresse contient encore un « Fr?res »
-      hérité de la création du projet)
+- [ ] Rafraîchir la démo en ligne quand elle aura de nouveau vieilli (dernier rafraîchissement :
+      2 août 2026)
 - [ ] Multi-établissement pour un même compte client
 
 ## 🔗 Liens utiles

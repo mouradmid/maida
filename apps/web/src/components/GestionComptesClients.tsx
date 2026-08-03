@@ -235,9 +235,14 @@ export function GestionComptesClients() {
 
               <div className="flex flex-col gap-1 text-sm text-stone-600">
                 {compte.etablissements.map((e) => (
-                  <p key={e.id}>
+                  <p key={e.id} className="flex flex-wrap items-center gap-2">
                     🏠 {e.nom}
                     {e.ville ? ` — ${e.ville}` : ''}
+                    {/* Le code d'installation des tablettes : à dicter au client
+                        qui monte sa première caisse. */}
+                    <span className={`${badgeNeutre} font-mono`} title="Code d'installation tablette">
+                      {e.codeTerminal}
+                    </span>
                   </p>
                 ))}
                 {compte.gerants.map((g) => (

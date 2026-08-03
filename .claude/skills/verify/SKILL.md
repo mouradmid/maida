@@ -10,7 +10,8 @@ description: Vérifier une modification de Maïda en conditions réelles (serveu
 ```bash
 cd apps/api && npm run dev     # API sur :3001 (tsx watch, DB Neon branche Dev via .env)
 cd apps/web && npm run dev     # Vite sur :5173 (proxy /api → :3001)
-# Santé : curl localhost:3001/health et localhost:5173/api/auth/etablissements
+# Santé : curl localhost:3001/health, et le proxy Vite via
+#   POST localhost:5173/api/auth/terminal {"code":"hydra-268"}
 ```
 
 ## Piloter le parcours
@@ -20,9 +21,12 @@ et utiliser le Chrome local (`C:/Program Files/Google/Chrome/Application/chrome.
 `headless: 'new'`). Ne pas utiliser l'extension claude-in-chrome : l'injection de
 script échoue (timeouts) même sur localhost.
 
-- Login caisse : aller sur `/caisse`, cliquer les chiffres du PIN (démo : 1234 =
-  Sofiane, droits ANNULER/CLOTURER/REMISER). Sélectionner l'établissement par le
-  texte « Bon Grill », jamais par position.
+- Login caisse : aller sur `/caisse`. Une tablette neuve (localStorage vide)
+  demande d'abord le code d'installation dans `#codeTerminal` (démo :
+  `HYDRA268`, la saisie est normalisée donc `hydra-268` marche aussi), puis
+  mémorise le restaurant dans `localStorage['maida.terminal']`. Ensuite,
+  cliquer les chiffres du PIN (démo : 1234 = Sofiane, droits
+  ANNULER/CLOTURER/REMISER). Il n'y a plus de liste d'établissements.
 - Login gérant : aller sur `/gerant`, remplir `input[type=email]` /
   `input[type=password]` avec `karim@lebongrill.dz` / `demo1234` (PIN de
   validation gérant : 9999). Les onglets sont de simples boutons : « Rapports »,
@@ -55,3 +59,9 @@ script échoue (timeouts) même sur localhost.
 - Les tests vitest et le seed écrivent dans la branche Neon Dev (partagée avec
   le dev local) — jamais dans la prod. Le parcours E2E laisse des commandes de
   test dans la démo Dev : sans gravité.
+- En revanche `npm test` VIDE la démo locale : la suite « Frontière entre la
+  démonstration et les vrais clients » appelle `purgerDonneesDemo`, qui purge
+  Le Bon Grill. Relancer `npx tsx scripts/seed-demo.ts` avant tout parcours
+  navigateur, sinon l'écran caisse s'ouvre sans tables ni produits.
+- Le bouton de sortie s'appelle « Se déconnecter » ; l'en-tête affiche
+  « Caisse » / « Espace gérant » (pas « Espace caisse »).

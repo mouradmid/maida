@@ -62,6 +62,10 @@ export function Accueil() {
             <code className="rounded bg-surface px-1.5 py-0.5 font-mono">1234</code> (Sofiane) ou{' '}
             <code className="rounded bg-surface px-1.5 py-0.5 font-mono">5678</code> (Yacine)
           </p>
+          <p className="mt-1">
+            La caisse demande d'abord un code d'installation, une seule fois par appareil :{' '}
+            <code className="rounded bg-surface px-1.5 py-0.5 font-mono">HYDRA-268</code>
+          </p>
         </div>
       )}
     </div>

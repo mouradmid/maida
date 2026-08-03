@@ -6,6 +6,7 @@ import { EnTeteEspace } from '../components/EnTeteEspace';
 import { GestionMenu } from '../components/GestionMenu';
 import { GestionServeurs } from '../components/GestionServeurs';
 import { PlanDeSalle } from '../components/PlanDeSalle';
+import { CodeTerminal } from '../components/CodeTerminal';
 import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
 import { AnnulationsRemises } from '../components/AnnulationsRemises';
 import { HistoriqueJournees } from '../components/HistoriqueJournees';
@@ -76,7 +77,12 @@ export function EspaceGerant() {
           {onglet === 'reservations' && <ReservationsGerant />}
           {onglet === 'salle' && <PlanDeSalle />}
           {onglet === 'menu' && <GestionMenu />}
-          {onglet === 'equipe' && <GestionServeurs />}
+          {onglet === 'equipe' && (
+            <>
+              <CodeTerminal />
+              <GestionServeurs />
+            </>
+          )}
           {onglet === 'paiements' && <ConfigMoyensPaiement />}
           {onglet === 'annulations' && <AnnulationsRemises />}
           {onglet === 'journees' && <HistoriqueJournees />}

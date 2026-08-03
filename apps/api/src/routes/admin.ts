@@ -2,12 +2,16 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
+import { formaterCodeTerminal, genererCodeTerminal } from '../lib/securite';
 import { requireAuth } from '../middleware/requireAuth';
+import { requireCompteActif } from '../middleware/requireCompteActif';
 import { requireRole } from '../middleware/requireRole';
 
 export const adminRouter = Router();
 
-adminRouter.use(requireAuth, requireRole('SUPER_ADMIN'));
+// requireCompteActif vaut aussi pour l'éditeur : un compte d'administration
+// désactivé doit perdre la main immédiatement, pas à l'expiration du jeton.
+adminRouter.use(requireAuth, requireRole('SUPER_ADMIN'), requireCompteActif);
 
 adminRouter.get('/comptes-clients', async (_req, res) => {
   const comptes = await prisma.compteClient.findMany({
@@ -18,7 +22,9 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
       modules: true,
       demo: true,
       creeLe: true,
-      etablissements: { select: { id: true, nom: true, ville: true } },
+      // codeTerminal : l'éditeur doit pouvoir le dicter au téléphone quand un
+      // client installe sa première tablette et n'a pas encore ouvert son espace.
+      etablissements: { select: { id: true, nom: true, ville: true, codeTerminal: true } },
       utilisateurs: {
         where: { role: 'GERANT' },
         select: { id: true, nom: true, prenom: true, email: true },
@@ -60,6 +66,10 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
       }
       return {
         ...compte,
+        etablissements: compte.etablissements.map((e) => ({
+          ...e,
+          codeTerminal: formaterCodeTerminal(e.codeTerminal),
+        })),
         gerants: compte.utilisateurs,
         utilisateurs: undefined,
         commandes7Jours,
@@ -118,6 +128,20 @@ adminRouter.get('/erreurs', async (_req, res) => {
     take: 100,
   });
   res.json(erreurs);
+});
+
+// Journal des connexions : sert au support (« qui a ouvert la caisse hier
+// soir ? ») autant qu'à repérer un acharnement sur un code PIN.
+adminRouter.get('/connexions', async (req, res) => {
+  const { echecs } = req.query;
+
+  const connexions = await prisma.connexionJournal.findMany({
+    where: echecs === 'true' ? { resultat: { not: 'REUSSIE' } } : undefined,
+    orderBy: { creeLe: 'desc' },
+    take: 200,
+  });
+
+  res.json(connexions);
 });
 
 adminRouter.delete('/erreurs', async (_req, res) => {
@@ -188,6 +212,7 @@ adminRouter.post('/comptes-clients', async (req, res) => {
           nom: etablissement.nom,
           adresse: etablissement.adresse ?? null,
           ville: etablissement.ville ?? null,
+          codeTerminal: genererCodeTerminal(),
           compteClientId: compteClient.id,
         },
       });
@@ -209,7 +234,10 @@ adminRouter.post('/comptes-clients', async (req, res) => {
 
     res.status(201).json({
       compteClient: resultat.compteClient,
-      etablissement: resultat.etablissement,
+      etablissement: {
+        ...resultat.etablissement,
+        codeTerminal: formaterCodeTerminal(resultat.etablissement.codeTerminal),
+      },
       gerant: {
         id: resultat.gerant.id,
         email: resultat.gerant.email,

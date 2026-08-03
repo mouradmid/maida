@@ -108,7 +108,9 @@ export function EspaceCaisse() {
   }
 
   return (
-    <PageConnexion titre="Caisse" sousTitre="Connectez-vous avec votre code PIN.">
+    // Sous-titre neutre : selon l'appareil, l'écran demande soit le code
+    // d'installation, soit le code personnel du serveur.
+    <PageConnexion titre="Caisse" sousTitre="Connectez-vous à votre caisse.">
       <LoginPin onSuccess={refresh} />
     </PageConnexion>
   );

@@ -2,12 +2,20 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
 import { prisma } from '../src/lib/prisma';
+import { genererCodeTerminal } from '../src/lib/securite';
 
 // Seed de démo : remet l'établissement « Le Bon Grill - Hydra » dans un état
 // présentable (menu complet, plan de salle, commandes en cours).
 // Identifiants après exécution :
+//   Caisse  : code d'installation HYDRA268 (voir CODE_TERMINAL_DEMO)
 //   Gérant  : karim@lebongrill.dz / demo1234
 //   Serveur : Sofiane PIN 1234, Yacine PIN 5678
+
+// Code d'installation de la tablette de démonstration. Volontairement figé et
+// public (il est affiché sur la page d'accueil du site vitrine) : il n'ouvre
+// que le restaurant fictif. Ses caractères appartiennent tous à l'alphabet sans
+// confusions de genererCodeTerminal() — ni O, ni I, ni S.
+const CODE_TERMINAL_DEMO = 'HYDRA268';
 
 const CUISSONS = ['Bleu', 'Saignant', 'À point', 'Bien cuit'];
 const SAUCES = ['Algérienne', 'Blanche', 'Harissa', 'Biggy'];
@@ -272,6 +280,7 @@ async function main() {
     where: { id: serveurs[1].id },
     data: { codePinHash: await bcrypt.hash('5678', 12), droits: [] },
   });
+  console.log(`Caisse : code d'installation ${CODE_TERMINAL_DEMO}`);
   console.log(`Gérant : ${gerant.email} / demo1234 — PIN validation 9999`);
   console.log(
     `Serveur ${serveurs[0].prenom} : PIN 1234 (droit annuler) — Serveur ${serveurs[1].prenom} : PIN 5678`,
@@ -290,6 +299,9 @@ async function main() {
       ville: 'Alger',
       // La démo montre la commande client depuis le QR.
       commandeClientActive: true,
+      // Code d'installation figé : il est affiché sur la page d'accueil du site
+      // de démonstration, il ne doit donc pas changer à chaque rafraîchissement.
+      codeTerminal: CODE_TERMINAL_DEMO,
     },
   });
 
@@ -300,7 +312,12 @@ async function main() {
       data: { nomEnseigne: 'La Palmeraie', statut: 'SUSPENDU', demo: true },
     });
     const etabPalmeraie = await prisma.etablissement.create({
-      data: { nom: 'La Palmeraie - Front de mer', ville: 'Oran', compteClientId: palmeraie.id },
+      data: {
+        nom: 'La Palmeraie - Front de mer',
+        ville: 'Oran',
+        codeTerminal: genererCodeTerminal(),
+        compteClientId: palmeraie.id,
+      },
     });
     await prisma.utilisateur.create({
       data: {

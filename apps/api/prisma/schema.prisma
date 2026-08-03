@@ -133,6 +133,11 @@ model Etablissement {
   nom                  String
   adresse              String?
   ville                String?
+  // Code tapé une fois sur une tablette pour la rattacher à cet établissement.
+  // Sans lui, la liste des établissements ne peut plus être devinée : elle
+  // n'est plus exposée publiquement. Le gérant peut le régénérer si une
+  // tablette est perdue.
+  codeTerminal         String              @unique
   statut               StatutEtablissement @default(ACTIF)
   moyensPaiementActifs ModePaiement[]      @default([ESPECES, CARTE, CHEQUE, AUTRE])
   // Préférence du gérant : masquer le suivi des coûts même si le module
@@ -602,4 +607,41 @@ model Table {
 
   @@unique([etablissementId, numero])
   @@map("tables")
+}
+
+enum TypeConnexion {
+  MOT_DE_PASSE
+  PIN
+}
+
+enum ResultatConnexion {
+  REUSSIE
+  IDENTIFIANTS_INVALIDES
+  COMPTE_SUSPENDU
+  TROP_DE_TENTATIVES
+}
+
+// Journal des tentatives de connexion : sert autant au support (« qui a ouvert
+// la caisse hier soir ? ») qu'à repérer un acharnement sur un code PIN.
+//
+// Aucune relation vers Utilisateur ou Etablissement : le journal doit survivre
+// à la suppression de ce qu'il décrit. Les libellés sont donc figés à l'écriture.
+model ConnexionJournal {
+  id       String            @id @default(cuid())
+  creeLe   DateTime          @default(now())
+  type     TypeConnexion
+  resultat ResultatConnexion
+
+  utilisateurId   String?
+  // Qui a tenté : « Prénom Nom » si on l'a identifié, sinon l'email saisi.
+  // Jamais le mot de passe ni le code PIN.
+  acteur          String?
+  etablissementId String?
+  etablissement   String?
+
+  ip         String?
+  navigateur String?
+
+  @@index([creeLe])
+  @@map("connexions_journal")
 }

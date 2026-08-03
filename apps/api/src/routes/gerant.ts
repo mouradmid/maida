@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router, type Request } from 'express';
 import { Prisma, type FormeTable } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
+import { formaterCodeTerminal, genererCodeTerminal } from '../lib/securite';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireCompteActif } from '../middleware/requireCompteActif';
 import { requireRole } from '../middleware/requireRole';
@@ -791,7 +792,7 @@ gerantRouter.get('/parametres', async (req, res) => {
     prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
     prisma.etablissement.findUnique({
       where: { id: etablissementId },
-      select: { suiviCoutsActive: true, commandeClientActive: true },
+      select: { suiviCoutsActive: true, commandeClientActive: true, codeTerminal: true },
     }),
   ]);
 
@@ -800,7 +801,23 @@ gerantRouter.get('/parametres', async (req, res) => {
     moduleQrMenu: compte?.modules.includes('QR_MENU') ?? false,
     suiviCoutsActive: etablissement?.suiviCoutsActive ?? true,
     commandeClientActive: etablissement?.commandeClientActive ?? false,
+    codeTerminal: etablissement ? formaterCodeTerminal(etablissement.codeTerminal) : null,
   });
+});
+
+// Régénère le code d'installation : à faire dès qu'une tablette est perdue ou
+// qu'un employé part avec. Les caisses déjà rattachées ne sont pas
+// déconnectées — le code ne sert qu'au premier rattachement.
+gerantRouter.post('/terminal/code', async (req, res) => {
+  const { etablissementId } = await getContexteGerant(req.user!.id);
+
+  const etablissement = await prisma.etablissement.update({
+    where: { id: etablissementId },
+    data: { codeTerminal: genererCodeTerminal() },
+    select: { codeTerminal: true },
+  });
+
+  res.json({ codeTerminal: formaterCodeTerminal(etablissement.codeTerminal) });
 });
 
 gerantRouter.patch('/parametres', async (req, res) => {

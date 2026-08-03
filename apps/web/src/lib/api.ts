@@ -299,6 +299,9 @@ export interface ParametresGerant {
   moduleQrMenu: boolean;
   suiviCoutsActive: boolean;
   commandeClientActive: boolean;
+  // Code que l'on tape une fois sur une tablette pour la rattacher à ce
+  // restaurant, présenté en deux blocs (« ABCD-2345 »).
+  codeTerminal: string | null;
 }
 
 export interface DemandeClient {
@@ -324,7 +327,12 @@ export interface CompteClient {
   // Compte de vitrine, reconstruit par le seed de démo (jamais un vrai client).
   demo: boolean;
   creeLe: string;
-  etablissements: Array<{ id: string; nom: string; ville: string | null }>;
+  etablissements: Array<{
+    id: string;
+    nom: string;
+    ville: string | null;
+    codeTerminal: string;
+  }>;
   gerants: Array<{ id: string; nom: string; prenom: string; email: string | null }>;
   commandes7Jours: number;
   derniereCommande: string | null;
@@ -401,8 +409,13 @@ export const api = {
   login: (email: string, password: string) =>
     apiFetch<Utilisateur>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
-  listEtablissementsPublics: () =>
-    apiFetch<Array<{ id: string; nom: string; ville: string | null }>>('/auth/etablissements'),
+  // Rattache la tablette à son restaurant. Remplace l'ancienne liste publique
+  // des établissements, qui exposait le portefeuille client de Maïda.
+  rattacherTerminal: (code: string) =>
+    apiFetch<{ id: string; nom: string; ville: string | null }>('/auth/terminal', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 
   loginPin: (etablissementId: string, codePin: string) =>
     apiFetch<Utilisateur>('/auth/login-pin', {
@@ -857,6 +870,20 @@ export const api = {
 
   viderErreurs: () => apiFetch<void>('/admin/erreurs', { method: 'DELETE' }),
 
+  listConnexions: (echecsSeulement: boolean) =>
+    apiFetch<
+      Array<{
+        id: string;
+        creeLe: string;
+        type: 'MOT_DE_PASSE' | 'PIN';
+        resultat: 'REUSSIE' | 'IDENTIFIANTS_INVALIDES' | 'COMPTE_SUSPENDU' | 'TROP_DE_TENTATIVES';
+        acteur: string | null;
+        etablissement: string | null;
+        ip: string | null;
+        navigateur: string | null;
+      }>
+    >(`/admin/connexions${echecsSeulement ? '?echecs=true' : ''}`),
+
   getParametres: () => apiFetch<ParametresGerant>('/gerant/parametres'),
 
   updateParametres: (data: { suiviCoutsActive?: boolean; commandeClientActive?: boolean }) =>
@@ -864,6 +891,9 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  regenererCodeTerminal: () =>
+    apiFetch<{ codeTerminal: string }>('/gerant/terminal/code', { method: 'POST' }),
 
   resetMotDePasseGerant: (gerantId: string, motDePasse: string) =>
     apiFetch<void>(`/admin/gerants/${gerantId}/mot-de-passe`, {

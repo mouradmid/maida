@@ -16,6 +16,7 @@ const MDP_GERANT = 'test-auto-1234';
 const PIN_GERANT = '4321';
 const PIN_SERVEUR_DROITS = '1111';
 const PIN_SERVEUR_SANS = '2222';
+const CODE_TERMINAL_TEST = 'TESTAUTO';
 
 let etablissementId = '';
 let compteClientId = '';
@@ -55,6 +56,18 @@ async function purgerCompteTest() {
   await prisma.categorie.deleteMany({ where: filtreEtab });
   await prisma.table.deleteMany({ where: filtreEtab });
   await prisma.utilisateur.deleteMany({ where: { compteClientId: compte.id } });
+  // Le journal des connexions n'a volontairement aucune clé étrangère (il doit
+  // survivre à ce qu'il décrit) : rien ne le nettoie tout seul, et sans ça les
+  // tentatives des tests polluent le journal de la base de développement.
+  const etablissements = await prisma.etablissement.findMany({
+    where: { compteClientId: compte.id },
+    select: { id: true },
+  });
+  await prisma.connexionJournal.deleteMany({
+    where: {
+      OR: [{ etablissementId: { in: etablissements.map((e) => e.id) } }, { acteur: EMAIL_GERANT }],
+    },
+  });
   await prisma.etablissement.deleteMany({ where: { compteClientId: compte.id } });
   await prisma.compteClient.delete({ where: { id: compte.id } });
 }
@@ -65,7 +78,12 @@ beforeAll(async () => {
   const compte = await prisma.compteClient.create({ data: { nomEnseigne: NOM_COMPTE_TEST } });
   compteClientId = compte.id;
   const etab = await prisma.etablissement.create({
-    data: { nom: 'Resto Test', ville: 'Testville', compteClientId: compte.id },
+    data: {
+      nom: 'Resto Test',
+      ville: 'Testville',
+      codeTerminal: CODE_TERMINAL_TEST,
+      compteClientId: compte.id,
+    },
   });
   etablissementId = etab.id;
 
@@ -1782,7 +1800,7 @@ describe('Frontière entre la démonstration et les vrais clients', () => {
     });
     compteVitrineId = compte.id;
     const etab = await prisma.etablissement.create({
-      data: { nom: 'Vitrine Test', compteClientId: compte.id },
+      data: { nom: 'Vitrine Test', codeTerminal: 'VTRNTEST', compteClientId: compte.id },
     });
     etabVitrineId = etab.id;
     const categorie = await prisma.categorie.create({
@@ -1866,9 +1884,11 @@ describe.skipIf(!identifiantsAdmin)('Suspension par le super-admin', () => {
       .post('/api/auth/login')
       .send({ email: EMAIL_GERANT, password: MDP_GERANT });
     expect(reconnexion.status).toBe(403);
-    // Établissement retiré de la liste publique
-    const etabs = await request(app).get('/api/auth/etablissements');
-    expect(etabs.body.map((e: { id: string }) => e.id)).not.toContain(etablissementId);
+    // Le code d'installation ne rattache plus aucune tablette
+    const rattachement = await request(app)
+      .post('/api/auth/terminal')
+      .send({ code: CODE_TERMINAL_TEST });
+    expect(rattachement.status).toBe(404);
     // Et le menu public (QR) est coupé aussi
     const menuPublic = await request(app).get(`/api/public/menu/${etablissementId}`);
     expect(menuPublic.status).toBe(404);
@@ -1881,5 +1901,108 @@ describe.skipIf(!identifiantsAdmin)('Suspension par le super-admin', () => {
     expect(reactivation.status).toBe(200);
     const acces = await gerant.get('/api/gerant/categories');
     expect(acces.status).toBe(200);
+  });
+});
+
+// La tablette se rattache une fois par code, au lieu de choisir son restaurant
+// dans une liste que n'importe qui pouvait lire.
+describe("Rattachement de la tablette par code d'installation", () => {
+  it("l'ancienne liste publique des établissements n'existe plus", async () => {
+    const res = await request(app).get('/api/auth/etablissements');
+    expect(res.status).toBe(404);
+  });
+
+  it('accepte le code quelle que soit la façon de le recopier', async () => {
+    for (const saisie of [CODE_TERMINAL_TEST, ' test-auto ', 'Test Auto']) {
+      const res = await request(app).post('/api/auth/terminal').send({ code: saisie });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ id: etablissementId, nom: 'Resto Test', ville: 'Testville' });
+    }
+  });
+
+  it('refuse un code inconnu sans rien laisser deviner', async () => {
+    const res = await request(app).post('/api/auth/terminal').send({ code: 'ZZZZ9999' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("Code d'installation inconnu");
+  });
+
+  it('le gérant lit son code et le régénère quand une tablette est perdue', async () => {
+    const parametres = await gerant.get('/api/gerant/parametres');
+    expect(parametres.body.codeTerminal).toBe('TEST-AUTO');
+
+    const regenere = await gerant.post('/api/gerant/terminal/code');
+    expect(regenere.status).toBe(200);
+    expect(regenere.body.codeTerminal).not.toBe('TEST-AUTO');
+
+    // L'ancien code est mort, le nouveau rattache.
+    const ancien = await request(app).post('/api/auth/terminal').send({ code: CODE_TERMINAL_TEST });
+    expect(ancien.status).toBe(404);
+    const nouveau = await request(app)
+      .post('/api/auth/terminal')
+      .send({ code: regenere.body.codeTerminal });
+    expect(nouveau.body.id).toBe(etablissementId);
+
+    await prisma.etablissement.update({
+      where: { id: etablissementId },
+      data: { codeTerminal: CODE_TERMINAL_TEST },
+    });
+  });
+});
+
+describe('Journal des connexions et révocation immédiate', () => {
+  it('trace les tentatives sans jamais enregistrer le code saisi', async () => {
+    await request(app).post('/api/auth/login-pin').send({ etablissementId, codePin: '0000' });
+    await request(app).post('/api/auth/login-pin').send({ etablissementId, codePin: PIN_SERVEUR_SANS });
+
+    const entrees = await prisma.connexionJournal.findMany({
+      where: { etablissementId },
+      orderBy: { creeLe: 'desc' },
+      take: 2,
+    });
+    expect(entrees[0].resultat).toBe('REUSSIE');
+    expect(entrees[0].acteur).toBe('SansDroit Test');
+    expect(entrees[0].etablissement).toBe('Resto Test');
+    expect(entrees[1].resultat).toBe('IDENTIFIANTS_INVALIDES');
+    // Un journal qui contiendrait les codes essayés serait pire que pas de journal.
+    const journalComplet = JSON.stringify(entrees);
+    expect(journalComplet).not.toContain(PIN_SERVEUR_SANS);
+    expect(journalComplet).not.toContain('0000');
+  });
+
+  it("un serveur désactivé perd la main sans attendre l'expiration de son jeton", async () => {
+    const sansDroit = await prisma.utilisateur.findFirstOrThrow({
+      where: { etablissementId, prenom: 'SansDroit' },
+    });
+    expect((await serveurSans.get('/api/caisse/menu')).status).toBe(200);
+
+    await prisma.utilisateur.update({
+      where: { id: sansDroit.id },
+      data: { statut: 'DESACTIVE' },
+    });
+    expect((await serveurSans.get('/api/caisse/menu')).status).toBe(401);
+
+    await prisma.utilisateur.update({ where: { id: sansDroit.id }, data: { statut: 'ACTIF' } });
+    expect((await serveurSans.get('/api/caisse/menu')).status).toBe(200);
+  });
+});
+
+describe.skipIf(!identifiantsAdmin)('Journal des connexions vu par le super-admin', () => {
+  const admin = request.agent(app);
+
+  it('liste les connexions et sait isoler les échecs', async () => {
+    const login = await admin.post('/api/auth/login').send({
+      email: process.env.SEED_SUPER_ADMIN_EMAIL,
+      password: process.env.SEED_SUPER_ADMIN_PASSWORD,
+    });
+    expect(login.status).toBe(200);
+
+    const toutes = await admin.get('/api/admin/connexions');
+    expect(toutes.status).toBe(200);
+    expect(toutes.body.length).toBeGreaterThan(0);
+
+    const echecs = await admin.get('/api/admin/connexions?echecs=true');
+    expect(echecs.status).toBe(200);
+    expect(echecs.body.length).toBeGreaterThan(0);
+    expect(echecs.body.every((c: { resultat: string }) => c.resultat !== 'REUSSIE')).toBe(true);
   });
 });
