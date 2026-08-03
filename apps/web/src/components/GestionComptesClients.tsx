@@ -174,6 +174,16 @@ export function GestionComptesClients() {
                 <div>
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-stone-900">
                     {compte.nomEnseigne}
+                    {/* Un compte de vitrine est reconstruit par le seed : le
+                        distinguer évite de le confondre avec un vrai client. */}
+                    {compte.demo && (
+                      <span
+                        title="Compte de démonstration : ses données sont effacées et reconstruites à chaque rafraîchissement de la vitrine."
+                        className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800"
+                      >
+                        démo
+                      </span>
+                    )}
                     <span
                       className={
                         compte.statut === 'ACTIF'

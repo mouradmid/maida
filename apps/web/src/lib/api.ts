@@ -321,6 +321,8 @@ export interface CompteClient {
   nomEnseigne: string;
   statut: 'ACTIF' | 'SUSPENDU';
   modules: ModuleCompte[];
+  // Compte de vitrine, reconstruit par le seed de démo (jamais un vrai client).
+  demo: boolean;
   creeLe: string;
   etablissements: Array<{ id: string; nom: string; ville: string | null }>;
   gerants: Array<{ id: string; nom: string; prenom: string; email: string | null }>;

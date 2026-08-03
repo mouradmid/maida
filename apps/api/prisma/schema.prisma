@@ -116,6 +116,10 @@ model CompteClient {
   nomEnseigne String
   statut      StatutCompteClient @default(ACTIF)
   modules     ModuleCompte[]     @default([FOOD_COST, QR_MENU])
+  // Compte de vitrine, reconstruit par scripts/seed-demo.ts. Seuls ces comptes
+  // sont purgeables : les données d'un vrai client ne doivent jamais dépendre
+  // d'un rafraîchissement de la démo.
+  demo        Boolean            @default(false)
   creeLe      DateTime           @default(now())
 
   etablissements Etablissement[]
@@ -142,33 +146,33 @@ model Etablissement {
   compteClientId String
   compteClient   CompteClient @relation(fields: [compteClientId], references: [id])
 
-  utilisateurs   Utilisateur[]
-  categories     Categorie[]
-  produits       Produit[]
-  commandes      Commande[]
-  tables         Table[]
-  additions      Addition[]
-  annulations    Annulation[]
-  journeesCaisse JourneeCaisse[]
-  remises        Remise[]
-  reservations   Reservation[]
+  utilisateurs    Utilisateur[]
+  categories      Categorie[]
+  produits        Produit[]
+  commandes       Commande[]
+  tables          Table[]
+  additions       Addition[]
+  annulations     Annulation[]
+  journeesCaisse  JourneeCaisse[]
+  remises         Remise[]
+  reservations    Reservation[]
   demandesClients DemandeClient[]
 
   @@map("etablissements")
 }
 
 model Utilisateur {
-  id             String            @id @default(cuid())
+  id             String             @id @default(cuid())
   role           RoleUtilisateur
   nom            String
   prenom         String
-  email          String?           @unique
+  email          String?            @unique
   motDePasseHash String?
   codePinHash    String?
   droits         DroitUtilisateur[] @default([])
-  statut         StatutUtilisateur @default(ACTIF)
-  creeLe         DateTime          @default(now())
-  majLe          DateTime          @updatedAt
+  statut         StatutUtilisateur  @default(ACTIF)
+  creeLe         DateTime           @default(now())
+  majLe          DateTime           @updatedAt
 
   compteClientId String?
   compteClient   CompteClient? @relation(fields: [compteClientId], references: [id])
@@ -177,8 +181,8 @@ model Utilisateur {
   etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
 
   commandes            Commande[]
-  annulationsValidees  Annulation[] @relation("AnnulationsValidees")
-  annulationsDemandees Annulation[] @relation("AnnulationsDemandees")
+  annulationsValidees  Annulation[]    @relation("AnnulationsValidees")
+  annulationsDemandees Annulation[]    @relation("AnnulationsDemandees")
   journeesOuvertes     JourneeCaisse[] @relation("JourneesOuvertes")
   journeesCloturees    JourneeCaisse[] @relation("JourneesCloturees")
   cloturesDemandees    JourneeCaisse[] @relation("CloturesDemandees")
@@ -191,14 +195,14 @@ model Utilisateur {
 }
 
 model Categorie {
-  id     String          @id @default(cuid())
-  nom    String
-  type   TypeCategorie   @default(NOURRITURE)
+  id             String          @id @default(cuid())
+  nom            String
+  type           TypeCategorie   @default(NOURRITURE)
   // Suite de service par défaut des produits de la catégorie :
   // 1 = entrée (préparée dès l'envoi), 2 = plat, 3 = dessert.
-  suiteParDefaut Int      @default(1)
-  statut StatutCategorie @default(ACTIF)
-  creeLe DateTime        @default(now())
+  suiteParDefaut Int             @default(1)
+  statut         StatutCategorie @default(ACTIF)
+  creeLe         DateTime        @default(now())
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
@@ -269,17 +273,17 @@ model OptionValeur {
 }
 
 model Commande {
-  id          String         @id @default(cuid())
-  canal       CanalCommande
-  noteCuisine String?
-  statut      StatutCommande @default(ENVOYEE)
+  id             String         @id @default(cuid())
+  canal          CanalCommande
+  noteCuisine    String?
+  statut         StatutCommande @default(ENVOYEE)
   // Générée par la caisse pour les commandes prises hors ligne : garantit
   // qu'une resynchronisation répétée ne crée jamais de doublon.
-  cleIdempotence String?     @unique
+  cleIdempotence String?        @unique
   // La cuisine prépare les suites <= suiteReclamee ; le serveur « réclame »
   // la suivante quand la table est prête.
-  suiteReclamee  Int         @default(1)
-  creeLe      DateTime       @default(now())
+  suiteReclamee  Int            @default(1)
+  creeLe         DateTime       @default(now())
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
@@ -298,20 +302,20 @@ model Commande {
 }
 
 model LigneCommande {
-  id              String   @id @default(cuid())
-  nomProduit      String
-  prixUnitaire    Decimal  @db.Decimal(10, 2)
+  id                  String   @id @default(cuid())
+  nomProduit          String
+  prixUnitaire        Decimal  @db.Decimal(10, 2)
   // Coût de revient du produit figé au moment de la commande (comme prixUnitaire).
   coutRevientUnitaire Decimal? @db.Decimal(10, 2)
   // Taux de TVA figé au moment de la commande (null sur l'historique d'avant la TVA).
-  tauxTva         Int?
+  tauxTva             Int?
   // Suite de service (1 = entrée, 2 = plat, 3 = dessert), corrigeable à la caisse.
-  suite           Int      @default(1)
-  quantite        Int
-  quantitePayee   Int      @default(0)
-  quantiteAnnulee Int      @default(0)
-  quantiteOfferte Int      @default(0)
-  creeLe          DateTime @default(now())
+  suite               Int      @default(1)
+  quantite            Int
+  quantitePayee       Int      @default(0)
+  quantiteAnnulee     Int      @default(0)
+  quantiteOfferte     Int      @default(0)
+  creeLe              DateTime @default(now())
 
   commandeId String
   commande   Commande @relation(fields: [commandeId], references: [id])
@@ -380,14 +384,14 @@ model Remise {
 }
 
 model Paiement {
-  id            String       @id @default(cuid())
-  montant       Decimal      @db.Decimal(10, 2)
-  moyenPaiement ModePaiement
-  montantRecu   Decimal?     @db.Decimal(10, 2)
+  id             String       @id @default(cuid())
+  montant        Decimal      @db.Decimal(10, 2)
+  moyenPaiement  ModePaiement
+  montantRecu    Decimal?     @db.Decimal(10, 2)
   // Générée par la caisse pour les encaissements hors ligne : garantit
   // qu'une resynchronisation répétée ne crée jamais de double paiement.
-  cleIdempotence String?     @unique
-  creeLe        DateTime     @default(now())
+  cleIdempotence String?      @unique
+  creeLe         DateTime     @default(now())
 
   additionId String
   addition   Addition @relation(fields: [additionId], references: [id])
@@ -524,7 +528,7 @@ model DemandeClient {
   creeLe DateTime            @default(now())
 
   tableId String
-  table   Table @relation(fields: [tableId], references: [id])
+  table   Table  @relation(fields: [tableId], references: [id])
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
@@ -566,7 +570,7 @@ model Reservation {
   cleIdempotence String?           @unique
 
   tableId String
-  table   Table @relation(fields: [tableId], references: [id])
+  table   Table  @relation(fields: [tableId], references: [id])
 
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])

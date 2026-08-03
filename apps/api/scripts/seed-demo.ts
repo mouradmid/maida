@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
 import { prisma } from '../src/lib/prisma';
 
 // Seed de démo : remet l'établissement « Le Bon Grill - Hydra » dans un état
@@ -220,6 +221,24 @@ const TAILLES_PAR_FORME = {
 };
 
 async function main() {
+  // Garde-fou : ce script efface pour reconstruire. Il ne touche qu'aux comptes
+  // marqués « démo », mais s'il découvre un compte qui ne l'est pas, c'est le
+  // signe qu'un vrai client vit sur cette base — on s'arrête et on demande.
+  const reels = await comptesReels(prisma);
+  if (reels.length > 0 && !process.argv.includes('--force')) {
+    console.error(
+      `\nARRÊT : ${reels.length} compte(s) client hors démonstration sur cette base :\n` +
+        reels.map((c) => `  - ${c.nomEnseigne} [${c.statut}]`).join('\n') +
+        `\n\nCe script reconstruit la vitrine et n'est pas prévu pour cohabiter avec\n` +
+        `de vrais clients. Deux issues :\n` +
+        `  - ces comptes SONT de la démo → les marquer :\n` +
+        `      UPDATE comptes_clients SET demo = true WHERE "nomEnseigne" = '...';\n` +
+        `  - ce sont de vrais clients → ne pas rafraîchir la démo ici.\n\n` +
+        `(--force passe outre : la purge restera limitée aux comptes démo.)\n`,
+    );
+    process.exit(1);
+  }
+
   const etablissement = await prisma.etablissement.findFirst({
     where: { nom: { contains: 'Bon Grill' } },
   });
@@ -262,7 +281,7 @@ async function main() {
   // et les coordonnées sont normalisées (l'adresse d'origine avait un encodage cassé).
   await prisma.compteClient.update({
     where: { id: etablissement.compteClientId },
-    data: { statut: 'ACTIF' },
+    data: { statut: 'ACTIF', demo: true },
   });
   await prisma.etablissement.update({
     where: { id: etablissementId },
@@ -278,7 +297,7 @@ async function main() {
   let palmeraie = await prisma.compteClient.findFirst({ where: { nomEnseigne: 'La Palmeraie' } });
   if (!palmeraie) {
     palmeraie = await prisma.compteClient.create({
-      data: { nomEnseigne: 'La Palmeraie', statut: 'SUSPENDU' },
+      data: { nomEnseigne: 'La Palmeraie', statut: 'SUSPENDU', demo: true },
     });
     const etabPalmeraie = await prisma.etablissement.create({
       data: { nom: 'La Palmeraie - Front de mer', ville: 'Oran', compteClientId: palmeraie.id },
@@ -295,28 +314,17 @@ async function main() {
       },
     });
   } else {
-    await prisma.compteClient.update({ where: { id: palmeraie.id }, data: { statut: 'SUSPENDU' } });
+    await prisma.compteClient.update({
+      where: { id: palmeraie.id },
+      data: { statut: 'SUSPENDU', demo: true },
+    });
   }
   console.log('Compte « La Palmeraie » (Oran) présent et suspendu — démo super-admin.');
 
-  // Purge des données transactionnelles et du menu existant
-  await prisma.paiementLigne.deleteMany({});
-  await prisma.paiement.deleteMany({});
-  await prisma.journeeCaisse.deleteMany({});
-  await prisma.annulation.deleteMany({});
-  await prisma.remise.deleteMany({});
-  await prisma.demandeClient.deleteMany({});
-  await prisma.ligneCommandeOption.deleteMany({});
-  await prisma.ligneCommande.deleteMany({});
-  await prisma.commande.deleteMany({});
-  await prisma.addition.deleteMany({});
-  await prisma.optionValeur.deleteMany({});
-  await prisma.groupeOption.deleteMany({});
-  await prisma.produit.deleteMany({});
-  await prisma.categorie.deleteMany({});
-  await prisma.reservation.deleteMany({});
-  await prisma.table.deleteMany({});
-  console.log('Anciennes données purgées.');
+  // Purge des données d'exploitation et du menu — des comptes de démo
+  // UNIQUEMENT. Un vrai client sur la même base n'est jamais touché.
+  const nbComptes = await purgerDonneesDemo(prisma);
+  console.log(`Anciennes données purgées (${nbComptes} compte(s) de démonstration).`);
 
   // Menu
   const produitsParNom = new Map<

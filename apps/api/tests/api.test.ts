@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
+import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
 import { prisma } from '../src/lib/prisma';
 
 const NOM_COMPTE_TEST = 'TEST-AUTO';
@@ -1763,6 +1764,79 @@ describe('Caractères accentués et non latins', () => {
 
     const enBase = await prisma.produit.findUniqueOrThrow({ where: { id: produitAccentsId } });
     expect(enBase.nom).toBe(NOM_ARABE);
+  });
+});
+
+// La base de production héberge la vitrine publique ET, à terme, de vrais
+// restaurants. Le seed de démo efface pour reconstruire : ces tests vérifient
+// qu'il ne peut atteindre que la vitrine.
+describe('Frontière entre la démonstration et les vrais clients', () => {
+  let compteVitrineId = '';
+  let etabVitrineId = '';
+
+  // Une fausse vitrine jetable : on ne touche pas au vrai compte de démo de la
+  // base de développement, que Mourad utilise pour travailler.
+  beforeAll(async () => {
+    const compte = await prisma.compteClient.create({
+      data: { nomEnseigne: 'VITRINE-TEST', demo: true },
+    });
+    compteVitrineId = compte.id;
+    const etab = await prisma.etablissement.create({
+      data: { nom: 'Vitrine Test', compteClientId: compte.id },
+    });
+    etabVitrineId = etab.id;
+    const categorie = await prisma.categorie.create({
+      data: { nom: 'Vitrine', etablissementId: etab.id },
+    });
+    await prisma.produit.create({
+      data: { nom: 'Plat vitrine', prix: 100, categorieId: categorie.id, etablissementId: etab.id },
+    });
+    await prisma.table.create({
+      data: { numero: 'V1', nombreCouverts: 2, etablissementId: etab.id },
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    await prisma.produit.deleteMany({ where: { etablissementId: etabVitrineId } });
+    await prisma.categorie.deleteMany({ where: { etablissementId: etabVitrineId } });
+    await prisma.table.deleteMany({ where: { etablissementId: etabVitrineId } });
+    await prisma.etablissement.deleteMany({ where: { compteClientId: compteVitrineId } });
+    await prisma.compteClient.delete({ where: { id: compteVitrineId } });
+  }, 60_000);
+
+  it('un compte client est un vrai client par défaut, jamais une démo', async () => {
+    const compteTest = await prisma.compteClient.findUniqueOrThrow({
+      where: { id: compteClientId },
+    });
+    expect(compteTest.demo).toBe(false);
+  });
+
+  // Sans ce garde-fou, rafraîchir la démo sur la base de production effacerait
+  // le chiffre d'affaires du premier vrai restaurant.
+  it('signale les comptes réels qui interdisent un rafraîchissement aveugle', async () => {
+    const reels = await comptesReels(prisma);
+    const noms = reels.map((c) => c.nomEnseigne);
+    expect(noms).toContain(NOM_COMPTE_TEST);
+    expect(noms).not.toContain('VITRINE-TEST');
+  });
+
+  it('la purge de la démo efface la vitrine et épargne le vrai client', async () => {
+    // Le compte de test porte des commandes créées par les tests précédents.
+    const avant = await prisma.commande.count({ where: { etablissementId } });
+    expect(avant).toBeGreaterThan(0);
+
+    await purgerDonneesDemo(prisma);
+
+    // La vitrine est vidée…
+    expect(await prisma.produit.count({ where: { etablissementId: etabVitrineId } })).toBe(0);
+    expect(await prisma.table.count({ where: { etablissementId: etabVitrineId } })).toBe(0);
+    // …mais le compte lui-même survit : le seed le repeuple ensuite.
+    expect(await prisma.compteClient.count({ where: { id: compteVitrineId } })).toBe(1);
+
+    // Et le vrai client n'a rien perdu.
+    expect(await prisma.commande.count({ where: { etablissementId } })).toBe(avant);
+    expect(await prisma.produit.count({ where: { etablissementId } })).toBeGreaterThan(0);
+    expect(await prisma.table.count({ where: { etablissementId } })).toBeGreaterThan(0);
   });
 });
 

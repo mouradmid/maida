@@ -16,6 +16,7 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
       nomEnseigne: true,
       statut: true,
       modules: true,
+      demo: true,
       creeLe: true,
       etablissements: { select: { id: true, nom: true, ville: true } },
       utilisateurs: {

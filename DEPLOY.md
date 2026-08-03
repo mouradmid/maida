@@ -39,7 +39,11 @@ Ensuite, chaque `git push` sur `main` redéploie automatiquement.
 
 - Les identifiants de démo sont affichés sur la page d'accueil : c'est voulu
   tant que le site sert de démo. À retirer avant d'accueillir un vrai client.
-- Pour remettre la démo au propre : `npx tsx scripts/seed-demo.ts` depuis
-  `apps/api` (attention : purge les données transactionnelles de tous les comptes).
+- Pour remettre la démo au propre, depuis `apps/api` :
+  `railway run --service maida -- npx tsx scripts/seed-demo.ts`
+  (`railway run` fournit la base de production, rien à copier-coller).
+  Le script ne purge que les comptes marqués **démo** et **refuse de tourner**
+  s'il découvre un compte client réel — les données d'un vrai restaurant ne
+  peuvent pas être emportées par un rafraîchissement de la vitrine.
 - Les connexions échouées sont limitées à 10 par quart d'heure et par IP
   (anti brute-force des PIN).
