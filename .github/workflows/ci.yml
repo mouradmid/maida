@@ -23,11 +23,13 @@ jobs:
           npm ci
           npm run lint
 
-      - name: Front — compilation, tests et build
+      # `npx tsc --noEmit` ne servait à rien ici : apps/web/tsconfig.json est un
+      # fichier « solution » (files: []), donc il ne vérifiait aucun fichier.
+      # C'est `npm run build` (tsc -b) qui type-vérifie réellement le front.
+      - name: Front — tests et compilation
         working-directory: apps/web
         run: |
           npm ci
-          npx tsc --noEmit
           npm test
           npm run build
 

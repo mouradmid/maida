@@ -36,7 +36,9 @@ interface PeripheriqueUsb {
   selectConfiguration(valeur: number): Promise<void>;
   claimInterface(numero: number): Promise<void>;
   releaseInterface(numero: number): Promise<void>;
-  transferOut(endpoint: number, donnees: BufferSource): Promise<{ status: string }>;
+  // On n'envoie que des octets ESC/POS : typer précisément évite le conflit
+  // entre BufferSource et Uint8Array<ArrayBufferLike> depuis TypeScript 5.7.
+  transferOut(endpoint: number, donnees: Uint8Array): Promise<{ status: string }>;
 }
 
 interface InterfaceUsb {

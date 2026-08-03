@@ -120,6 +120,11 @@ const CP858: Record<string, number> = {
 // Caractères typographiques absents de CP858 : on les rapproche plutôt que de
 // les perdre. L'apostrophe courbe et le tiret cadratin viennent des libellés de
 // l'application (« Crème brûlée à l’œuf », « Table 3 — 1 200 DA »).
+//
+// ATTENTION : les deux dernières clés sont des espaces Unicode distincts
+// (insécable U+00A0, fine insécable U+202F) que rien ne différencie à l'œil.
+// Avant d'ajouter une entrée, vérifier qu'elle n'existe pas déjà — un doublon
+// ici ne se voit pas en relisant, seul le compilateur le signale.
 const APPROXIMATIONS: Record<string, string> = {
   '’': "'",
   '‘': "'",
@@ -135,7 +140,6 @@ const APPROXIMATIONS: Record<string, string> = {
   Œ: 'OE',
   ' ': ' ', // espace insécable
   ' ': ' ', // espace fine insécable (séparateur de milliers français)
-  '’': "'",
 };
 
 /**
