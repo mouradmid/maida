@@ -417,6 +417,25 @@ export const api = {
       body: JSON.stringify({ code }),
     }),
 
+  // Récupération de mot de passe. La réponse est volontairement la même que
+  // l'adresse soit connue ou non : le formulaire ne doit pas servir d'annuaire.
+  demanderReinitialisation: (email: string) =>
+    apiFetch<{ message: string }>('/auth/mot-de-passe-oublie', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  verifierJetonReinitialisation: (jeton: string) =>
+    apiFetch<{ prenom: string; email: string | null }>(
+      `/auth/reinitialisation/${encodeURIComponent(jeton)}`,
+    ),
+
+  reinitialiserMotDePasse: (jeton: string, motDePasse: string) =>
+    apiFetch<{ message: string }>('/auth/reinitialisation', {
+      method: 'POST',
+      body: JSON.stringify({ jeton, motDePasse }),
+    }),
+
   loginPin: (etablissementId: string, codePin: string) =>
     apiFetch<Utilisateur>('/auth/login-pin', {
       method: 'POST',
@@ -855,6 +874,26 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  listReinitialisations: () =>
+    apiFetch<
+      Array<{
+        id: string;
+        jeton: string;
+        creeLe: string;
+        expireLe: string;
+        ip: string | null;
+        utilisateur: {
+          nom: string;
+          prenom: string;
+          email: string | null;
+          compteClient: { nomEnseigne: string } | null;
+        };
+      }>
+    >('/admin/reinitialisations'),
+
+  annulerReinitialisation: (id: string) =>
+    apiFetch<void>(`/admin/reinitialisations/${id}`, { method: 'DELETE' }),
 
   listErreurs: () =>
     apiFetch<

@@ -4,6 +4,7 @@ import { EspaceSuperAdmin } from './pages/EspaceSuperAdmin';
 import { EspaceGerant } from './pages/EspaceGerant';
 import { EspaceCaisse } from './pages/EspaceCaisse';
 import { MenuPublic } from './pages/MenuPublic';
+import { PageReinitialisation } from './pages/PageReinitialisation';
 import { MotifZellige } from './components/MotifZellige';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
         <Route path="/gerant" element={<EspaceGerant />} />
         <Route path="/caisse" element={<EspaceCaisse />} />
         <Route path="/menu/:etablissementId" element={<MenuPublic />} />
+        <Route path="/reinitialisation/:jeton" element={<PageReinitialisation />} />
       </Routes>
     </>
   );

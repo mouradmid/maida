@@ -15,6 +15,9 @@ const JWT_SECRET: string = getSecret();
 export interface TokenPayload {
   sub: string;
   role: 'SUPER_ADMIN' | 'GERANT' | 'SERVEUR';
+  // Posé par jsonwebtoken à la signature (en secondes). Sert à savoir si une
+  // session est antérieure à un changement de mot de passe.
+  iat?: number;
 }
 
 export function signToken(payload: TokenPayload): string {

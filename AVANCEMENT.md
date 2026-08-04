@@ -107,6 +107,9 @@
 - **Journal des erreurs serveur**
 - **Journal des connexions** : qui s'est connecté, où, depuis quelle adresse, et surtout les
   tentatives refusées — filtrables d'un clic pour repérer un acharnement sur un code PIN
+- **Mots de passe oubliés** : quand un gérant déclare l'oubli, sa demande arrive ici avec un lien
+  à usage unique (valable une heure) à lui transmettre par téléphone ou WhatsApp — en attendant
+  l'envoi automatique par e-mail, qui remplacera ce seul maillon
 
 ### Identité visuelle
 
@@ -118,7 +121,7 @@
 
 - Hébergement Railway avec déploiement automatique à chaque push
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **118 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **126 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
@@ -127,12 +130,18 @@
   établissements n'est plus publique ; le freinage des codes PIN compte désormais **par
   restaurant** et non par adresse, pour qu'un serveur maladroit ne bloque plus toute la salle ;
   et un employé désactivé perd la main **immédiatement**, sans attendre l'expiration de sa session
+- **Mot de passe oublié** : le gérant se dépanne depuis son écran de connexion — lien à usage
+  unique valable une heure, formulaire qui ne révèle jamais si une adresse est connue, et
+  changement qui ferme toutes les sessions ouvertes avec l'ancien mot de passe
 - **Accents verrouillés de bout en bout** : un établissement nommé « Le Café Étoilé » traverse
   intact la saisie, la base, le menu QR et les tickets — vérifié par des tests dédiés
 
 ## 🔜 Prochaines étapes envisagées
 
 - [ ] **Premier restaurant pilote** (le produit est prêt)
+- [ ] **Nom de domaine + envoi d'e-mails** (~10 €/an) : débloque l'envoi automatique du lien de
+      mot de passe oublié, les confirmations de réservation, et une adresse crédible à la place
+      de l'URL Railway
 - [ ] Réservation en ligne par le client + email de confirmation
 - [ ] Hors-ligne : paiement par article et remises
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais

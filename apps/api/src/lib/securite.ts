@@ -1,7 +1,7 @@
-// Outils partagés du contrôle d'accès : code de rattachement des terminaux et
-// journal des connexions.
+// Outils partagés du contrôle d'accès : code de rattachement des terminaux,
+// jetons de réinitialisation de mot de passe, et journal des connexions.
 
-import { randomInt } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 import type { Request } from 'express';
 import type { ResultatConnexion, TypeConnexion } from '../generated/prisma/client';
 import { prisma } from './prisma';
@@ -33,9 +33,33 @@ export function formaterCodeTerminal(code: string): string {
   return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
 
+// Une heure : assez pour qu'un gérant reçoive le lien et le suive, assez court
+// pour qu'un lien oublié dans un historique ne serve plus à rien.
+export const DUREE_JETON_REINITIALISATION_MS = 60 * 60 * 1000;
+
+/**
+ * Jeton de réinitialisation : 32 octets de hasard, illisibles et impossibles à
+ * deviner. Contrairement au code d'installation, personne ne le tape à la main
+ * — il voyage dans une URL, donc on privilégie l'entropie à la lisibilité.
+ */
+export function genererJetonReinitialisation(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/**
+ * Une session ouverte avant le dernier changement de mot de passe ne vaut plus
+ * rien. Le jeton d'authentification date en secondes et la coupure en
+ * millisecondes : on tronque des deux côtés pour ne pas éjecter par erreur une
+ * session ouverte pendant la même seconde que le changement.
+ */
+export function sessionRevoquee(emiseLe: Date, sessionsInvalidesAvant: Date | null): boolean {
+  if (!sessionsInvalidesAvant) return false;
+  return Math.floor(emiseLe.getTime() / 1000) < Math.floor(sessionsInvalidesAvant.getTime() / 1000);
+}
+
 // L'IP réelle derrière le proxy de l'hébergeur (`trust proxy` est actif en
 // production), tronquée pour rester lisible en base.
-function ipDe(req: Request): string | null {
+export function ipDe(req: Request): string | null {
   return (req.ip ?? null)?.slice(0, 60) ?? null;
 }
 

@@ -168,9 +168,57 @@ adminRouter.post('/gerants/:id/mot-de-passe', async (req, res) => {
 
   await prisma.utilisateur.update({
     where: { id: gerant.id },
-    data: { motDePasseHash: await bcrypt.hash(motDePasse, 12) },
+    data: {
+      motDePasseHash: await bcrypt.hash(motDePasse, 12),
+      // Même règle que la réinitialisation en libre-service : changer le mot de
+      // passe met fin aux sessions ouvertes avec l'ancien.
+      sessionsInvalidesAvant: new Date(),
+    },
   });
 
+  // La demande du gérant, s'il en avait déposé une, n'a plus lieu d'être.
+  await prisma.jetonReinitialisation.deleteMany({
+    where: { utilisateurId: gerant.id, utiliseLe: null },
+  });
+
+  res.status(204).send();
+});
+
+/**
+ * Demandes de réinitialisation en attente.
+ *
+ * Tant que Maïda n'envoie pas d'e-mails, c'est ici que le lien atterrit :
+ * l'éditeur le lit et le transmet au gérant (téléphone, WhatsApp). Le jour où
+ * l'envoi automatique existera, cet écran ne servira plus que de trace.
+ */
+adminRouter.get('/reinitialisations', async (_req, res) => {
+  const demandes = await prisma.jetonReinitialisation.findMany({
+    where: { utiliseLe: null, expireLe: { gt: new Date() } },
+    orderBy: { creeLe: 'desc' },
+    select: {
+      id: true,
+      jeton: true,
+      creeLe: true,
+      expireLe: true,
+      ip: true,
+      utilisateur: {
+        select: {
+          nom: true,
+          prenom: true,
+          email: true,
+          compteClient: { select: { nomEnseigne: true } },
+        },
+      },
+    },
+  });
+
+  res.json(demandes);
+});
+
+// Annule une demande : utile si elle vient manifestement de quelqu'un d'autre
+// que le gérant, ou si le dépannage a été fait autrement.
+adminRouter.delete('/reinitialisations/:id', async (req, res) => {
+  await prisma.jetonReinitialisation.deleteMany({ where: { id: req.params.id } });
   res.status(204).send();
 });
 

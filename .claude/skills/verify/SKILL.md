@@ -31,6 +31,8 @@ script échoue (timeouts) même sur localhost.
   `input[type=password]` avec `karim@lebongrill.dz` / `demo1234` (PIN de
   validation gérant : 9999). Les onglets sont de simples boutons : « Rapports »,
   « Plan de salle », « Menu »…
+- Un parcours qui CHANGE le mot de passe de la démo (mot de passe oublié) doit
+  finir par un reseed, sinon `demo1234` ne marche plus pour les runs suivants.
 - Plan de salle (gérant) : les tables sont des `div.absolute[style*="left"]` ;
   la position en base se lit dans `style.left` / `style.top`. Le glisser-déposer
   utilise les événements POINTER, donc `page.mouse.move/down/up` fonctionne —
@@ -54,6 +56,19 @@ script échoue (timeouts) même sur localhost.
 - `page.evaluate` ne sait pas sérialiser un `DOMRect` : renvoyer des nombres
   (`rect.x + rect.width / 2`), sinon `page.mouse.move` échoue sur
   « double value expected ».
+- **Scénarios à plusieurs acteurs** (gérant + éditeur + visiteur en parallèle) :
+  trois pièges qui se ressemblent tous à un blocage sans message clair.
+  1. Les onglets d'un même navigateur **partagent les cookies** — la connexion
+     de l'éditeur écrase la session du gérant. Un `browser.createBrowserContext()`
+     par acteur.
+  2. `page.waitForFunction` scrute par `requestAnimationFrame`, **gelé sur un
+     onglet d'arrière-plan** : l'attente ne rend jamais la main. Scruter depuis
+     Node (`page.evaluate` dans une boucle avec `sleep`).
+  3. `page.click(selecteur)` attend un `scrollIntoViewIfNeeded` lui aussi bâti
+     sur rAF → « Runtime.callFunctionOn timed out ». Faire `page.bringToFront()`
+     avant tout clic sur une page non active.
+- Le triple-clic ne sélectionne PAS le contenu d'un `input[type=password]` : la
+  nouvelle saisie s'ajoute à l'ancienne. Vider avec Ctrl+A avant de retaper.
 - Corriger un bug ne prouve rien tant qu'on n'a pas vérifié que le parcours
   ÉCHOUE sans le correctif : remettre l'ancien code le temps d'un run.
 - Les tests vitest et le seed écrivent dans la branche Neon Dev (partagée avec

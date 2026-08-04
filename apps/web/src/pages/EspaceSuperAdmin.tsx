@@ -2,6 +2,7 @@ import { LoginMotDePasse } from '../components/LoginMotDePasse';
 import { PageConnexion } from '../components/PageConnexion';
 import { EnTeteEspace } from '../components/EnTeteEspace';
 import { GestionComptesClients } from '../components/GestionComptesClients';
+import { DemandesReinitialisation } from '../components/DemandesReinitialisation';
 import { JournalConnexions } from '../components/JournalConnexions';
 import { JournalErreurs } from '../components/JournalErreurs';
 import { useMe } from '../hooks/useMe';
@@ -18,6 +19,8 @@ export function EspaceSuperAdmin() {
       <div className="min-h-screen">
         <EnTeteEspace espace="Super-admin" user={user} onLogout={refresh} />
         <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+          {/* En tête : ce qui attend une action de ta part. */}
+          <DemandesReinitialisation />
           <GestionComptesClients />
           <JournalConnexions />
           <JournalErreurs />

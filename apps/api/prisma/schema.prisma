@@ -179,6 +179,12 @@ model Utilisateur {
   creeLe         DateTime           @default(now())
   majLe          DateTime           @updatedAt
 
+  // Coupe les sessions ouvertes avant cette date. Les jetons d'authentification
+  // sont signés, pas stockés : sans ce repère, quelqu'un qui aurait volé un mot
+  // de passe resterait connecté jusqu'à huit heures APRÈS que le gérant l'ait
+  // changé — ce qui viderait la réinitialisation de son sens.
+  sessionsInvalidesAvant DateTime?
+
   compteClientId String?
   compteClient   CompteClient? @relation(fields: [compteClientId], references: [id])
 
@@ -195,8 +201,33 @@ model Utilisateur {
   remisesDemandees     Remise[]        @relation("RemisesDemandees")
   reservationsPrises   Reservation[]
   demandesTraitees     DemandeClient[]
+  jetonsReinitialisation JetonReinitialisation[]
 
   @@map("utilisateurs")
+}
+
+// Demande de réinitialisation de mot de passe, à usage unique et de courte durée.
+//
+// Le jeton est stocké EN CLAIR, contrairement à un mot de passe : tant que
+// Maïda n'envoie pas d'e-mails, c'est l'éditeur qui lit le lien dans son espace
+// et le transmet au gérant par téléphone. Le compromis est assumé et borné —
+// une heure de validité, un seul usage, un seul jeton vivant par personne, et
+// il n'est lisible que par le super-admin authentifié. Le jour où l'envoi
+// automatique existera, ce champ pourra passer à un hash sans rien changer
+// d'autre : la validation compare déjà le jeton reçu à celui-ci.
+model JetonReinitialisation {
+  id            String      @id @default(cuid())
+  jeton         String      @unique
+  utilisateurId String
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  creeLe        DateTime    @default(now())
+  expireLe      DateTime
+  utiliseLe     DateTime?
+  // D'où venait la demande : utile si quelqu'un s'amuse à en déclencher.
+  ip            String?
+
+  @@index([utilisateurId])
+  @@map("jetons_reinitialisation")
 }
 
 model Categorie {
@@ -612,6 +643,10 @@ model Table {
 enum TypeConnexion {
   MOT_DE_PASSE
   PIN
+  // Changement de mot de passe via un lien de réinitialisation. Ce n'est pas
+  // une connexion, mais ça se lit dans la même frise quand on enquête sur un
+  // compte : « qui a changé quoi, et depuis où ».
+  REINITIALISATION
 }
 
 enum ResultatConnexion {

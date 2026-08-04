@@ -4,7 +4,13 @@ import { AUTH_COOKIE_NAME, verifyToken } from '../lib/jwt';
 declare global {
   namespace Express {
     interface Request {
-      user?: { id: string; role: 'SUPER_ADMIN' | 'GERANT' | 'SERVEUR' };
+      user?: {
+        id: string;
+        role: 'SUPER_ADMIN' | 'GERANT' | 'SERVEUR';
+        // Date d'émission de la session, pour la comparer à un éventuel
+        // changement de mot de passe.
+        emiseLe: Date;
+      };
     }
   }
 }
@@ -18,7 +24,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
   try {
     const payload = verifyToken(token);
-    req.user = { id: payload.sub, role: payload.role };
+    req.user = {
+      id: payload.sub,
+      role: payload.role,
+      emiseLe: new Date((payload.iat ?? 0) * 1000),
+    };
     next();
   } catch {
     res.status(401).json({ error: 'Session invalide ou expirée' });

@@ -55,19 +55,29 @@ async function purgerCompteTest() {
   await prisma.produit.deleteMany({ where: filtreEtab });
   await prisma.categorie.deleteMany({ where: filtreEtab });
   await prisma.table.deleteMany({ where: filtreEtab });
-  await prisma.utilisateur.deleteMany({ where: { compteClientId: compte.id } });
   // Le journal des connexions n'a volontairement aucune clé étrangère (il doit
   // survivre à ce qu'il décrit) : rien ne le nettoie tout seul, et sans ça les
-  // tentatives des tests polluent le journal de la base de développement.
+  // tentatives des tests polluent le journal de la base de développement. Les
+  // identifiants se lisent AVANT la suppression des utilisateurs.
   const etablissements = await prisma.etablissement.findMany({
+    where: { compteClientId: compte.id },
+    select: { id: true },
+  });
+  const utilisateurs = await prisma.utilisateur.findMany({
     where: { compteClientId: compte.id },
     select: { id: true },
   });
   await prisma.connexionJournal.deleteMany({
     where: {
-      OR: [{ etablissementId: { in: etablissements.map((e) => e.id) } }, { acteur: EMAIL_GERANT }],
+      OR: [
+        { etablissementId: { in: etablissements.map((e) => e.id) } },
+        { utilisateurId: { in: utilisateurs.map((u) => u.id) } },
+        { acteur: EMAIL_GERANT },
+      ],
     },
   });
+  // Les jetons de réinitialisation partent en cascade avec leur utilisateur.
+  await prisma.utilisateur.deleteMany({ where: { compteClientId: compte.id } });
   await prisma.etablissement.deleteMany({ where: { compteClientId: compte.id } });
   await prisma.compteClient.delete({ where: { id: compte.id } });
 }
@@ -2004,5 +2014,213 @@ describe.skipIf(!identifiantsAdmin)('Journal des connexions vu par le super-admi
     expect(echecs.status).toBe(200);
     expect(echecs.body.length).toBeGreaterThan(0);
     expect(echecs.body.every((c: { resultat: string }) => c.resultat !== 'REUSSIE')).toBe(true);
+  });
+});
+
+// Placé en dernier : ces tests changent le mot de passe du gérant et coupent sa
+// session. L'état est rendu à la fin, mais rien ne doit s'exécuter entre-temps.
+describe('Mot de passe oublié', () => {
+  const NOUVEAU_MDP = 'nouveau-mdp-test-1234';
+  let gerantId = '';
+
+  beforeAll(async () => {
+    const g = await prisma.utilisateur.findUniqueOrThrow({ where: { email: EMAIL_GERANT } });
+    gerantId = g.id;
+  });
+
+  afterAll(async () => {
+    // Remise en état : le mot de passe d'origine et une session gérant valide,
+    // pour ne rien laisser de cassé derrière ces tests.
+    await prisma.utilisateur.update({
+      where: { id: gerantId },
+      data: {
+        motDePasseHash: await bcrypt.hash(MDP_GERANT, 12),
+        sessionsInvalidesAvant: null,
+      },
+    });
+    await gerant.post('/api/auth/login').send({ email: EMAIL_GERANT, password: MDP_GERANT });
+  });
+
+  it("répond la même chose que l'adresse existe ou non", async () => {
+    const inconnue = await request(app)
+      .post('/api/auth/mot-de-passe-oublie')
+      .send({ email: 'personne@nulle-part.dz' });
+    const connue = await request(app)
+      .post('/api/auth/mot-de-passe-oublie')
+      .send({ email: EMAIL_GERANT });
+
+    expect(inconnue.status).toBe(200);
+    expect(connue.status).toBe(200);
+    expect(connue.body).toEqual(inconnue.body);
+
+    // Seule l'adresse connue a réellement produit une demande.
+    expect(await prisma.jetonReinitialisation.count({ where: { utilisateurId: gerantId } })).toBe(1);
+  });
+
+  it("accepte l'adresse quelle que soit la casse, et remplace la demande précédente", async () => {
+    const premier = await prisma.jetonReinitialisation.findFirstOrThrow({
+      where: { utilisateurId: gerantId },
+    });
+
+    const res = await request(app)
+      .post('/api/auth/mot-de-passe-oublie')
+      .send({ email: EMAIL_GERANT.toUpperCase() });
+    expect(res.status).toBe(200);
+
+    const jetons = await prisma.jetonReinitialisation.findMany({
+      where: { utilisateurId: gerantId },
+    });
+    expect(jetons).toHaveLength(1);
+    expect(jetons[0].jeton).not.toBe(premier.jeton);
+
+    // L'ancien lien est mort sur-le-champ.
+    const ancien = await request(app).get(`/api/auth/reinitialisation/${premier.jeton}`);
+    expect(ancien.status).toBe(404);
+  });
+
+  // Un serveur se connecte au code PIN et n'a pas de mot de passe : il n'y a
+  // rien à réinitialiser, même s'il a renseigné une adresse.
+  it('un compte sans mot de passe ne déclenche rien', async () => {
+    const serveurSansMdp = await prisma.utilisateur.findFirstOrThrow({
+      where: { etablissementId, prenom: 'SansDroit' },
+    });
+    const email = 'serveur@test-auto.maida';
+    await prisma.utilisateur.update({ where: { id: serveurSansMdp.id }, data: { email } });
+
+    const avant = await prisma.jetonReinitialisation.count();
+    const res = await request(app).post('/api/auth/mot-de-passe-oublie').send({ email });
+    expect(res.status).toBe(200);
+    expect(await prisma.jetonReinitialisation.count()).toBe(avant);
+
+    await prisma.utilisateur.update({ where: { id: serveurSansMdp.id }, data: { email: null } });
+  });
+
+  it('un lien expiré ne vaut plus rien', async () => {
+    const jeton = await prisma.jetonReinitialisation.findFirstOrThrow({
+      where: { utilisateurId: gerantId },
+    });
+    await prisma.jetonReinitialisation.update({
+      where: { id: jeton.id },
+      data: { expireLe: new Date(Date.now() - 1000) },
+    });
+
+    expect((await request(app).get(`/api/auth/reinitialisation/${jeton.jeton}`)).status).toBe(404);
+    const refus = await request(app)
+      .post('/api/auth/reinitialisation')
+      .send({ jeton: jeton.jeton, motDePasse: NOUVEAU_MDP });
+    expect(refus.status).toBe(404);
+
+    // Remis en état pour la suite.
+    await prisma.jetonReinitialisation.update({
+      where: { id: jeton.id },
+      data: { expireLe: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+  });
+
+  it('refuse un mot de passe trop court', async () => {
+    const jeton = await prisma.jetonReinitialisation.findFirstOrThrow({
+      where: { utilisateurId: gerantId },
+    });
+    const res = await request(app)
+      .post('/api/auth/reinitialisation')
+      .send({ jeton: jeton.jeton, motDePasse: 'court' });
+    expect(res.status).toBe(400);
+  });
+
+  it("change le mot de passe, coupe les sessions ouvertes, et ne sert qu'une fois", async () => {
+    // La session gérant en cours fonctionne encore avant le changement.
+    expect((await gerant.get('/api/gerant/categories')).status).toBe(200);
+
+    const jeton = await prisma.jetonReinitialisation.findFirstOrThrow({
+      where: { utilisateurId: gerantId },
+    });
+    const apercu = await request(app).get(`/api/auth/reinitialisation/${jeton.jeton}`);
+    expect(apercu.status).toBe(200);
+    expect(apercu.body.prenom).toBe('Gérant');
+
+    const changement = await request(app)
+      .post('/api/auth/reinitialisation')
+      .send({ jeton: jeton.jeton, motDePasse: NOUVEAU_MDP });
+    expect(changement.status).toBe(200);
+
+    // L'ancien mot de passe ne vaut plus rien, le nouveau ouvre la porte.
+    const ancien = await request(app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL_GERANT, password: MDP_GERANT });
+    expect(ancien.status).toBe(401);
+    const nouveau = await request(app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL_GERANT, password: NOUVEAU_MDP });
+    expect(nouveau.status).toBe(200);
+
+    // Et la session ouverte AVANT le changement est éjectée : c'est tout
+    // l'intérêt de la manœuvre si quelqu'un d'autre était connecté.
+    expect((await gerant.get('/api/gerant/categories')).status).toBe(401);
+    expect((await gerant.get('/api/auth/me')).status).toBe(401);
+
+    // Le jeton est consommé.
+    const rejeu = await request(app)
+      .post('/api/auth/reinitialisation')
+      .send({ jeton: jeton.jeton, motDePasse: 'encore-un-autre-1234' });
+    expect(rejeu.status).toBe(404);
+
+    // Et la réinitialisation laisse une trace.
+    const trace = await prisma.connexionJournal.findFirstOrThrow({
+      where: { utilisateurId: gerantId, type: 'REINITIALISATION' },
+      orderBy: { creeLe: 'desc' },
+    });
+    expect(trace.resultat).toBe('REUSSIE');
+  });
+});
+
+describe.skipIf(!identifiantsAdmin)('Demandes de mot de passe vues par le super-admin', () => {
+  const admin = request.agent(app);
+  let gerantId = '';
+
+  beforeAll(async () => {
+    const g = await prisma.utilisateur.findUniqueOrThrow({ where: { email: EMAIL_GERANT } });
+    gerantId = g.id;
+    await admin.post('/api/auth/login').send({
+      email: process.env.SEED_SUPER_ADMIN_EMAIL,
+      password: process.env.SEED_SUPER_ADMIN_PASSWORD,
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.jetonReinitialisation.deleteMany({ where: { utilisateurId: gerantId } });
+  });
+
+  it("voit la demande en attente avec son lien, et peut l'annuler", async () => {
+    await request(app).post('/api/auth/mot-de-passe-oublie').send({ email: EMAIL_GERANT });
+
+    const liste = await admin.get('/api/admin/reinitialisations');
+    expect(liste.status).toBe(200);
+    const demande = liste.body.find(
+      (d: { utilisateur: { email: string } }) => d.utilisateur.email === EMAIL_GERANT,
+    );
+    expect(demande).toBeDefined();
+    expect(demande.jeton).toBeTruthy();
+
+    const annulation = await admin.delete(`/api/admin/reinitialisations/${demande.id}`);
+    expect(annulation.status).toBe(204);
+
+    // Le lien annulé ne mène plus nulle part.
+    expect((await request(app).get(`/api/auth/reinitialisation/${demande.jeton}`)).status).toBe(404);
+  });
+
+  it("le dépannage manuel par l'éditeur efface la demande en cours", async () => {
+    await request(app).post('/api/auth/mot-de-passe-oublie').send({ email: EMAIL_GERANT });
+    expect(
+      await prisma.jetonReinitialisation.count({ where: { utilisateurId: gerantId, utiliseLe: null } }),
+    ).toBe(1);
+
+    const reset = await admin
+      .post(`/api/admin/gerants/${gerantId}/mot-de-passe`)
+      .send({ motDePasse: MDP_GERANT });
+    expect(reset.status).toBe(204);
+
+    expect(
+      await prisma.jetonReinitialisation.count({ where: { utilisateurId: gerantId, utiliseLe: null } }),
+    ).toBe(0);
   });
 });
