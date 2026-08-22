@@ -29,8 +29,8 @@ script échoue (timeouts) même sur localhost.
   ANNULER/CLOTURER/REMISER). Il n'y a plus de liste d'établissements.
 - Login gérant : aller sur `/gerant`, remplir `input[type=email]` /
   `input[type=password]` avec `karim@lebongrill.dz` / `demo1234` (PIN de
-  validation gérant : 9999). Les onglets sont de simples boutons : « Rapports »,
-  « Plan de salle », « Menu »…
+  validation gérant : 9999). Les onglets sont des boutons dans un `<nav>`
+  latéral (`NavigationGerant`) : « Rapports », « Plan de salle », « Menu »…
 - Un parcours qui CHANGE le mot de passe de la démo (mot de passe oublié) doit
   finir par un reseed, sinon `demo1234` ne marche plus pour les runs suivants.
 - Plan de salle (gérant) : les tables sont des `div.absolute[style*="left"]` ;
@@ -39,11 +39,27 @@ script échoue (timeouts) même sur localhost.
   passer des coordonnées FRACTIONNAIRES (`x + 40.6`), c'est ce que produit un
   écran Windows à 125 % et ça a déjà révélé un bug de persistance.
 - Plan de salle (caisse) : boutons `button.absolute` ; une table libre a la classe
-  `bg-white`, une occupée `bg-brand-100`. Sélectionner une table affiche son
+  `bg-card` (et NON `bg-white` : le thème sombre a chassé les couleurs en dur),
+  une occupée `bg-brand-100`. Plus sûr encore : une table libre n'affiche pas de
+  montant (`!textContent.includes('DA')`). Sélectionner une table affiche son
   panneau de commande unifié à droite (« Déjà envoyé » + « à envoyer », bouton
   « Envoyer en cuisine »).
+- Un parcours qui envoie des commandes OCCUPE des tables. Après quelques runs il
+  n'en reste plus de libre et le scénario échoue pour une raison sans rapport :
+  reseeder entre deux campagnes.
+- Thème sombre : `page.emulateMediaFeatures([{name:'prefers-color-scheme',
+  value:'dark'}])`, un contexte de navigateur par thème. Contrôler la bascule en
+  lisant les tokens (`getComputedStyle(document.documentElement)
+  .getPropertyValue('--bg')`), pas seulement à l'œil sur la capture.
 - Cliquer un élément par texte : filtrer `document.querySelectorAll('button')`
   sur `textContent` en EXCLUANT les conteneurs (`!b.querySelector('button')`).
+- Un défaut de superposition (« ce badge passe par-dessus le modal ») ne se
+  prouve pas à la capture : interroger `document.elementFromPoint(x, y)` au
+  centre de l'élément suspect. Et pour trouver le coupable, remonter la chaîne
+  des parents des DEUX éléments en notant ce qui crée un contexte d'empilement
+  (`position: sticky` en crée un, même sans z-index — c'est ce qui emprisonnait
+  les modals déclarés dans le panneau de droite ; ils sont depuis montés par
+  portail sur `<body>` via `components/Modal.tsx`).
 
 ## Pièges connus
 
