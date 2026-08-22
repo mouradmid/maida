@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type ProduitMenu } from '../lib/api';
 import { boutonPrimaire, boutonSecondaire, champ, messageErreur } from '../lib/ui';
+import { Modal } from './Modal';
 
 // Gestion du stock d'un produit depuis la caisse (droit GERER_STOCK) :
 // marquer une rupture, activer le suivi de quantité, ajuster la quantité.
@@ -38,12 +39,9 @@ export function ModalStock({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-      onClick={onFerme}
-    >
+    <Modal onFondClique={onFerme}>
       <div
-        className="flex w-full max-w-sm flex-col gap-4 rounded-xl bg-white p-5 shadow-xl"
+        className="flex w-full max-w-sm flex-col gap-4 rounded-xl bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
@@ -108,6 +106,6 @@ export function ModalStock({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,6 +1,6 @@
 import type { LignePanier } from '../hooks/usePanier';
 import type { Commande, LigneCommande } from '../lib/api';
-import { boutonPrimaire, champ } from '../lib/ui';
+import { boutonPrimaire, boutonRondBordure, champ } from '../lib/ui';
 
 export interface LigneRajout {
   entree: { ligne: LigneCommande; commande: Commande };
@@ -70,7 +70,7 @@ export function PanierCommande({
                   type="button"
                   onClick={() => onChangerRajout(ligneId, -1)}
                   aria-label={`Retirer un ${entree.ligne.nomProduit}`}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                  className={boutonRondBordure}
                 >
                   −
                 </button>
@@ -79,7 +79,7 @@ export function PanierCommande({
                   type="button"
                   onClick={() => onChangerRajout(ligneId, 1)}
                   aria-label={`Ajouter un ${entree.ligne.nomProduit}`}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                  className={boutonRondBordure}
                 >
                   +
                 </button>
@@ -113,14 +113,14 @@ export function PanierCommande({
                     {ligne.options.map((o) => `${o.nomGroupe} : ${o.valeur}`).join(' · ')}
                   </p>
                 )}
-                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-stone-500">
+                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-stone-500">
                   {ligne.produit.prix * ligne.quantite} DA
                   {surPlace && (
                     <button
                       type="button"
                       onClick={() => onChangerSuiteLigne(ligne.cle)}
                       title="Changer l'article de service (entrée / plat / dessert)"
-                      className="rounded-full border border-stone-300 bg-white px-2 py-px text-[10px] font-semibold text-stone-600 hover:bg-stone-50"
+                      className="flex min-h-11 items-center rounded-full border border-stone-300 bg-card px-3 text-xs font-semibold text-stone-600 transition-[colors,transform] hover:bg-stone-50 active:scale-95"
                     >
                       Suite {ligne.suite}
                     </button>
@@ -131,7 +131,7 @@ export function PanierCommande({
                 <button
                   type="button"
                   onClick={() => onChangerQuantite(ligne.cle, -1)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                  className={boutonRondBordure}
                   aria-label="Retirer un"
                 >
                   −
@@ -140,7 +140,7 @@ export function PanierCommande({
                 <button
                   type="button"
                   onClick={() => onChangerQuantite(ligne.cle, 1)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                  className={boutonRondBordure}
                   aria-label="Ajouter un"
                 >
                   +
@@ -160,19 +160,19 @@ export function PanierCommande({
             onClick={() => onSuiteSaisie(Math.min(suiteSaisie + 1, 3))}
             disabled={suiteSaisie >= 3}
             title="Passer au service suivant : les prochains articles partiront à suivre"
-            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 disabled:opacity-40"
+            className="flex min-h-11 items-center rounded-lg border border-sky-300 bg-sky-50 px-4 text-sm font-semibold text-sky-800 transition-[colors,transform] hover:bg-sky-100 active:scale-95 disabled:opacity-40 disabled:active:scale-100"
           >
             À suivre →
           </button>
           {suiteSaisie > 1 && (
-            <span className="flex items-center gap-1.5 text-xs text-sky-800">
+            <span className="flex items-center gap-1 text-xs text-sky-800">
               saisie en suite {suiteSaisie}
               <button
                 type="button"
                 onClick={() => onSuiteSaisie(1)}
                 aria-label="Revenir à la suite 1"
                 title="Revenir à la suite 1"
-                className="flex h-4 w-4 items-center justify-center rounded-full border border-sky-300 bg-white text-[10px] font-bold leading-none text-sky-700 hover:bg-sky-100"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-bold leading-none text-sky-700 transition-[colors,transform] hover:bg-sky-100 active:scale-90"
               >
                 ✕
               </button>
@@ -202,13 +202,17 @@ export function PanierCommande({
         />
       </div>
 
+      {/* Le geste qui engage le service : la cible la plus grande de l'écran,
+          et un libellé qui change pendant l'envoi — sans quoi le serveur, ne
+          voyant rien bouger, appuie une seconde fois. */}
       <button
         type="button"
         disabled={nbArticles === 0 || envoiEnCours}
         onClick={onEnvoyer}
-        className={`${boutonPrimaire} py-3 text-base`}
+        aria-busy={envoiEnCours}
+        className={`${boutonPrimaire} min-h-14 text-base`}
       >
-        Envoyer en cuisine
+        {envoiEnCours ? 'Envoi en cours…' : 'Envoyer en cuisine'}
       </button>
     </>
   );

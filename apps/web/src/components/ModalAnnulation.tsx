@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type Commande } from '../lib/api';
 import { boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
+import { Modal } from './Modal';
 
 const MOTIFS_PREDEFINIS = [
   'Erreur de saisie',
@@ -85,7 +86,7 @@ export function ModalAnnulation({
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-stone-900/40 p-4">
+    <Modal>
       <div className={`${carte} max-h-[90vh] w-full max-w-md overflow-y-auto`}>
         <h3 className="text-lg font-semibold text-stone-900">
           Annuler — {commande.table ? `Table ${commande.table.numero}` : 'À emporter'}
@@ -98,8 +99,8 @@ export function ModalAnnulation({
               onClick={() => setPorteeCommande(true)}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 porteeCommande
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
               }`}
             >
               Toute la commande
@@ -109,8 +110,8 @@ export function ModalAnnulation({
               onClick={() => setPorteeCommande(false)}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 !porteeCommande
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
               }`}
             >
               Certains articles
@@ -175,7 +176,7 @@ export function ModalAnnulation({
                   className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                     motif === m
                       ? 'bg-brand-600 text-white'
-                      : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                      : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
                   }`}
                 >
                   {m}
@@ -202,7 +203,7 @@ export function ModalAnnulation({
 
           <label
             className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-              dejaPrepare ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-white'
+              dejaPrepare ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-card'
             }`}
           >
             <input
@@ -248,7 +249,7 @@ export function ModalAnnulation({
               type="button"
               disabled={enCours}
               onClick={handleConfirmer}
-              className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:opacity-50"
+              className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-danger-hover active:bg-danger-active disabled:opacity-50"
             >
               {enCours ? 'Annulation...' : "Confirmer l'annulation"}
             </button>
@@ -258,6 +259,6 @@ export function ModalAnnulation({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

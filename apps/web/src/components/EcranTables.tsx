@@ -21,7 +21,8 @@ import {
 } from '../lib/horsLigne';
 import { useHorsLigne } from '../hooks/useHorsLigne';
 import { usePanier, type ChoixOption } from '../hooks/usePanier';
-import { badgeBrand, badgeNeutre, carte, da, messageErreur, messageSucces } from '../lib/ui';
+import { badgeBrand, badgeNeutre, carte, da } from '../lib/ui';
+import { ZoneMessages } from './ZoneMessages';
 import { imprimerTicket } from '../lib/imprimante';
 import { ticketCuisine, ticketReclame, type Ticket } from '../lib/ticket';
 import { PlanTablesCaisse } from './PlanTablesCaisse';
@@ -87,6 +88,15 @@ export function EcranTables({
     ticket: Ticket;
   } | null>(null);
   const [demandes, setDemandes] = useState<DemandeClient[]>([]);
+  // Produit qui vient d'entrer au panier : sa vignette s'allume brièvement
+  // pour accuser réception du toucher (voir GrilleMenu). Le compteur `tick`
+  // rejoue le flash quand on retouche le MÊME produit (deux cafés d'affilée),
+  // ce qu'un simple identifiant ne permettrait pas.
+  const [flashProduit, setFlashProduit] = useState<{ id: string; tick: number } | null>(null);
+
+  function accuserReception(produitId: string) {
+    setFlashProduit((precedent) => ({ id: produitId, tick: (precedent?.tick ?? 0) + 1 }));
+  }
   // Article en cours de déplacement vers une autre suite (toucher-toucher).
   const [ligneEnDeplacement, setLigneEnDeplacement] = useState<string | null>(null);
 
@@ -235,9 +245,18 @@ export function EcranTables({
     chargerTout();
   }, []);
 
+  // Le flash s'éteint tout seul ; la minuterie est nettoyée au démontage pour
+  // ne pas écrire dans un composant disparu.
+  useEffect(() => {
+    if (!flashProduit) return;
+    const minuterie = setTimeout(() => setFlashProduit(null), 450);
+    return () => clearTimeout(minuterie);
+  }, [flashProduit]);
+
   function handleClicProduit(produit: ProduitMenu) {
     if (produit.groupesOptions.length === 0) {
       panier.ajouterAuPanier(produit, []);
+      accuserReception(produit.id);
       return;
     }
     setProduitEnSelection(produit);
@@ -246,6 +265,7 @@ export function EcranTables({
   function handleConfirmerOptions(options: ChoixOption[]) {
     if (!produitEnSelection) return;
     panier.ajouterAuPanier(produitEnSelection, options);
+    accuserReception(produitEnSelection.id);
     setProduitEnSelection(null);
   }
 
@@ -550,38 +570,44 @@ export function EcranTables({
 
   return (
     <div className="flex w-full flex-col gap-6">
-      {erreur && <p className={messageErreur}>{erreur}</p>}
-
       <BandeauDemandesClients
         demandes={demandes}
         onAccepter={handleAccepterDemande}
         onRefuser={handleRefuserDemande}
       />
 
-      {confirmation && (
-        <div className={`${messageSucces} flex items-center justify-between gap-3`}>
-          <span>{confirmation}</span>
-          {ticketAImprimer && (
+      {/* Erreurs et confirmations flottent en bas de l'écran : en plein service
+          on lit la grille du menu, pas le haut de la page. */}
+      <ZoneMessages
+        erreur={erreur}
+        confirmation={confirmation}
+        onFermerErreur={() => setErreur(null)}
+        onFermerConfirmation={() => setConfirmation(null)}
+        action={
+          ticketAImprimer && (
             <button
               type="button"
               onClick={() => imprimerTicket(ticketAImprimer.ticket)}
-              className="shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-800 transition-colors hover:bg-green-100"
+              className="flex min-h-11 shrink-0 items-center rounded-lg border border-green-300 bg-card px-3 text-xs font-semibold text-green-800 transition-[colors,transform] hover:bg-green-100 active:scale-95"
             >
               {ticketAImprimer.libelle}
             </button>
-          )}
-        </div>
-      )}
+          )
+        }
+      />
 
-      <div className="grid items-start gap-6 lg:grid-cols-[1fr_380px]">
+      {/* Le panneau de droite passe à côté du menu dès la tablette (md), pas
+          seulement sur grand écran : en portrait, le serveur doit voir son
+          panier pendant qu'il tape, sans faire défiler la page. */}
+      <div className="grid items-start gap-6 md:grid-cols-[1fr_320px] xl:grid-cols-[1fr_400px]">
         {/* Colonne menu */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex rounded-lg border border-stone-200 bg-white p-1">
+            <div className="flex rounded-lg border border-stone-200 bg-card p-1">
               <button
                 type="button"
                 onClick={() => handleChoisirCanal('SUR_PLACE')}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex min-h-11 items-center rounded-md px-4 text-sm font-medium transition-[colors,transform] active:scale-95 ${
                   canal === 'SUR_PLACE' ? 'bg-brand-600 text-white' : 'text-stone-600 hover:bg-stone-50'
                 }`}
               >
@@ -590,7 +616,7 @@ export function EcranTables({
               <button
                 type="button"
                 onClick={() => handleChoisirCanal('EMPORTER')}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex min-h-11 items-center rounded-md px-4 text-sm font-medium transition-[colors,transform] active:scale-95 ${
                   canal === 'EMPORTER' ? 'bg-brand-600 text-white' : 'text-stone-600 hover:bg-stone-50'
                 }`}
               >
@@ -632,6 +658,7 @@ export function EcranTables({
             onBasculerModeStock={() => setModeStock((v) => !v)}
             onChoisirProduit={handleClicProduit}
             onAjusterStock={setProduitStock}
+            produitFlash={flashProduit?.id ?? null}
           />
         </div>
 
@@ -657,8 +684,8 @@ export function EcranTables({
             <button
               type="button"
               onClick={() => setVolet('commande')}
-              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                volet === 'commande' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+              className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-[colors,transform] active:scale-95 ${
+                volet === 'commande' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500'
               }`}
             >
               Commande
@@ -672,8 +699,8 @@ export function EcranTables({
                   ? "Voir l'addition, remiser et encaisser"
                   : 'Aucune addition ouverte sur cette table'
               }
-              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                volet === 'addition' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+              className={`flex min-h-11 flex-1 items-center justify-center rounded-md px-3 text-sm font-medium transition-[colors,transform] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
+                volet === 'addition' ? 'bg-card text-stone-900 shadow-sm' : 'text-stone-500'
               }`}
             >
               Addition{soldeCourant != null && soldeCourant > 0 ? ` · ${da(soldeCourant)}` : ''}

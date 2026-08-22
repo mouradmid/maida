@@ -31,6 +31,11 @@ export default defineConfig({
         // Jamais de fallback HTML pour les appels API : une coupure doit
         // remonter comme une erreur réseau, pas comme une page.
         navigateFallbackDenylist: [/^\/api\//, /^\/health$/],
+        // woff2 ne fait PAS partie des extensions préchargées par défaut.
+        // Sans cette ligne, les polices rapatriées ne seraient pas en cache
+        // et la coupure réseau les ferait disparaître — soit exactement le
+        // problème qu'on venait de corriger en quittant le CDN.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
       },
     }),
   ],

@@ -323,7 +323,7 @@ export function GestionMenu() {
                       value={categorie.suiteParDefaut}
                       onChange={(e) => handleChangerSuiteCategorie(categorie, Number(e.target.value))}
                       title="Suite de service par défaut des produits de cette catégorie (1 = servi dès l'envoi, 2 = plat, 3 = dessert)"
-                      className="rounded-full border border-stone-300 bg-white px-2 py-0.5 text-xs font-medium text-stone-600"
+                      className="rounded-full border border-stone-300 bg-card px-2 py-0.5 text-xs font-medium text-stone-600"
                     >
                       <option value={1}>Suite 1</option>
                       <option value={2}>Suite 2</option>
@@ -502,7 +502,7 @@ export function GestionMenu() {
                               <SelecteurTva valeur={editTva} onChange={setEditTva} />
                             </label>
                           </div>
-                          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-card px-3 py-2">
                             <label className="flex items-center gap-2 text-xs font-medium text-stone-600">
                               <input
                                 type="checkbox"

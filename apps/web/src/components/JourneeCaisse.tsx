@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type EtatJournee, type TotauxJournee } from '../lib/api';
 import { LIBELLES_MOYEN } from '../lib/libelles';
+import { Modal } from './Modal';
 import {
   boutonDiscret,
   boutonPrimaire,
@@ -111,7 +112,7 @@ function ModalCloture({
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-stone-900/40 p-4">
+    <Modal>
       <div className={`${carte} max-h-[90vh] w-full max-w-md overflow-y-auto`}>
         <h3 className="text-lg font-semibold text-stone-900">Clôturer la journée</h3>
         <p className="mt-1 text-sm text-stone-500">
@@ -207,7 +208,7 @@ function ModalCloture({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

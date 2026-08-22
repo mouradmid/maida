@@ -127,7 +127,7 @@ export function GestionServeurs() {
                         className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                           possede
                             ? 'bg-brand-600 text-white'
-                            : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                            : 'bg-card text-stone-500 border border-stone-300 hover:bg-stone-50'
                         }`}
                       >
                         {possede ? actif : inactif}

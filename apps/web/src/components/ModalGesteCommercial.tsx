@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type AdditionDetail } from '../lib/api';
 import { boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
+import { Modal } from './Modal';
 
 const MOTIFS_PREDEFINIS = ['Client fidèle', 'Geste commercial', 'Attente trop longue', 'Autre'];
 const POURCENTAGES_RAPIDES = [5, 10, 20, 50];
@@ -96,7 +97,7 @@ export function ModalGesteCommercial({
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-stone-900/40 p-4">
+    <Modal>
       <div className={`${carte} max-h-[90vh] w-full max-w-md overflow-y-auto`}>
         <h3 className="text-lg font-semibold text-stone-900">
           Geste commercial — {detail.table ? `Table ${detail.table.numero}` : 'À emporter'}
@@ -109,8 +110,8 @@ export function ModalGesteCommercial({
               onClick={() => setVolet('REMISE')}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 volet === 'REMISE'
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
               }`}
             >
               Remise
@@ -120,8 +121,8 @@ export function ModalGesteCommercial({
               onClick={() => setVolet('OFFERT')}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 volet === 'OFFERT'
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
               }`}
             >
               Offrir des articles
@@ -142,7 +143,7 @@ export function ModalGesteCommercial({
                     className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
                       modeRemise === 'POURCENTAGE' && pourcentage === String(p)
                         ? 'bg-brand-600 text-white'
-                        : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                        : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
                     −{p} %
@@ -154,7 +155,7 @@ export function ModalGesteCommercial({
                   className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
                     modeRemise === 'MONTANT'
                       ? 'bg-brand-600 text-white'
-                      : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                      : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
                   }`}
                 >
                   Montant libre
@@ -254,7 +255,7 @@ export function ModalGesteCommercial({
                   className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                     motif === m
                       ? 'bg-brand-600 text-white'
-                      : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                      : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
                   }`}
                 >
                   {m}
@@ -303,7 +304,7 @@ export function ModalGesteCommercial({
               type="button"
               disabled={enCours}
               onClick={handleConfirmer}
-              className="flex-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700 active:bg-brand-800 disabled:opacity-50"
+              className="flex-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-hover active:bg-brand-active disabled:opacity-50"
             >
               {enCours ? 'Application...' : volet === 'REMISE' ? 'Appliquer la remise' : 'Offrir'}
             </button>
@@ -313,6 +314,6 @@ export function ModalGesteCommercial({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

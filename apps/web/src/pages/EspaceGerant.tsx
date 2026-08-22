@@ -14,19 +14,23 @@ import { QrCodes } from '../components/QrCodes';
 import { RapportsGerant } from '../components/RapportsGerant';
 import { ReservationsGerant } from '../components/ReservationsGerant';
 import { IndicateurHorsLigne } from '../components/IndicateurHorsLigne';
+import { NavigationGerant, type OngletGerant } from '../components/NavigationGerant';
 import { useMe } from '../hooks/useMe';
 
+// Rangées par intention : ce qu'on consulte au quotidien, puis ce qu'on règle
+// une fois pour toutes. L'ordre à l'intérieur d'un groupe va du plus fréquent
+// au plus rare.
 const ONGLETS = [
-  { id: 'rapports', libelle: 'Rapports' },
-  { id: 'reservations', libelle: 'Réservations' },
-  { id: 'salle', libelle: 'Plan de salle' },
-  { id: 'menu', libelle: 'Menu' },
-  { id: 'equipe', libelle: 'Équipe' },
-  { id: 'paiements', libelle: 'Paiements' },
-  { id: 'annulations', libelle: 'Annulations & remises' },
-  { id: 'qrcodes', libelle: 'QR codes' },
-  { id: 'journees', libelle: 'Journées de caisse' },
-] as const;
+  { id: 'rapports', libelle: 'Rapports', groupe: 'suivi' },
+  { id: 'reservations', libelle: 'Réservations', groupe: 'suivi' },
+  { id: 'journees', libelle: 'Journées de caisse', groupe: 'suivi' },
+  { id: 'annulations', libelle: 'Annulations & remises', groupe: 'suivi' },
+  { id: 'menu', libelle: 'Menu', groupe: 'configuration' },
+  { id: 'salle', libelle: 'Plan de salle', groupe: 'configuration' },
+  { id: 'equipe', libelle: 'Équipe', groupe: 'configuration' },
+  { id: 'paiements', libelle: 'Paiements', groupe: 'configuration' },
+  { id: 'qrcodes', libelle: 'QR codes', groupe: 'configuration' },
+] as const satisfies readonly OngletGerant[];
 
 type Onglet = (typeof ONGLETS)[number]['id'];
 
@@ -55,40 +59,31 @@ export function EspaceGerant() {
     return (
       <div className="min-h-screen">
         <EnTeteEspace espace="Espace gérant" user={user} onLogout={refresh} />
-        <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
-          <nav className="flex flex-wrap gap-2">
-            {onglets.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => setOnglet(o.id)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  onglet === o.id
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
-                }`}
-              >
-                {o.libelle}
-              </button>
-            ))}
-          </nav>
+        <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-6 md:grid-cols-[13rem_1fr]">
+          <NavigationGerant
+            onglets={onglets}
+            actif={onglet}
+            onChoisir={(id) => setOnglet(id as Onglet)}
+          />
 
-          {onglet === 'rapports' && <RapportsGerant />}
-          {onglet === 'reservations' && <ReservationsGerant />}
-          {onglet === 'salle' && <PlanDeSalle />}
-          {onglet === 'menu' && <GestionMenu />}
-          {onglet === 'equipe' && (
-            <>
-              <CodeTerminal />
-              <GestionServeurs />
-            </>
-          )}
-          {onglet === 'paiements' && <ConfigMoyensPaiement />}
-          {onglet === 'annulations' && <AnnulationsRemises />}
-          {onglet === 'journees' && <HistoriqueJournees />}
-          {onglet === 'qrcodes' && user.etablissementId && (
-            <QrCodes etablissementId={user.etablissementId} />
-          )}
+          <div className="flex min-w-0 flex-col gap-6">
+            {onglet === 'rapports' && <RapportsGerant />}
+            {onglet === 'reservations' && <ReservationsGerant />}
+            {onglet === 'salle' && <PlanDeSalle />}
+            {onglet === 'menu' && <GestionMenu />}
+            {onglet === 'equipe' && (
+              <>
+                <CodeTerminal />
+                <GestionServeurs />
+              </>
+            )}
+            {onglet === 'paiements' && <ConfigMoyensPaiement />}
+            {onglet === 'annulations' && <AnnulationsRemises />}
+            {onglet === 'journees' && <HistoriqueJournees />}
+            {onglet === 'qrcodes' && user.etablissementId && (
+              <QrCodes etablissementId={user.etablissementId} />
+            )}
+          </div>
         </main>
         <IndicateurHorsLigne />
       </div>

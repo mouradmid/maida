@@ -452,7 +452,7 @@ export function Reservations() {
                         <button
                           type="button"
                           onClick={() => setEditionTableId(r.id)}
-                          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                          className="rounded-lg border border-stone-300 bg-card px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
                         >
                           Changer de table
                         </button>
@@ -462,7 +462,7 @@ export function Reservations() {
                         onClick={() =>
                           editionInfosId === r.id ? setEditionInfosId(null) : ouvrirEditionInfos(r)
                         }
-                        className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                        className="rounded-lg border border-stone-300 bg-card px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
                       >
                         Modifier les infos
                       </button>
@@ -471,21 +471,21 @@ export function Reservations() {
                           <button
                             type="button"
                             onClick={() => handleStatut(r, 'ARRIVEE')}
-                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-green-700"
+                            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-ok-hover"
                           >
                             Client arrivé ✓
                           </button>
                           <button
                             type="button"
                             onClick={() => handleStatut(r, 'NO_SHOW')}
-                            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
+                            className="rounded-lg border border-red-200 bg-card px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50"
                           >
                             No-show
                           </button>
                           <button
                             type="button"
                             onClick={() => handleStatut(r, 'ANNULEE')}
-                            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                            className="rounded-lg border border-stone-300 bg-card px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
                           >
                             Annuler
                           </button>
@@ -535,14 +535,14 @@ export function Reservations() {
                       <div className="flex gap-2">
                         <button
                           type="submit"
-                          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-700"
+                          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand-hover"
                         >
                           Enregistrer
                         </button>
                         <button
                           type="button"
                           onClick={() => setEditionInfosId(null)}
-                          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
+                          className="rounded-lg border border-stone-300 bg-card px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50"
                         >
                           Annuler
                         </button>

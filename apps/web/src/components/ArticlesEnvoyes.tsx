@@ -49,7 +49,7 @@ export function ArticlesEnvoyes({
             type="button"
             onClick={onReclamer}
             title="La table est prête pour la suite : la cuisine peut la préparer"
-            className="rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+            className="flex min-h-11 items-center rounded-full bg-sky-600 px-4 text-sm font-semibold text-white transition-[colors,transform] hover:bg-saffron-hover active:scale-95"
           >
             Réclamer la suite {suiteReclamee + 1}
           </button>
@@ -71,7 +71,7 @@ export function ArticlesEnvoyes({
           className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
             ligneEnDeplacement
               ? 'cursor-pointer border-dashed border-sky-400 bg-sky-50'
-              : 'border-stone-200 bg-white'
+              : 'border-stone-200 bg-card'
           }`}
         >
           <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">
@@ -99,12 +99,15 @@ export function ArticlesEnvoyes({
                       ? 'Glissez (ou touchez puis touchez la suite de destination) pour changer de suite'
                       : undefined
                   }
-                  className={`flex items-center justify-between gap-2 rounded px-1.5 py-1 text-xs shadow-sm ring-1 ${
+                  // La ligne entière est la cible du toucher-toucher (choisir
+                  // l'article, puis la suite de destination) : elle doit tenir
+                  // la hauteur d'un doigt, comme ses deux boutons d'action.
+                  className={`flex min-h-11 items-center justify-between gap-2 rounded-lg px-2 py-1 text-xs shadow-sm ring-1 ${
                     deplacable ? 'cursor-grab active:cursor-grabbing' : ''
                   } ${
                     ligneEnDeplacement === ligne.id
                       ? 'bg-sky-600 text-white ring-sky-600'
-                      : `bg-white ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
+                      : `bg-card ring-stone-200 ${active === 0 ? 'text-stone-400 line-through' : 'text-stone-700'}`
                   }`}
                 >
                   <span className="min-w-0">
@@ -121,7 +124,7 @@ export function ArticlesEnvoyes({
                         }}
                         aria-label={`Ajouter un ${ligne.nomProduit}`}
                         title="En rajouter un (part en cuisine avec le prochain envoi)"
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold leading-none text-white hover:bg-brand-700"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-base font-bold leading-none text-white transition-[colors,transform] hover:bg-brand-hover active:scale-90"
                       >
                         +
                       </button>
@@ -135,7 +138,7 @@ export function ArticlesEnvoyes({
                         }}
                         aria-label="Annuler des articles de cette commande"
                         title="Annuler des articles de cette commande"
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-red-200 bg-white text-xs font-bold leading-none text-red-600 hover:bg-red-50"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-red-200 bg-card text-base font-bold leading-none text-red-600 transition-[colors,transform] hover:bg-red-50 active:scale-90"
                       >
                         ✕
                       </button>

@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { api, ErreurReseau } from '../lib/api';
 import { da } from '../lib/ui';
 import { Logo } from '../components/Logo';
+import { Modal } from '../components/Modal';
 
 type MenuPublicData = Awaited<ReturnType<typeof api.menuPublic>>;
 type ProduitPublic = MenuPublicData['categories'][number]['produits'][number];
@@ -196,7 +197,7 @@ export function MenuPublic() {
         )}
       </header>
 
-      <nav className="sticky top-0 z-10 flex gap-2 overflow-x-auto border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur">
+      <nav className="sticky top-0 z-10 flex gap-2 overflow-x-auto border-b border-stone-200 bg-card/95 px-4 py-3 backdrop-blur">
         {menu.categories.map((c) => (
           <button
             key={c.id}
@@ -219,7 +220,7 @@ export function MenuPublic() {
               {categorie.produits.map((produit) => (
                 <li
                   key={produit.id}
-                  className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm"
+                  className="rounded-xl border border-stone-200 bg-card p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -244,7 +245,7 @@ export function MenuPublic() {
                           type="button"
                           onClick={() => handleChoisirProduit(produit)}
                           aria-label={`Ajouter ${produit.nom}`}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-xl font-bold text-white active:bg-brand-800"
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-xl font-bold text-white active:bg-brand-active"
                         >
                           +
                         </button>
@@ -265,8 +266,8 @@ export function MenuPublic() {
 
       {/* Choix des options d'un produit */}
       {produitEnSelection && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-stone-900/50">
-          <div className="w-full max-w-2xl rounded-t-2xl bg-white p-5">
+        <Modal ancrage="bas">
+          <div className="w-full max-w-2xl rounded-t-2xl bg-card p-5">
             <h3 className="text-lg font-bold text-stone-900">{produitEnSelection.nom}</h3>
             {produitEnSelection.options.map((groupe) => (
               <div key={groupe.id} className="mt-4">
@@ -310,13 +311,13 @@ export function MenuPublic() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Panier */}
       {panierOuvert && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-stone-900/50">
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5">
+        <Modal ancrage="bas">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-card p-5">
             <h3 className="text-lg font-bold text-stone-900">Ma commande — Table {table}</h3>
             <ul className="mt-3 flex flex-col divide-y divide-stone-100">
               {lignes.map(([cle, ligne]) => (
@@ -383,7 +384,7 @@ export function MenuPublic() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Barre panier */}

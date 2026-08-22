@@ -115,7 +115,7 @@ export function QrCodes({ etablissementId }: { etablissementId: string }) {
             className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
               commandeClientActive
                 ? 'bg-brand-600 text-white'
-                : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                : 'bg-card text-stone-500 border border-stone-300 hover:bg-stone-50'
             }`}
           >
             {commandeClientActive ? '✓ Commande client activée' : 'Commande client désactivée'}
@@ -148,7 +148,7 @@ export function QrCodes({ etablissementId }: { etablissementId: string }) {
                 href={qr.url}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                className="rounded-lg border border-stone-300 bg-card px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
               >
                 Ouvrir
               </a>

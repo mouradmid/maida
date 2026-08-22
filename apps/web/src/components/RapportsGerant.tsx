@@ -268,7 +268,7 @@ export function RapportsGerant() {
             className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
               parametres.suiviCoutsActive
                 ? 'bg-brand-600 text-white'
-                : 'bg-white text-stone-500 border border-stone-300 hover:bg-stone-50'
+                : 'bg-card text-stone-500 border border-stone-300 hover:bg-stone-50'
             }`}
           >
             {parametres.suiviCoutsActive ? '✓ Coûts & marges affichés' : 'Coûts & marges masqués'}

@@ -182,8 +182,8 @@ export function PanneauPaiement({
               title={indisponible ? 'Le paiement par article revient avec le réseau' : undefined}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 modeEffectif === m
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
               }`}
             >
               {LIBELLES_MODE[m]}
@@ -276,7 +276,7 @@ export function PanneauPaiement({
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               moyenPaiement === m
                 ? 'bg-brand-600 text-white'
-                : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
             }`}
           >
             {LIBELLES_MOYEN[m]}

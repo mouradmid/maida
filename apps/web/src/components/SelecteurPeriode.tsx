@@ -27,8 +27,8 @@ export function SelecteurPeriode({
           onClick={() => onPeriode(p.id)}
           className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
             periode === p.id
-              ? 'bg-stone-900 text-white'
-              : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+              ? 'bg-brand-600 text-white'
+              : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
           }`}
         >
           {p.libelle}

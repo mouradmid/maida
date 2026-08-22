@@ -8,7 +8,7 @@ import { Reservations } from '../components/Reservations';
 import { IndicateurHorsLigne } from '../components/IndicateurHorsLigne';
 import { ReglageImprimante } from '../components/ReglageImprimante';
 import { demarrerSynchronisation } from '../lib/horsLigne';
-import { messageErreur, messageSucces } from '../lib/ui';
+import { chipActive, chipInactive, messageErreur, messageSucces } from '../lib/ui';
 import { useMe } from '../hooks/useMe';
 
 // « Tables » porte tout le service : commander, envoyer, réclamer, encaisser,
@@ -59,7 +59,11 @@ export function EspaceCaisse() {
     return (
       <div className="min-h-screen">
         <EnTeteEspace espace="Caisse" user={user} onLogout={refresh} />
-        <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+        {/* La caisse prend toute la largeur disponible, contrairement aux
+            écrans de lecture : sur une tablette en paysage ou un écran de
+            comptoir, chaque pixel rendu au plan de salle et à la grille du
+            menu est un article de plus visible sans faire défiler. */}
+        <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-6">
           {messageSync && (
             <p className={messageSync.erreur ? messageErreur : messageSucces}>
               {messageSync.texte}{' '}
@@ -74,11 +78,7 @@ export function EspaceCaisse() {
                 key={o.id}
                 type="button"
                 onClick={() => setOnglet(o.id)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  onglet === o.id
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
-                }`}
+                className={onglet === o.id ? chipActive : chipInactive}
               >
                 {o.libelle}
               </button>

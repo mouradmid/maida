@@ -75,7 +75,7 @@ export function OptionsProduit({ produit, onChange }: { produit: Produit; onChan
             {groupe.valeurs.map((valeur) => (
               <li
                 key={valeur.id}
-                className="flex items-center gap-1.5 rounded-full border border-stone-300 bg-white px-3 py-1"
+                className="flex items-center gap-1.5 rounded-full border border-stone-300 bg-card px-3 py-1"
               >
                 <span>{valeur.valeur}</span>
                 <button
@@ -99,7 +99,7 @@ export function OptionsProduit({ produit, onChange }: { produit: Produit; onChan
             />
             <button
               type="submit"
-              className="shrink-0 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
+              className="shrink-0 rounded-lg border border-stone-300 bg-card px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-100"
             >
               Ajouter
             </button>

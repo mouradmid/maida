@@ -26,7 +26,7 @@ export function PlanTablesCaisse({
 }) {
   if (tables.length === 0) {
     return (
-      <p className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-400">
+      <p className="rounded-xl border border-stone-200 bg-card p-4 text-sm text-stone-400">
         Aucune table active. Le gérant peut en ajouter dans le plan de salle.
       </p>
     );
@@ -54,7 +54,7 @@ export function PlanTablesCaisse({
                   ? 'z-10 border-brand-700 bg-brand-600 text-white shadow-md'
                   : table.occupee
                     ? 'border-brand-300 bg-brand-100 text-brand-900 hover:bg-brand-200'
-                    : 'border-stone-300 bg-white text-stone-700 hover:border-brand-400 hover:bg-brand-50'
+                    : 'border-stone-300 bg-card text-stone-700 hover:border-brand-400 hover:bg-brand-50'
               }`}
               style={{
                 left: pctX(table.positionX),
@@ -116,7 +116,7 @@ export function PlanTablesCaisse({
 
       <div className="flex items-center gap-4 text-xs text-stone-500">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full border-2 border-stone-300 bg-white" /> libre
+          <span className="h-3 w-3 rounded-full border-2 border-stone-300 bg-card" /> libre
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full border-2 border-brand-300 bg-brand-100" /> addition en

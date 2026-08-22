@@ -16,7 +16,12 @@
   /* Textes */
   --ink: #15302b; /* texte principal */
   --ink-soft: #4c5c56; /* texte secondaire */
-  --ink-faint: #8a968f; /* légendes, placeholders */
+  /* Légendes, placeholders. Assombri par rapport au #8a968f d'origine de la
+     charte : celui-ci ne donnait que 3,07:1 sur blanc, sous le seuil WCAG AA
+     (4,5:1). Le ton retenu tient 5,5:1 sur blanc et 4,5:1 sur le crème —
+     indispensable en salle mal éclairée, où la moitié des écrans sont lus par
+     des gens qui ne sont pas venus avec leurs lunettes. */
+  --ink-faint: #5f6b64;
 
   /* Vert de marque (thé à la menthe) */
   --brand: #0e5a4a; /* boutons principaux, accents */
@@ -45,9 +50,163 @@
   --danger: #b23a2e;
   --danger-bg: #f7e4e1; /* suspendu, annulation, erreur */
 
+  /* États interactifs des boutons pleins (survol, appui).
+
+     Ils ont leur propre token parce qu'un ton de rampe ne peut pas jouer les
+     deux rôles : brand-700 sert de TEXTE 13 fois et de survol 4 fois, et en
+     thème sombre le texte doit s'éclaircir pendant que le survol s'assombrit.
+     Ici, le sens de variation appartient au thème. */
+  --brand-hover: #0c4a3d;
+  --brand-active: #0a3f34;
+  --ok-hover: #215c3e;
+  --danger-hover: #8e2c23;
+  --danger-active: #74241c;
+  --saffron-hover: #935e11;
+
+  /* Logo : teintes du mot-symbole, qui doivent rester lisibles sur les deux
+     thèmes sans trahir l'identité (voir components/Logo.tsx). */
+  --logo-mot: #201a10;
+  --logo-mention: #7e7148;
+
+  /* Voile des modals. Il ne peut PAS venir de la rampe stone : un voile est un
+     fond, alors que stone-900 est un ton de texte — il s'éclaircit en thème
+     sombre, et le voile virait au blanc laiteux. Il assombrit dans les deux
+     thèmes, un peu plus en sombre où l'écart de luminosité est plus faible. */
+  --voile: rgba(21, 48, 43, 0.45);
+
+  /* Bloc de code (traces d'erreur du super-admin) : toujours sombre, y compris
+     en thème clair — c'est ce qui le distingue du texte courant. */
+  --code-bg: #15302b;
+  --code-ink: #f3eee3;
+
   /* Rayons */
   --r: 12px; /* cartes, panneaux (= rounded-xl) */
   --r-sm: 8px; /* boutons, champs (= rounded-lg) */
+}
+
+/* ============================================================
+   Thème sombre.
+
+   Le service du soir se fait en salle tamisée : un écran crème à
+   pleine luminosité éblouit et fatigue. Suit le réglage du système.
+
+   Règle qui tient toute la bascule, déduite de l'usage réel des
+   classes dans l'app :
+     · 50 → 300  = fonds et bordures  → s'assombrissent ;
+     · 400 → 600 = aplats pleins portant du texte blanc → INCHANGÉS
+       (les toucher casserait la lisibilité de 32 boutons) ;
+     · 700 → 900 = textes → s'éclaircissent.
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1714;
+    --surface: #12211d;
+    --card: #172a25;
+
+    --ink: #eef3f0;
+    --ink-soft: #b6c4bd;
+    --ink-faint: #8b9a92; /* 5,1:1 sur --card */
+
+    --brand: #12775f; /* 5,5:1 avec du blanc, 3,3:1 sur le fond */
+    --brand-deep: #38897a;
+    --brand-line: #1c6957;
+    --brand-logo: #7ac4a4;
+
+    --saffron: #e0a03f;
+    --saffron-soft: #7a5a1c;
+    --saffron-bg: #33260f;
+
+    --gold: #ceb66a;
+    --gold-deep: #b09d63;
+
+    --line: rgba(238, 243, 240, 0.14);
+    --line-soft: rgba(238, 243, 240, 0.08);
+
+    --ok: #6cc292;
+    --ok-bg: #13301f;
+    --warn: #e6b35d;
+    --warn-bg: #33260f;
+    --danger: #ef8b7d;
+    --danger-bg: #3a1c17;
+
+    /* Sur fond sombre, un bouton s'ÉCLAIRCIT au survol au lieu de foncer. */
+    --brand-hover: #17886f;
+    --brand-active: #1c9a7e;
+    --ok-hover: #3d8f60;
+    --danger-hover: #c85c4e;
+    --danger-active: #d9776a;
+    --saffron-hover: #dda038;
+
+    --logo-mot: #f0e6d2;
+    --logo-mention: #cbb885;
+
+    --voile: rgba(0, 0, 0, 0.62);
+    --code-bg: #0a1512;
+    --code-ink: #cfdad4;
+
+    /* ----------------------------------------------------------
+       Rampes remappées : les utilitaires Tailwind pointent vers
+       ces variables, la cascade suffit donc à les faire basculer.
+       ---------------------------------------------------------- */
+
+    /* stone = neutres. Aucun aplat entre 400 et 600 dans l'app
+       (vérifié : 0 bg-stone-400/500/600), ce sont tous des textes —
+       ils s'éclaircissent donc, contrairement aux rampes de couleur. */
+    --color-stone-50: #12211d;
+    --color-stone-100: #1b2f29;
+    --color-stone-200: #2a3f38;
+    --color-stone-300: #3a5148;
+    --color-stone-500: #9aa9a1;
+    --color-stone-600: var(--ink-soft);
+    --color-stone-700: #cfdad4;
+    --color-stone-800: #e2eae6;
+    --color-stone-900: var(--ink);
+
+    /* red → danger */
+    --color-red-50: #3a1c17;
+    --color-red-100: #4a231c;
+    --color-red-200: #6b3229;
+    --color-red-300: #8e4438;
+    --color-red-700: #d98a80;
+    --color-red-800: #e6b3ac;
+    --color-red-900: #f1d2cd;
+
+    /* green → ok */
+    --color-green-50: #13301f;
+    --color-green-100: #1a3f29;
+    --color-green-200: #245538;
+    --color-green-300: #2f6b47;
+    --color-green-700: #82be9b;
+    --color-green-800: #b0d6bf;
+    --color-green-900: #d3e8dc;
+
+    /* amber → warn */
+    --color-amber-50: #33260f;
+    --color-amber-100: #443216;
+    --color-amber-200: #5c441c;
+    --color-amber-300: #745625;
+    --color-amber-700: #e4b35d;
+    --color-amber-800: #eecb8c;
+    --color-amber-900: #f5e1be;
+
+    /* sky → safran */
+    --color-sky-50: #33260f;
+    --color-sky-100: #443216;
+    --color-sky-200: #5f4514;
+    --color-sky-300: #7a5a1c;
+    --color-sky-700: #eab65c;
+    --color-sky-800: #f3ce85;
+    --color-sky-900: #f7e4bc;
+
+    /* vert de marque */
+    --color-brand-50: #0f2b23;
+    --color-brand-100: #143a2f;
+    --color-brand-200: #1c4f40;
+    --color-brand-300: #266552;
+    --color-brand-700: #6fb0a2;
+    --color-brand-800: #a7cfc5;
+    --color-brand-900: #cfe4de;
+  }
 }
 
 /* ------------------------------------------------------------
@@ -109,6 +268,24 @@
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
 
+  /* Survol / appui des boutons pleins (foncent en clair, éclaircissent en
+     sombre) — voir le commentaire des tokens dans :root. */
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-active: var(--brand-active);
+  --color-ok-hover: var(--ok-hover);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-active: var(--danger-active);
+  --color-saffron-hover: var(--saffron-hover);
+
+  /* Logo */
+  --color-logo-mot: var(--logo-mot);
+  --color-logo-mention: var(--logo-mention);
+
+  /* Voile des modals et bloc de code */
+  --color-voile: var(--voile);
+  --color-code-bg: var(--code-bg);
+  --color-code-ink: var(--code-ink);
+
   /* --------------------------------------------------------------
      Remappage des palettes Tailwind par défaut vers la charte.
      Les écrans existants (stone/red/green/amber/sky) héritent ainsi
@@ -121,8 +298,11 @@
   --color-stone-100: #f3eee3;
   --color-stone-200: #e5dfd1;
   --color-stone-300: #d2cbba;
-  --color-stone-400: #8a968f; /* = ink-faint */
-  --color-stone-500: #6e7a73;
+  /* stone-400/500 ne servent QUE pour du texte dans l'app (aucune bordure,
+     aucun fond) : ils sont donc calés sur le seuil de lisibilité, quitte à
+     resserrer la rampe. Un gris plus clair que ça n'a pas sa place ici. */
+  --color-stone-400: var(--ink-faint); /* = ink-faint, 5,5:1 sur blanc */
+  --color-stone-500: #56635c;
   --color-stone-600: #4c5c56; /* = ink-soft */
   --color-stone-700: #38473f;
   --color-stone-800: #22332d;

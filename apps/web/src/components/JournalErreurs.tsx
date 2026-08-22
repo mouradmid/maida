@@ -89,7 +89,7 @@ export function JournalErreurs() {
               </span>
             </button>
             {detailOuvert === e.id && e.detail && (
-              <pre className="overflow-x-auto rounded-lg bg-stone-900 p-3 text-xs leading-relaxed text-stone-100">
+              <pre className="overflow-x-auto rounded-lg bg-code-bg p-3 text-xs leading-relaxed text-code-ink">
                 {e.detail}
               </pre>
             )}

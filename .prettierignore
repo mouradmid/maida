@@ -4,3 +4,6 @@ dev-dist
 apps/api/src/generated
 apps/api/prisma/migrations
 package-lock.json
+# Feuille de polices générée par apps/web/scripts/rapatrier-polices.mjs :
+# elle reproduit la sortie de Google, la reformater n'aurait aucun sens.
+apps/web/public/fonts

@@ -169,7 +169,7 @@ export function PanneauAddition({
             )
           }
           title={horsLigne ? 'Le reçu hors ligne est imprimé au moment du paiement' : undefined}
-          className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-lg border border-stone-300 bg-card px-3 py-1.5 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           🖨 Ticket client
         </button>

@@ -116,6 +116,14 @@
 - **Charte graphique** : vert « thé à la menthe » + safran sur fond crème, motif zellige en
   filigrane de fond, polices Inter / Bricolage Grotesque / Spline Sans Mono ; tous les écrans
   pilotés par des design tokens (aucune couleur en dur), motif d'intensité réglable
+- **Thème sombre** : l'application suit le réglage de l'appareil et bascule en salle tamisée,
+  sans qu'aucun écran ne perde en lisibilité (service du soir, tablette en main)
+- **Polices installées dans l'application** : elles ne viennent plus d'un serveur extérieur —
+  pendant une coupure réseau, la caisse garde exactement le même visage
+- **Pensé pour le doigt** : toutes les commandes du service (quantités, pastilles, validations)
+  font au moins 44 px, et les messages — erreur ou confirmation — s'affichent **en bas de
+  l'écran**, là où le pouce et le regard se trouvent déjà, au lieu du haut de page qu'on ne
+  voit plus dès qu'on a fait défiler
 
 ### Infrastructure & qualité
 

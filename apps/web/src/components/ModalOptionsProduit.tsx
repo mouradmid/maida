@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ProduitMenu } from '../lib/api';
 import type { ChoixOption } from '../hooks/usePanier';
 import { boutonPrimaire, boutonSecondaire, carte, messageErreur } from '../lib/ui';
+import { Modal } from './Modal';
 
 /**
  * Choix des options d'un produit (cuisson, taille…) avant de l'ajouter à la
@@ -43,7 +44,7 @@ export function ModalOptionsProduit({
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-stone-900/40 p-4">
+    <Modal>
       <div className={`${carte} w-full max-w-md`}>
         <h3 className="text-lg font-semibold text-stone-900">{produit.nom}</h3>
         <p className="mt-0.5 text-sm font-semibold text-brand-700">{produit.prix} DA</p>
@@ -64,7 +65,7 @@ export function ModalOptionsProduit({
                     className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
                       choix[groupe.id] === valeur.id
                         ? 'bg-brand-600 text-white'
-                        : 'bg-white text-stone-600 border border-stone-300 hover:bg-stone-50'
+                        : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
                     }`}
                   >
                     {valeur.valeur}
@@ -86,6 +87,6 @@ export function ModalOptionsProduit({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

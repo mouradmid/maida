@@ -160,7 +160,7 @@ export function PlanDeSalle() {
               className={`absolute flex cursor-grab select-none flex-col items-center justify-center border-2 text-sm font-medium shadow-sm transition-shadow hover:shadow ${
                 table.statut === 'INACTIF'
                   ? 'border-dashed border-stone-300 bg-stone-100 text-stone-400'
-                  : 'border-brand-300 bg-white text-stone-800'
+                  : 'border-brand-300 bg-card text-stone-800'
               } ${tableSelectionnee === table.id ? 'ring-2 ring-brand-500 ring-offset-1' : ''}`}
               style={{
                 left: table.positionX,

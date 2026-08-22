@@ -1,5 +1,5 @@
 import type { CategorieMenu, ProduitMenu } from '../lib/api';
-import { badgeNeutre } from '../lib/ui';
+import { badgeNeutre, chipActive, chipInactive } from '../lib/ui';
 
 // Un produit est commandable s'il n'est pas en rupture et, s'il est suivi en
 // quantité, qu'il en reste. Reflète exactement la règle du serveur.
@@ -21,6 +21,7 @@ export function GrilleMenu({
   onBasculerModeStock,
   onChoisirProduit,
   onAjusterStock,
+  produitFlash,
 }: {
   categories: CategorieMenu[];
   categorieActiveId: string | null;
@@ -30,22 +31,24 @@ export function GrilleMenu({
   onBasculerModeStock: () => void;
   onChoisirProduit: (produit: ProduitMenu) => void;
   onAjusterStock: (produit: ProduitMenu) => void;
+  /** Produit qui vient d'être ajouté au panier : accuse réception du toucher. */
+  produitFlash: string | null;
 }) {
   const categorieActive = categories.find((c) => c.id === categorieActiveId) ?? categories[0];
 
   return (
-    <>
+    // Conteneur de requête : la grille se règle sur la largeur de SA colonne,
+    // pas sur celle de l'écran. Sur une tablette en portrait, le panneau de
+    // droite mange la moitié de la place — sans ça, la grille croit avoir
+    // toute la largeur et se retrouve à trois colonnes illisibles.
+    <div className="@container flex flex-col gap-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {categories.map((cat) => (
           <button
             key={cat.id}
             type="button"
             onClick={() => onChoisirCategorie(cat.id)}
-            className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-              categorieActive?.id === cat.id
-                ? 'bg-stone-900 text-white'
-                : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
-            }`}
+            className={categorieActive?.id === cat.id ? chipActive : chipInactive}
           >
             {cat.nom}
           </button>
@@ -57,10 +60,10 @@ export function GrilleMenu({
           <button
             type="button"
             onClick={onBasculerModeStock}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+            className={`flex min-h-11 items-center rounded-full px-4 text-sm font-medium transition-[colors,transform] active:scale-95 ${
               modeStock
                 ? 'bg-saffron text-white'
-                : 'border border-stone-300 bg-white text-stone-600 hover:bg-stone-50'
+                : 'border border-stone-300 bg-card text-stone-600 hover:bg-stone-50'
             }`}
             title="Activer pour toucher un produit et gérer sa rupture ou sa quantité"
           >
@@ -69,10 +72,11 @@ export function GrilleMenu({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 @md:grid-cols-3 @2xl:grid-cols-4">
         {categorieActive?.produits.map((produit) => {
           const commandable = estCommandable(produit);
           const bloque = !modeStock && !commandable;
+          const flash = produitFlash === produit.id;
           return (
             <button
               key={produit.id}
@@ -81,12 +85,17 @@ export function GrilleMenu({
               onClick={() =>
                 modeStock ? onAjusterStock(produit) : commandable && onChoisirProduit(produit)
               }
-              className={`flex flex-col gap-1 rounded-xl border p-4 text-left shadow-sm transition-all ${
+              className={`flex min-h-24 flex-col gap-1 rounded-xl border p-4 text-left shadow-sm transition-all active:scale-95 ${
                 modeStock
                   ? 'border-saffron/50 bg-saffron-bg hover:-translate-y-0.5 hover:shadow'
                   : bloque
-                    ? 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-60'
-                    : 'border-stone-200 bg-white hover:-translate-y-0.5 hover:border-brand-300 hover:shadow'
+                    ? 'cursor-not-allowed border-stone-200 bg-stone-100 opacity-60 active:scale-100'
+                    : flash
+                      ? // Accusé de réception du toucher : sans lui, le produit
+                        // part dans le panneau de droite sans que rien ne bouge
+                        // sous le doigt, et le serveur tape une seconde fois.
+                        'border-brand-600 bg-brand-50 ring-2 ring-brand-600'
+                      : 'border-stone-200 bg-card hover:-translate-y-0.5 hover:border-brand-300 hover:shadow'
               }`}
             >
               <span className="text-sm font-semibold leading-snug text-stone-900">{produit.nom}</span>
@@ -122,6 +131,6 @@ export function GrilleMenu({
           <p className="col-span-full text-sm text-stone-400">Aucun produit dans cette catégorie.</p>
         )}
       </div>
-    </>
+    </div>
   );
 }
