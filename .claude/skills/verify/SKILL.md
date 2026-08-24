@@ -48,9 +48,9 @@ script échoue (timeouts) même sur localhost.
   n'en reste plus de libre et le scénario échoue pour une raison sans rapport :
   reseeder entre deux campagnes.
 - Thème sombre : `page.emulateMediaFeatures([{name:'prefers-color-scheme',
-  value:'dark'}])`, un contexte de navigateur par thème. Contrôler la bascule en
+value:'dark'}])`, un contexte de navigateur par thème. Contrôler la bascule en
   lisant les tokens (`getComputedStyle(document.documentElement)
-  .getPropertyValue('--bg')`), pas seulement à l'œil sur la capture.
+.getPropertyValue('--bg')`), pas seulement à l'œil sur la capture.
 - Cliquer un élément par texte : filtrer `document.querySelectorAll('button')`
   sur `textContent` en EXCLUANT les conteneurs (`!b.querySelector('button')`).
 - Un défaut de superposition (« ce badge passe par-dessus le modal ») ne se

@@ -54,7 +54,7 @@ l'option `--kiosk-printing`. Les tickets partent alors silencieusement vers
 l'imprimante par défaut.
 
 ```
-chrome.exe --kiosk-printing --app=https://maida-production-4f05.up.railway.app/caisse
+chrome.exe --kiosk-printing --app=https://maidapos.com/caisse
 ```
 
 Créer un raccourci avec cette ligne sur le bureau du poste de caisse, et le

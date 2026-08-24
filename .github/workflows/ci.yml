@@ -1,6 +1,6 @@
 # Intégration continue : à chaque push, le code est compilé, vérifié par le
-# linter et testé. Railway peut attendre ce feu vert avant de déployer
-# (Settings → « Wait for CI » sur le service).
+# linter et testé. Le workflow « Déploiement » n'attend que ce feu vert :
+# une CI rouge ne part jamais en production.
 name: CI
 
 on:

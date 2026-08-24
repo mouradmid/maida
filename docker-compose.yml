@@ -1,0 +1,76 @@
+# Pile de production de Maïda, à déposer dans /srv/maida sur le serveur.
+#
+# Trois conteneurs :
+#   base   — PostgreSQL, ses données dans un volume Docker (elles survivent à
+#            toute mise à jour de l'application) ;
+#   app    — l'API Express, qui sert aussi le site construit ;
+#   caddy  — le portier : seul exposé sur Internet, il obtient et renouvelle le
+#            certificat HTTPS tout seul et transmet le trafic à l'application.
+#
+# Les valeurs sensibles viennent du fichier .env voisin (jamais versionné) :
+# DOMAINE, POSTGRES_PASSWORD, JWT_SECRET, IMAGE.
+
+services:
+  base:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: maida
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?mot de passe de la base manquant}
+      POSTGRES_DB: maida
+    volumes:
+      - donnees-postgres:/var/lib/postgresql/data
+    ports:
+      # Uniquement sur la boucle locale du serveur : la base n'est PAS
+      # joignable depuis Internet. On s'y branche depuis le poste de travail
+      # par un tunnel SSH, pour lancer un seed ou regarder une donnée.
+      - '127.0.0.1:5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U maida -d maida']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    image: ${IMAGE:-ghcr.io/mouradmid/maida:latest}
+    restart: unless-stopped
+    depends_on:
+      base:
+        # L'application applique ses migrations au démarrage : la laisser
+        # partir avant que Postgres réponde, c'est un premier lancement raté.
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://maida:${POSTGRES_PASSWORD}@base:5432/maida
+      JWT_SECRET: ${JWT_SECRET:?secret de signature des sessions manquant}
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://localhost:3001/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAINE: ${DOMAINE:?nom de domaine manquant}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-donnees:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  donnees-postgres:
+  caddy-donnees:
+  caddy-config:

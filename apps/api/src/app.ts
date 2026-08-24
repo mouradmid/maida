@@ -12,7 +12,7 @@ export const app = express();
 
 const production = process.env.NODE_ENV === 'production';
 
-// Derrière le proxy de l'hébergeur (Railway) : vraies IP clientes pour le
+// Derrière le proxy (Caddy) : vraies IP clientes pour le
 // rate limiting, et cookies `secure` acceptés.
 if (production) {
   app.set('trust proxy', 1);

@@ -1,7 +1,7 @@
 # Maïda — État d'avancement
 
 > Le point de vente pensé pour la restauration algérienne.
-> Site : https://maida-production-4f05.up.railway.app · Mis à jour à chaque session de travail.
+> Site : https://maidapos.com · Mis à jour à chaque session de travail.
 
 ## ✅ Livré et en production
 
@@ -127,7 +127,10 @@
 
 ### Infrastructure & qualité
 
-- Hébergement Railway avec déploiement automatique à chaque push
+- **Hébergement sur un serveur dédié** (Docker : application + PostgreSQL + Caddy pour le HTTPS),
+  déploiement automatique à chaque push **et seulement si la CI est verte**, retour à la version
+  précédente en une commande, sauvegarde de la base chaque nuit — mode d'emploi dans
+  `HEBERGEMENT.md`
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
 - **CI GitHub Actions** : compilation, linter, **126 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
@@ -146,24 +149,25 @@
 
 ## 🔜 Prochaines étapes envisagées
 
+- [ ] **Installer le serveur et remettre le site en ligne** sur maidapos.com — tout est
+      préparé côté code, il reste à louer la machine et à faire pointer le domaine
+      (marche à suivre dans `HEBERGEMENT.md`)
 - [ ] **Premier restaurant pilote** (le produit est prêt)
-- [ ] **Nom de domaine + envoi d'e-mails** (~10 €/an) : débloque l'envoi automatique du lien de
-      mot de passe oublié, les confirmations de réservation, et une adresse crédible à la place
-      de l'URL Railway
+- [ ] **Envoi d'e-mails** depuis le domaine : débloque l'envoi automatique du lien de mot de
+      passe oublié et les confirmations de réservation
 - [ ] Réservation en ligne par le client + email de confirmation
 - [ ] Hors-ligne : paiement par article et remises
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
-- [ ] Rafraîchir la démo en ligne quand elle aura de nouveau vieilli (dernier rafraîchissement :
-      2 août 2026)
 - [ ] Multi-établissement pour un même compte client
 
 ## 🔗 Liens utiles
 
-| Quoi                    | Où                                                    |
-| ----------------------- | ----------------------------------------------------- |
-| Site public             | https://maida-production-4f05.up.railway.app          |
-| Historique du travail   | https://github.com/mouradmid/maida/commits/main       |
-| CI (tests automatiques) | https://github.com/mouradmid/maida/actions            |
-| Déploiements            | Railway → service maida → Deployments                 |
-| Bases de données        | https://console.neon.tech (branches production / dev) |
+| Quoi                     | Où                                               |
+| ------------------------ | ------------------------------------------------ |
+| Site public              | https://maidapos.com _(en cours d'installation)_ |
+| Historique du travail    | https://github.com/mouradmid/maida/commits/main  |
+| CI (tests automatiques)  | https://github.com/mouradmid/maida/actions       |
+| Déploiements             | GitHub → Actions → « Déploiement »               |
+| Mode d'emploi du serveur | `HEBERGEMENT.md`                                 |
+| Base de développement    | https://console.neon.tech (branche Dev)          |

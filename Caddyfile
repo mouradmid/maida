@@ -1,0 +1,28 @@
+# Portier HTTPS de Maïda.
+#
+# Caddy obtient le certificat Let's Encrypt au premier démarrage et le
+# renouvelle seul ; il n'y a rien à surveiller ni à renouveler à la main.
+# Le domaine vient de la variable DOMAINE du fichier .env.
+
+{$DOMAINE} {
+	encode zstd gzip
+
+	# L'application est la seule à voir passer les requêtes ; elle a déjà
+	# `trust proxy` activé, elle lit donc la vraie IP du client dans
+	# X-Forwarded-For (indispensable au freinage des tentatives de connexion).
+	reverse_proxy app:3001
+
+	header {
+		# Le navigateur refuse durablement de repasser en HTTP clair.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	log {
+		output file /data/acces.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

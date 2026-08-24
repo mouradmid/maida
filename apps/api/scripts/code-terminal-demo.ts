@@ -9,7 +9,8 @@ import { prisma } from '../src/lib/prisma';
 // sur l'accueil ne rattacherait aucune tablette. Le seed de démo pose le même
 // code, mais lui purge toutes les données — ici on ne touche qu'à ce champ.
 //
-// Sur la production : cd apps/api && railway run --service maida -- npx tsx scripts/code-terminal-demo.ts
+// Sur la production : ouvrir le tunnel SSH vers la base (voir HEBERGEMENT.md),
+// puis cd apps/api && DATABASE_URL=<base de prod> npx tsx scripts/code-terminal-demo.ts
 const CODE_TERMINAL_DEMO = 'HYDRA268';
 
 async function main() {
