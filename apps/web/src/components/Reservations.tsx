@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   ErreurReseau,
@@ -62,7 +62,10 @@ export function Reservations() {
   const [tableId, setTableId] = useState('');
   const [note, setNote] = useState('');
 
-  async function charger() {
+  // Mémorisée sur le jour affiché : l'effet ci-dessous la déclare en dépendance
+  // au lieu de la laisser hors du tableau (elle est aussi rappelée à la main
+  // après chaque action qui modifie la liste).
+  const charger = useCallback(async () => {
     setChargement(true);
     try {
       const debut = new Date(`${jour}T00:00:00`);
@@ -90,14 +93,14 @@ export function Reservations() {
     } finally {
       setChargement(false);
     }
-  }
+  }, [jour]);
 
   useEffect(() => {
     charger();
     // Se relance au retour du réseau, et quand la file locale se vide : la
     // réservation prise hors ligne apparaît alors dans la vraie liste, à la
     // place de sa ligne « à synchroniser ».
-  }, [jour, horsLigne, enAttente]);
+  }, [charger, horsLigne, enAttente]);
 
   // La file locale bouge à la prise d'une réservation et à sa synchronisation.
   useEffect(() => {

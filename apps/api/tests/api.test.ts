@@ -1703,6 +1703,41 @@ describe('Gestion du stock (ruptures et quantités)', () => {
   });
 });
 
+// L'écran « Équipe » propose un bouton par droit de l'énumération : chacun doit
+// être réellement attribuable. GERER_STOCK ne l'était pas — la liste des droits
+// acceptés par l'API avait été oubliée à l'ajout du droit, et le gérant
+// recevait « Droits invalides ».
+describe("Droits attribués par le gérant", () => {
+  async function idServeurSansDroit() {
+    const res = await gerant.get('/api/gerant/serveurs');
+    expect(res.status).toBe(200);
+    const cible = res.body.find((s: { prenom: string }) => s.prenom === 'SansDroit');
+    expect(cible).toBeDefined();
+    return cible.id as string;
+  }
+
+  it('accepte chaque droit proposé par l’application', async () => {
+    const id = await idServeurSansDroit();
+    for (const droit of ['ANNULER', 'CLOTURER', 'REMISER', 'GERER_STOCK']) {
+      const res = await gerant.patch(`/api/gerant/serveurs/${id}/droits`).send({ droits: [droit] });
+      expect(res.status).toBe(200);
+      expect(res.body.droits).toEqual([droit]);
+    }
+    // On rend le serveur à son état d'origine : d'autres blocs comptent dessus.
+    const remise = await gerant.patch(`/api/gerant/serveurs/${id}/droits`).send({ droits: [] });
+    expect(remise.status).toBe(200);
+    expect(remise.body.droits).toHaveLength(0);
+  });
+
+  it('refuse un droit inconnu', async () => {
+    const id = await idServeurSansDroit();
+    const res = await gerant
+      .patch(`/api/gerant/serveurs/${id}/droits`)
+      .send({ droits: ['TOUT_POUVOIR'] });
+    expect(res.status).toBe(400);
+  });
+});
+
 // Un vrai client s'appellera « Le Café Étoilé » et servira des « crèmes
 // brûlées » rue des « Frères Boudjema ». L'établissement de démo a été créé
 // avec une adresse cassée (« Fr?res ») : on verrouille ici tout le chemin, de

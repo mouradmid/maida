@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type ModePaiement } from '../lib/api';
+import { LIBELLES_MOYEN } from '../lib/libelles';
 import { carte, messageErreur } from '../lib/ui';
-
-const LIBELLES: Record<ModePaiement, string> = {
-  ESPECES: 'Espèces',
-  CARTE: 'Carte',
-  CHEQUE: 'Chèque',
-  AUTRE: 'Autre',
-};
 
 export function ConfigMoyensPaiement() {
   const [tous, setTous] = useState<ModePaiement[]>([]);
@@ -75,7 +69,7 @@ export function ConfigMoyensPaiement() {
               }`}
             >
               {actif ? '✓ ' : ''}
-              {LIBELLES[mode]}
+              {LIBELLES_MOYEN[mode]}
             </button>
           );
         })}
