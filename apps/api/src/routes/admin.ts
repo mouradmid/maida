@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
-import { Prisma } from '../generated/prisma/client';
+import { ModuleCompte, Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { formaterCodeTerminal, genererCodeTerminal } from '../lib/securite';
 import { requireAuth } from '../middleware/requireAuth';
@@ -79,7 +79,10 @@ adminRouter.get('/comptes-clients', async (_req, res) => {
   );
 });
 
-const MODULES_VALIDES = ['FOOD_COST', 'QR_MENU'] as const;
+// Dérivée du schéma : ajouter un module à l'énumération suffit à le rendre
+// accordable, sans avoir à penser à cette liste (cf. le droit GERER_STOCK,
+// oublié ici pendant des semaines côté gérant).
+const MODULES_VALIDES = Object.values(ModuleCompte);
 
 adminRouter.patch('/comptes-clients/:id', async (req, res) => {
   const { statut, modules } = req.body ?? {};
@@ -91,7 +94,7 @@ adminRouter.patch('/comptes-clients/:id', async (req, res) => {
   if (
     modules !== undefined &&
     (!Array.isArray(modules) ||
-      modules.some((m) => !MODULES_VALIDES.includes(m as (typeof MODULES_VALIDES)[number])) ||
+      modules.some((m) => !MODULES_VALIDES.includes(m as ModuleCompte)) ||
       new Set(modules).size !== modules.length)
   ) {
     res.status(400).json({ error: 'Modules invalides' });
@@ -112,7 +115,7 @@ adminRouter.patch('/comptes-clients/:id', async (req, res) => {
     where: { id: compte.id },
     data: {
       statut: statut ?? undefined,
-      modules: modules !== undefined ? (modules as (typeof MODULES_VALIDES)[number][]) : undefined,
+      modules: modules !== undefined ? (modules as ModuleCompte[]) : undefined,
     },
     select: { id: true, nomEnseigne: true, statut: true, modules: true },
   });

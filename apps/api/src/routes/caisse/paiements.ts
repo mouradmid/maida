@@ -1,6 +1,5 @@
 import { Router, type Response } from 'express';
-import { Prisma } from '../../generated/prisma/client';
-import type { ModePaiement } from '../../generated/prisma/client';
+import { ModePaiement, Prisma } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
 import { getContexteServeur, getJourneeOuverte } from './partage';
 import { INCLUDE_ADDITION, calculerTotaux } from './vues';
@@ -78,8 +77,10 @@ paiementsRouter.post('/additions/:id/paiements', async (req, res) => {
     if (rejoue) return;
   }
 
-  const MOYENS_VALIDES: ModePaiement[] = ['ESPECES', 'CARTE', 'CHEQUE', 'AUTRE'];
-  if (typeof moyenPaiement !== 'string' || !MOYENS_VALIDES.includes(moyenPaiement as ModePaiement)) {
+  if (
+    typeof moyenPaiement !== 'string' ||
+    !Object.values(ModePaiement).includes(moyenPaiement as ModePaiement)
+  ) {
     res.status(400).json({ error: 'Moyen de paiement invalide' });
     return;
   }

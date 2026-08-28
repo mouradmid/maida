@@ -1707,7 +1707,7 @@ describe('Gestion du stock (ruptures et quantités)', () => {
 // être réellement attribuable. GERER_STOCK ne l'était pas — la liste des droits
 // acceptés par l'API avait été oubliée à l'ajout du droit, et le gérant
 // recevait « Droits invalides ».
-describe("Droits attribués par le gérant", () => {
+describe('Droits attribués par le gérant', () => {
   async function idServeurSansDroit() {
     const res = await gerant.get('/api/gerant/serveurs');
     expect(res.status).toBe(200);

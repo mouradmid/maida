@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Prisma, type FormeTable } from '../../generated/prisma/client';
+import { FormeTable, Prisma } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
 import { getContexteGerant } from './partage';
 
@@ -7,7 +7,7 @@ import { getContexteGerant } from './partage';
 
 export const tablesRouter = Router();
 
-const FORMES_VALIDES = ['RONDE', 'CARREE', 'RECTANGULAIRE'];
+const FORMES_VALIDES: string[] = Object.values(FormeTable);
 
 // Zone de travail du plan côté web (PlanDeSalle.tsx) : les créneaux proposés à une
 // nouvelle table doivent tenir dedans, sinon elle est posée hors du cadre visible.
