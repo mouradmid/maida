@@ -687,3 +687,38 @@ model ConnexionJournal {
   @@index([creeLe])
   @@map("connexions_journal")
 }
+
+enum TypeEmail {
+  MOT_DE_PASSE_OUBLIE
+  CONFIRMATION_RESERVATION
+}
+
+enum ResultatEmail {
+  ENVOYE
+  ECHEC
+  // Aucun serveur d'envoi configuré : le message a été préparé mais n'est
+  // parti nulle part. C'est l'état normal tant que le domaine n'est pas en
+  // service — l'éditeur voit ce qui aurait dû partir.
+  NON_CONFIGURE
+}
+
+// Journal des e-mails : le premier réflexe du support quand un client dit
+// « je n'ai rien reçu ». Comme le journal des connexions, il n'a aucune
+// relation : il doit survivre à ce qu'il décrit, et ne garde jamais le contenu
+// sensible d'un message (un lien de réinitialisation n'est pas archivé ici).
+model EmailEnvoye {
+  id           String        @id @default(cuid())
+  creeLe       DateTime      @default(now())
+  type         TypeEmail
+  resultat     ResultatEmail
+  destinataire String
+  sujet        String
+  // Message du serveur d'envoi quand il refuse, pour le dépannage.
+  erreur       String?
+
+  etablissementId String?
+  etablissement   String?
+
+  @@index([creeLe])
+  @@map("emails_envoyes")
+}

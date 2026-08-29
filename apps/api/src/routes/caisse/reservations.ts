@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '../../generated/prisma/client';
+import { envoyerEmail } from '../../lib/email';
+import { emailConfirmationReservation } from '../../lib/emails';
 import { prisma } from '../../lib/prisma';
 import { getContexteServeur } from './partage';
 
@@ -196,6 +198,32 @@ reservationsRouter.post('/reservations', async (req, res) => {
       },
       include: INCLUDE_RESERVATION,
     });
+
+    // Confirmation au client, quand il a laissé une adresse. Envoi non
+    // bloquant : la réservation est prise, qu'un serveur d'e-mail réponde ou
+    // non (envoyerEmail ne lève jamais et trace le résultat).
+    if (reservation.email) {
+      const etablissement = await prisma.etablissement.findUnique({
+        where: { id: etablissementId },
+        select: { nom: true },
+      });
+      await envoyerEmail(
+        emailConfirmationReservation({
+          destinataire: reservation.email,
+          nomClient: reservation.nomClient,
+          etablissement: etablissement?.nom ?? 'votre restaurant',
+          date: reservation.date,
+          nombreCouverts: reservation.nombreCouverts,
+          table: table.numero,
+        }),
+        {
+          type: 'CONFIRMATION_RESERVATION',
+          etablissementId,
+          etablissement: etablissement?.nom,
+        },
+      );
+    }
+
     res.status(201).json(toPublicReservation(reservation));
   } catch (error) {
     // Deux synchronisations simultanées de la même réservation hors ligne.

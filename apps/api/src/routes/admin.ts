@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { ModuleCompte, Prisma } from '../generated/prisma/client';
+import { emailConfigure } from '../lib/email';
 import { prisma } from '../lib/prisma';
 import { formaterCodeTerminal, genererCodeTerminal } from '../lib/securite';
 import { requireAuth } from '../middleware/requireAuth';
@@ -145,6 +146,20 @@ adminRouter.get('/connexions', async (req, res) => {
   });
 
   res.json(connexions);
+});
+
+// Journal des e-mails : premier réflexe du support quand un client dit
+// « je n'ai rien reçu ». `?echecs=true` isole ce qui n'est pas parti.
+adminRouter.get('/emails', async (req, res) => {
+  const { echecs } = req.query;
+
+  const emails = await prisma.emailEnvoye.findMany({
+    where: echecs === 'true' ? { resultat: { not: 'ENVOYE' } } : undefined,
+    orderBy: { creeLe: 'desc' },
+    take: 200,
+  });
+
+  res.json({ configure: emailConfigure(), emails });
 });
 
 adminRouter.delete('/erreurs', async (_req, res) => {

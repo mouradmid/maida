@@ -44,6 +44,15 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://maida:${POSTGRES_PASSWORD}@base:5432/maida
       JWT_SECRET: ${JWT_SECRET:?secret de signature des sessions manquant}
+      # Envoi d'e-mails : facultatif. Sans ces variables, les messages sont
+      # préparés et tracés, mais ne partent pas (voir HEBERGEMENT.md).
+      URL_PUBLIQUE: ${URL_PUBLIQUE:-}
+      SMTP_HOTE: ${SMTP_HOTE:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_UTILISATEUR: ${SMTP_UTILISATEUR:-}
+      SMTP_MOTDEPASSE: ${SMTP_MOTDEPASSE:-}
+      EMAIL_EXPEDITEUR: ${EMAIL_EXPEDITEUR:-}
+      EMAIL_NOM_EXPEDITEUR: ${EMAIL_NOM_EXPEDITEUR:-Maïda}
     healthcheck:
       test:
         [

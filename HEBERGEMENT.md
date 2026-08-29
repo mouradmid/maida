@@ -68,6 +68,37 @@ Les deux valeurs se génèrent avec :
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
+### 3 bis. Brancher l'envoi d'e-mails (peut attendre)
+
+Sans cette section, Maïda fonctionne : elle prépare ses messages, les trace dans
+le journal de l'espace éditeur, et n'envoie rien — les demandes de mot de passe
+se transmettent à la main, comme aujourd'hui. À faire quand le domaine est en
+service.
+
+Maïda parle **SMTP** : n'importe quel fournisseur convient (Brevo, Resend,
+Mailjet, Scaleway, Infomaniak, OVH…). Chez lui, il faut **authentifier le
+domaine** (SPF et DKIM, deux enregistrements DNS à copier) : sans ça, les
+messages partent en indésirables. Ajouter ensuite dans le même `.env` :
+
+```ini
+URL_PUBLIQUE=https://maidapos.com
+SMTP_HOTE=<smtp du fournisseur>
+SMTP_PORT=587
+SMTP_UTILISATEUR=<identifiant fourni>
+SMTP_MOTDEPASSE=<clé fournie>
+EMAIL_EXPEDITEUR=bonjour@maidapos.com
+EMAIL_NOM_EXPEDITEUR=Maïda
+```
+
+`URL_PUBLIQUE` est obligatoire pour les liens de mot de passe : Maïda refuse de
+composer un lien à partir de l'adresse demandée par le navigateur, sinon
+quelqu'un pourrait faire envoyer au gérant un lien pointant vers son propre
+site. Tant qu'elle manque, aucun lien n'est envoyé.
+
+Après un `docker compose up -d`, vérifier dans l'espace éditeur → **E-mails
+envoyés** : le bandeau d'avertissement doit avoir disparu et les envois
+s'afficher en « Envoyé ».
+
 ### 4. Premier démarrage
 
 Le dépôt est privé, donc l'image de l'application l'est aussi : il faut ouvrir

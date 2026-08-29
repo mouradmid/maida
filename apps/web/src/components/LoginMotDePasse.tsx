@@ -74,7 +74,7 @@ export function LoginMotDePasse({ onSuccess }: { onSuccess: (user: Utilisateur) 
  */
 function MotDePasseOublie({ emailInitial, onRetour }: { emailInitial: string; onRetour: () => void }) {
   const [email, setEmail] = useState(emailInitial);
-  const [envoye, setEnvoye] = useState<string | null>(null);
+  const [envoye, setEnvoye] = useState<{ message: string; parEmail: boolean } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
@@ -83,8 +83,7 @@ function MotDePasseOublie({ emailInitial, onRetour }: { emailInitial: string; on
     setErreur(null);
     setEnCours(true);
     try {
-      const { message } = await api.demanderReinitialisation(email);
-      setEnvoye(message);
+      setEnvoye(await api.demanderReinitialisation(email));
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
     } finally {
@@ -95,9 +94,11 @@ function MotDePasseOublie({ emailInitial, onRetour }: { emailInitial: string; on
   if (envoye) {
     return (
       <div className="flex w-full flex-col gap-4">
-        <p className={messageSucces}>{envoye}</p>
+        <p className={messageSucces}>{envoye.message}</p>
         <p className="text-sm text-ink-faint">
-          Le lien vous sera communiqué par Maïda. Il n'est valable qu'une heure, et une seule fois.
+          {envoye.parEmail
+            ? "Le lien vient de partir par e-mail — pensez à regarder vos indésirables. Il n'est valable qu'une heure, et une seule fois."
+            : "Le lien vous sera communiqué par Maïda. Il n'est valable qu'une heure, et une seule fois."}
         </p>
         <button type="button" onClick={onRetour} className={boutonDiscret}>
           ← Retour à la connexion

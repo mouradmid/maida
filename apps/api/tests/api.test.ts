@@ -8,6 +8,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
 import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
+import { emailConfirmationReservation, emailMotDePasseOublie } from '../src/lib/emails';
 import { prisma } from '../src/lib/prisma';
 
 const NOM_COMPTE_TEST = 'TEST-AUTO';
@@ -75,6 +76,10 @@ async function purgerCompteTest() {
         { acteur: EMAIL_GERANT },
       ],
     },
+  });
+  // Journal des e-mails : sans relation lui non plus, il faut le nettoyer à la main.
+  await prisma.emailEnvoye.deleteMany({
+    where: { etablissementId: { in: etablissements.map((e) => e.id) } },
   });
   // Les jetons de réinitialisation partent en cascade avec leur utilisateur.
   await prisma.utilisateur.deleteMany({ where: { compteClientId: compte.id } });
@@ -2133,10 +2138,15 @@ describe('Journal des connexions et révocation immédiate', () => {
     expect(entrees[0].acteur).toBe('SansDroit Test');
     expect(entrees[0].etablissement).toBe('Resto Test');
     expect(entrees[1].resultat).toBe('IDENTIFIANTS_INVALIDES');
-    // Un journal qui contiendrait les codes essayés serait pire que pas de journal.
-    const journalComplet = JSON.stringify(entrees);
-    expect(journalComplet).not.toContain(PIN_SERVEUR_SANS);
-    expect(journalComplet).not.toContain('0000');
+    // Un journal qui contiendrait les codes essayés serait pire que pas de
+    // journal. On inspecte les champs de texte libre — pas le JSON entier :
+    // un identifiant tiré au hasard peut contenir « 0000 » par pure malchance,
+    // et faisait alors échouer ce test sans qu'aucun code n'ait fuité.
+    const texteLibre = entrees.flatMap((e) => [e.acteur, e.etablissement, e.ip, e.navigateur]);
+    for (const valeur of texteLibre) {
+      expect(valeur ?? '').not.toContain(PIN_SERVEUR_SANS);
+      expect(valeur ?? '').not.toContain('0000');
+    }
   });
 
   it("un serveur désactivé perd la main sans attendre l'expiration de son jeton", async () => {
@@ -2382,5 +2392,189 @@ describe.skipIf(!identifiantsAdmin)('Demandes de mot de passe vues par le super-
     expect(
       await prisma.jetonReinitialisation.count({ where: { utilisateurId: gerantId, utiliseLe: null } }),
     ).toBe(0);
+  });
+});
+
+// L'envoi d'e-mails est volontairement optionnel : tant qu'aucun serveur n'est
+// configuré, Maïda prépare les messages, les trace, et ne les envoie pas. Ces
+// tests vérifient les deux états, avec le transport « json » de nodemailer qui
+// sérialise le message au lieu de l'expédier — tout le chemin est donc joué,
+// gabarit compris, sans serveur SMTP.
+describe("Envoi d'e-mails", () => {
+  const configInitiale = {
+    hote: process.env.SMTP_HOTE,
+    expediteur: process.env.EMAIL_EXPEDITEUR,
+    transport: process.env.EMAIL_TRANSPORT,
+    url: process.env.URL_PUBLIQUE,
+  };
+  let tableReservationId = '';
+
+  const brancherServeurEmail = () => {
+    process.env.SMTP_HOTE = 'smtp.exemple.test';
+    process.env.EMAIL_EXPEDITEUR = 'bonjour@maidapos.com';
+    process.env.EMAIL_TRANSPORT = 'json';
+  };
+  const debrancherServeurEmail = () => {
+    delete process.env.SMTP_HOTE;
+    delete process.env.EMAIL_EXPEDITEUR;
+    delete process.env.EMAIL_TRANSPORT;
+  };
+
+  const reserver = (email: string, dansMinutes: number) =>
+    serveur.post('/api/caisse/reservations').send({
+      nomClient: 'Client Email',
+      email,
+      nombreCouverts: 2,
+      date: new Date(Date.now() + dansMinutes * 60_000).toISOString(),
+      tableId: tableReservationId,
+    });
+
+  beforeAll(async () => {
+    const table = await prisma.table.create({
+      data: { numero: 'T-MAIL', forme: 'RONDE', nombreCouverts: 4, etablissementId },
+    });
+    tableReservationId = table.id;
+    debrancherServeurEmail();
+    delete process.env.URL_PUBLIQUE;
+  });
+
+  afterAll(() => {
+    for (const [cle, valeur] of Object.entries({
+      SMTP_HOTE: configInitiale.hote,
+      EMAIL_EXPEDITEUR: configInitiale.expediteur,
+      EMAIL_TRANSPORT: configInitiale.transport,
+      URL_PUBLIQUE: configInitiale.url,
+    })) {
+      if (valeur === undefined) delete process.env[cle];
+      else process.env[cle] = valeur;
+    }
+  });
+
+  it('trace une confirmation de réservation même sans serveur configuré', async () => {
+    const res = await reserver('client.sans.serveur@exemple.test', 200);
+    expect(res.status).toBe(201);
+
+    const email = await prisma.emailEnvoye.findFirst({
+      where: { destinataire: 'client.sans.serveur@exemple.test' },
+    });
+    expect(email?.resultat).toBe('NON_CONFIGURE');
+    expect(email?.type).toBe('CONFIRMATION_RESERVATION');
+    expect(email?.sujet).toContain('Resto Test');
+  });
+
+  it('envoie la confirmation dès qu’un serveur est branché', async () => {
+    brancherServeurEmail();
+    const res = await reserver('client.avec.serveur@exemple.test', 400);
+    expect(res.status).toBe(201);
+
+    const email = await prisma.emailEnvoye.findFirst({
+      where: { destinataire: 'client.avec.serveur@exemple.test' },
+    });
+    expect(email?.resultat).toBe('ENVOYE');
+    expect(email?.erreur).toBeNull();
+  });
+
+  it("n'envoie aucun lien de réinitialisation sans adresse publique déclarée", async () => {
+    brancherServeurEmail();
+    delete process.env.URL_PUBLIQUE;
+
+    const res = await request(app).post('/api/auth/mot-de-passe-oublie').send({ email: EMAIL_GERANT });
+    expect(res.status).toBe(200);
+    // La demande existe (l'éditeur peut dépanner), mais rien n'est parti :
+    // composer le lien depuis l'en-tête Host de la requête serait exploitable.
+    expect(
+      await prisma.emailEnvoye.count({
+        where: { type: 'MOT_DE_PASSE_OUBLIE', destinataire: EMAIL_GERANT },
+      }),
+    ).toBe(0);
+  });
+
+  it("envoie le lien de réinitialisation quand l'adresse publique est déclarée", async () => {
+    brancherServeurEmail();
+    process.env.URL_PUBLIQUE = 'https://maidapos.com/';
+
+    const res = await request(app).post('/api/auth/mot-de-passe-oublie').send({ email: EMAIL_GERANT });
+    expect(res.status).toBe(200);
+
+    const email = await prisma.emailEnvoye.findFirst({
+      where: { type: 'MOT_DE_PASSE_OUBLIE', destinataire: EMAIL_GERANT },
+      orderBy: { creeLe: 'desc' },
+    });
+    expect(email?.resultat).toBe('ENVOYE');
+    // Le journal ne doit jamais archiver le lien lui-même : il vaut mot de passe.
+    expect(JSON.stringify(email)).not.toContain('reinitialisation/');
+  });
+});
+
+describe.skipIf(!identifiantsAdmin)("Journal des e-mails vu par l'éditeur", () => {
+  const admin = request.agent(app);
+
+  it("liste les envois et dit si un serveur d'envoi est branché", async () => {
+    const login = await admin.post('/api/auth/login').send({
+      email: process.env.SEED_SUPER_ADMIN_EMAIL,
+      password: process.env.SEED_SUPER_ADMIN_PASSWORD,
+    });
+    expect(login.status).toBe(200);
+
+    const sansServeur = await admin.get('/api/admin/emails');
+    expect(sansServeur.status).toBe(200);
+    expect(sansServeur.body.configure).toBe(false);
+    expect(sansServeur.body.emails.length).toBeGreaterThan(0);
+
+    process.env.SMTP_HOTE = 'smtp.exemple.test';
+    process.env.EMAIL_EXPEDITEUR = 'bonjour@maidapos.com';
+    try {
+      const avecServeur = await admin.get('/api/admin/emails');
+      expect(avecServeur.body.configure).toBe(true);
+    } finally {
+      delete process.env.SMTP_HOTE;
+      delete process.env.EMAIL_EXPEDITEUR;
+    }
+
+    const echecs = await admin.get('/api/admin/emails?echecs=true');
+    expect(echecs.status).toBe(200);
+    for (const e of echecs.body.emails) expect(e.resultat).not.toBe('ENVOYE');
+  });
+});
+
+describe('Gabarits des e-mails', () => {
+  it("échappe ce que le client a saisi, pour qu'un nom ne casse pas le message", () => {
+    const message = emailConfirmationReservation({
+      destinataire: 'client@exemple.test',
+      nomClient: '<script>alert(1)</script>',
+      etablissement: 'Le Café « Étoilé »',
+      date: new Date('2026-09-01T19:30:00.000Z'),
+      nombreCouverts: 2,
+      table: '12',
+    });
+    expect(message.html).not.toContain('<script>');
+    expect(message.html).toContain('&lt;script&gt;');
+    // La version texte est toujours présente : sans elle, le message part avec
+    // un handicap chez les filtres anti-spam.
+    expect(message.texte).toContain('Le Café « Étoilé »');
+  });
+
+  it("annonce l'heure du restaurant, pas celle du serveur", () => {
+    const message = emailConfirmationReservation({
+      destinataire: 'client@exemple.test',
+      nomClient: 'Karim',
+      etablissement: 'Le Bon Grill',
+      // 19 h 30 UTC = 20 h 30 à Alger.
+      date: new Date('2026-09-01T19:30:00.000Z'),
+      nombreCouverts: 4,
+      table: '3',
+    });
+    expect(message.texte).toContain('20:30');
+  });
+
+  it('rappelle la durée de validité du lien de mot de passe', () => {
+    const message = emailMotDePasseOublie({
+      destinataire: 'karim@exemple.test',
+      prenom: 'Karim',
+      lien: 'https://maidapos.com/reinitialisation/abc',
+      dureeHeures: 1,
+    });
+    expect(message.texte).toContain('une heure');
+    expect(message.html).toContain('https://maidapos.com/reinitialisation/abc');
   });
 });

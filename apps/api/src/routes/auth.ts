@@ -1,7 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Utilisateur } from '../generated/prisma/client';
+import { emailConfigure, envoyerEmail, urlPublique } from '../lib/email';
+import { emailMotDePasseOublie } from '../lib/emails';
 import { AUTH_COOKIE_NAME, signToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import {
@@ -44,7 +46,11 @@ const limitePin = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const id = (req.body as { etablissementId?: unknown })?.etablissementId;
-    return typeof id === 'string' && id ? `etab:${id}` : `ip:${req.ip}`;
+    // Repli sur l'adresse quand l'établissement n'est pas dans la requête.
+    // `ipKeyGenerator` regroupe les adresses IPv6 par préfixe /64 : sans lui,
+    // un même abonné dispose de milliards d'adresses et contourne la limite en
+    // changeant de numéro à chaque essai.
+    return typeof id === 'string' && id ? `etab:${id}` : `ip:${ipKeyGenerator(req.ip ?? '')}`;
   },
   message: {
     error:
@@ -256,10 +262,17 @@ authRouter.post('/login-pin', limitePin, async (req, res) => {
 
 // Réponse unique de la demande d'oubli : elle ne dit jamais si l'adresse est
 // connue. Sans ça, le formulaire deviendrait un annuaire des clients de Maïda.
-const REPONSE_OUBLI = {
-  message:
-    "Si cette adresse correspond à un compte Maïda, une demande de réinitialisation vient d'être enregistrée. Vous allez être recontacté avec le lien à suivre.",
-};
+//
+// `parEmail` ne dépend que de la configuration du serveur, jamais de l'adresse
+// saisie : il permet d'annoncer la bonne chose (« regardez vos e-mails » ou
+// « on vous recontacte ») sans rien révéler sur le compte.
+function reponseOubli() {
+  return {
+    message:
+      "Si cette adresse correspond à un compte Maïda, une demande de réinitialisation vient d'être enregistrée.",
+    parEmail: emailConfigure() && urlPublique() !== null,
+  };
+}
 
 /**
  * « J'ai oublié mon mot de passe. » Enregistre une demande et prépare un lien à
@@ -283,9 +296,12 @@ authRouter.post('/mot-de-passe-oublie', limiteOubli, async (req, res) => {
     where: { email: { equals: email.trim(), mode: 'insensitive' } },
     select: {
       id: true,
+      email: true,
+      prenom: true,
       statut: true,
       motDePasseHash: true,
       compteClient: { select: { statut: true } },
+      etablissement: { select: { id: true, nom: true } },
     },
   });
 
@@ -303,17 +319,38 @@ authRouter.post('/mot-de-passe-oublie', limiteOubli, async (req, res) => {
     await prisma.jetonReinitialisation.deleteMany({
       where: { utilisateurId: utilisateur.id, utiliseLe: null },
     });
+    const jeton = genererJetonReinitialisation();
     await prisma.jetonReinitialisation.create({
       data: {
-        jeton: genererJetonReinitialisation(),
+        jeton,
         utilisateurId: utilisateur.id,
         expireLe: new Date(Date.now() + DUREE_JETON_REINITIALISATION_MS),
         ip: ipDe(req),
       },
     });
+
+    // L'e-mail ne remplace pas la demande visible par l'éditeur : il la double.
+    // Tant qu'aucun serveur d'envoi n'est configuré, seule la demande existe et
+    // l'éditeur transmet le lien lui-même, comme avant.
+    const site = urlPublique();
+    if (utilisateur.email && site) {
+      await envoyerEmail(
+        emailMotDePasseOublie({
+          destinataire: utilisateur.email,
+          prenom: utilisateur.prenom,
+          lien: `${site}/reinitialisation/${jeton}`,
+          dureeHeures: Math.round(DUREE_JETON_REINITIALISATION_MS / 3_600_000),
+        }),
+        {
+          type: 'MOT_DE_PASSE_OUBLIE',
+          etablissementId: utilisateur.etablissement?.id,
+          etablissement: utilisateur.etablissement?.nom,
+        },
+      );
+    }
   }
 
-  res.json(REPONSE_OUBLI);
+  res.json(reponseOubli());
 });
 
 /** Cherche un jeton encore utilisable, et la personne à qui il appartient. */

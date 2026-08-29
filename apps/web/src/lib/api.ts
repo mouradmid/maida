@@ -419,8 +419,10 @@ export const api = {
 
   // Récupération de mot de passe. La réponse est volontairement la même que
   // l'adresse soit connue ou non : le formulaire ne doit pas servir d'annuaire.
+  // `parEmail` dit si un serveur d'envoi est branché — jamais si l'adresse est
+  // connue : la réponse doit rester identique pour toutes les adresses.
   demanderReinitialisation: (email: string) =>
-    apiFetch<{ message: string }>('/auth/mot-de-passe-oublie', {
+    apiFetch<{ message: string; parEmail: boolean }>('/auth/mot-de-passe-oublie', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
@@ -928,6 +930,23 @@ export const api = {
         navigateur: string | null;
       }>
     >(`/admin/connexions${echecsSeulement ? '?echecs=true' : ''}`),
+
+  // `configure` dit si un serveur d'envoi est branché : sans lui, les messages
+  // sont préparés et tracés, mais ne partent nulle part.
+  listEmails: (echecsSeulement: boolean) =>
+    apiFetch<{
+      configure: boolean;
+      emails: Array<{
+        id: string;
+        creeLe: string;
+        type: 'MOT_DE_PASSE_OUBLIE' | 'CONFIRMATION_RESERVATION';
+        resultat: 'ENVOYE' | 'ECHEC' | 'NON_CONFIGURE';
+        destinataire: string;
+        sujet: string;
+        erreur: string | null;
+        etablissement: string | null;
+      }>;
+    }>(`/admin/emails${echecsSeulement ? '?echecs=true' : ''}`),
 
   getParametres: () => apiFetch<ParametresGerant>('/gerant/parametres'),
 

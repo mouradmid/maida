@@ -21,7 +21,8 @@
 - **Remises & offerts** : % ou montant, article offert, motifs, droit REMISER, tout tracé
 - **Réservations** : prise au téléphone, anti-conflit de créneau, badge sur le plan de salle,
   arrivée / annulation / no-show — **prise possible sans réseau** (le plan de salle vient du
-  cache, la réservation attend dans la file et part à la reconnexion)
+  cache, la réservation attend dans la file et part à la reconnexion) ; **confirmation
+  automatique par e-mail** au client qui a laissé son adresse
 - **Ruptures & quantités** : marquer un article « en rupture » en un geste (grisé à la caisse,
   masqué au menu QR), ou suivre une quantité par service qui se décompte à chaque envoi et passe
   en rupture à zéro — la quantité revient au stock si on annule avant préparation ; géré depuis le
@@ -113,8 +114,10 @@
 - **Journal des connexions** : qui s'est connecté, où, depuis quelle adresse, et surtout les
   tentatives refusées — filtrables d'un clic pour repérer un acharnement sur un code PIN
 - **Mots de passe oubliés** : quand un gérant déclare l'oubli, sa demande arrive ici avec un lien
-  à usage unique (valable une heure) à lui transmettre par téléphone ou WhatsApp — en attendant
-  l'envoi automatique par e-mail, qui remplacera ce seul maillon
+  à usage unique (valable une heure). Dès qu'un serveur d'envoi est branché, le lien part **tout
+  seul par e-mail** ; sinon il reste à transmettre par téléphone ou WhatsApp, comme avant
+- **Journal des e-mails** : qui a reçu quoi, et surtout ce qui n'est pas parti — la première
+  chose à regarder quand un client dit « je n'ai rien reçu »
 
 ### Identité visuelle
 
@@ -137,7 +140,7 @@
   précédente en une commande, sauvegarde de la base chaque nuit — mode d'emploi dans
   `HEBERGEMENT.md`
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **135 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **143 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
@@ -158,9 +161,9 @@
       préparé côté code, il reste à louer la machine et à faire pointer le domaine
       (marche à suivre dans `HEBERGEMENT.md`)
 - [ ] **Premier restaurant pilote** (le produit est prêt)
-- [ ] **Envoi d'e-mails** depuis le domaine : débloque l'envoi automatique du lien de mot de
-      passe oublié et les confirmations de réservation
-- [ ] Réservation en ligne par le client + email de confirmation
+- [ ] **Brancher l'envoi d'e-mails** : le code est prêt et vérifié, il ne manque que le domaine
+      et un fournisseur SMTP (7 lignes de configuration, marche à suivre dans `HEBERGEMENT.md`)
+- [ ] Réservation en ligne par le client depuis le menu QR
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
 - [ ] Multi-établissement pour un même compte client

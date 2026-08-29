@@ -4,6 +4,7 @@ import { EnTeteEspace } from '../components/EnTeteEspace';
 import { GestionComptesClients } from '../components/GestionComptesClients';
 import { DemandesReinitialisation } from '../components/DemandesReinitialisation';
 import { JournalConnexions } from '../components/JournalConnexions';
+import { JournalEmails } from '../components/JournalEmails';
 import { JournalErreurs } from '../components/JournalErreurs';
 import { useMe } from '../hooks/useMe';
 
@@ -23,6 +24,7 @@ export function EspaceSuperAdmin() {
           <DemandesReinitialisation />
           <GestionComptesClients />
           <JournalConnexions />
+          <JournalEmails />
           <JournalErreurs />
         </main>
       </div>
