@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
 import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
 import { emailConfirmationReservation, emailMotDePasseOublie } from '../src/lib/emails';
+import { AUTH_COOKIE_NAME, signToken } from '../src/lib/jwt';
 import { prisma } from '../src/lib/prisma';
 
 const NOM_COMPTE_TEST = 'TEST-AUTO';
@@ -2576,5 +2577,163 @@ describe('Gabarits des e-mails', () => {
     });
     expect(message.texte).toContain('une heure');
     expect(message.html).toContain('https://maidapos.com/reinitialisation/abc');
+  });
+});
+
+// Une enseigne peut tenir plusieurs restaurants sous le même compte client. Le
+// gérant bascule de l'un à l'autre depuis le même identifiant. Le risque de
+// cette fonctionnalité est évident : elle ne doit JAMAIS servir de passerelle
+// vers l'établissement d'un autre client.
+describe('Plusieurs restaurants pour un même compte', () => {
+  const deuxieme = request.agent(app);
+  let secondEtablissementId = '';
+  let etablissementEtranger = '';
+
+  beforeAll(async () => {
+    const etab = await prisma.etablissement.create({
+      data: {
+        nom: 'Resto Test — Annexe',
+        ville: 'Testville',
+        codeTerminal: `${CODE_TERMINAL_TEST}2`,
+        compteClientId,
+      },
+    });
+    secondEtablissementId = etab.id;
+    await prisma.categorie.create({
+      data: { nom: 'Carte annexe', type: 'NOURRITURE', etablissementId: etab.id },
+    });
+
+    const autre = await prisma.etablissement.findFirst({
+      where: { compteClientId: { not: compteClientId } },
+      select: { id: true },
+    });
+    etablissementEtranger = autre?.id ?? '';
+
+    const login = await deuxieme
+      .post('/api/auth/login')
+      .send({ email: EMAIL_GERANT, password: MDP_GERANT });
+    expect(login.status).toBe(200);
+  });
+
+  afterAll(async () => {
+    await prisma.categorie.deleteMany({ where: { etablissementId: secondEtablissementId } });
+    await prisma.etablissement.delete({ where: { id: secondEtablissementId } });
+  });
+
+  it("liste les restaurants de l'enseigne, et seulement eux", async () => {
+    const res = await deuxieme.get('/api/gerant/etablissements');
+    expect(res.status).toBe(200);
+    expect(res.body.etablissements).toHaveLength(2);
+    expect(res.body.etablissements.map((e: { id: string }) => e.id)).toContain(secondEtablissementId);
+    expect(res.body.actuelId).toBe(etablissementId);
+  });
+
+  it('bascule sur le second restaurant, et les écrans suivent', async () => {
+    const avant = await deuxieme.get('/api/gerant/categories');
+    expect(avant.body.map((c: { nom: string }) => c.nom)).not.toContain('Carte annexe');
+
+    const bascule = await deuxieme
+      .post('/api/gerant/etablissement')
+      .send({ etablissementId: secondEtablissementId });
+    expect(bascule.status).toBe(200);
+    expect(bascule.body.nom).toBe('Resto Test — Annexe');
+
+    const apres = await deuxieme.get('/api/gerant/categories');
+    expect(apres.body.map((c: { nom: string }) => c.nom)).toEqual(['Carte annexe']);
+
+    // La session dit désormais travailler sur l'annexe.
+    const moi = await deuxieme.get('/api/auth/me');
+    expect(moi.body.etablissementId).toBe(secondEtablissementId);
+  });
+
+  it("refuse de basculer sur l'établissement d'un autre client", async () => {
+    if (!etablissementEtranger) return; // pas d'autre compte en base : rien à tester
+    const res = await deuxieme
+      .post('/api/gerant/etablissement')
+      .send({ etablissementId: etablissementEtranger });
+    expect(res.status).toBe(404);
+  });
+
+  it("un jeton portant l'établissement d'un autre client ne donne accès à rien", async () => {
+    if (!etablissementEtranger) return;
+    // On fabrique nous-mêmes la session que fabriquerait un attaquant capable
+    // de forger le jeton : le serveur ne doit pas s'y fier.
+    const gerant = await prisma.utilisateur.findFirstOrThrow({ where: { email: EMAIL_GERANT } });
+    const jetonTrafique = signToken({
+      sub: gerant.id,
+      role: 'GERANT',
+      etab: etablissementEtranger,
+    });
+
+    const res = await request(app)
+      .get('/api/gerant/categories')
+      .set('Cookie', [`${AUTH_COOKIE_NAME}=${jetonTrafique}`]);
+    expect(res.status).toBe(200);
+
+    // Repli sur l'établissement de rattachement : la réponse contient la carte
+    // du restaurant de test, et aucune ligne de celui de l'autre client.
+    const rendues = res.body.map((c: { id: string }) => c.id);
+    const attendues = await prisma.categorie.findMany({
+      where: { etablissementId },
+      select: { id: true },
+    });
+    expect(rendues.sort()).toEqual(attendues.map((c) => c.id).sort());
+
+    const etrangeres = await prisma.categorie.findMany({
+      where: { etablissementId: etablissementEtranger },
+      select: { id: true },
+    });
+    for (const categorie of etrangeres) expect(rendues).not.toContain(categorie.id);
+  });
+
+  it("revient sur le restaurant d'origine", async () => {
+    const retour = await deuxieme.post('/api/gerant/etablissement').send({ etablissementId });
+    expect(retour.status).toBe(200);
+    const apres = await deuxieme.get('/api/gerant/categories');
+    expect(apres.body.map((c: { nom: string }) => c.nom)).not.toContain('Carte annexe');
+  });
+});
+
+describe.skipIf(!identifiantsAdmin)("Ajout d'un restaurant par l'éditeur", () => {
+  const admin = request.agent(app);
+  let ajouteId = '';
+
+  afterAll(async () => {
+    if (ajouteId) await prisma.etablissement.delete({ where: { id: ajouteId } });
+  });
+
+  it('ajoute un restaurant au compte, avec son propre code d’installation', async () => {
+    const login = await admin.post('/api/auth/login').send({
+      email: process.env.SEED_SUPER_ADMIN_EMAIL,
+      password: process.env.SEED_SUPER_ADMIN_PASSWORD,
+    });
+    expect(login.status).toBe(200);
+
+    const res = await admin
+      .post(`/api/admin/comptes-clients/${compteClientId}/etablissements`)
+      .send({ nom: 'Resto Test — Second service', ville: 'Testville' });
+    expect(res.status).toBe(201);
+    expect(res.body.codeTerminal).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    ajouteId = res.body.id;
+
+    // Le gérant du compte le voit immédiatement, sans nouvel identifiant.
+    // Session neuve : celle des blocs précédents a pu être révoquée en route
+    // (les tests de mot de passe oublié ferment les sessions ouvertes).
+    const gerantFrais = request.agent(app);
+    const connexion = await gerantFrais
+      .post('/api/auth/login')
+      .send({ email: EMAIL_GERANT, password: MDP_GERANT });
+    expect(connexion.status).toBe(200);
+
+    const vus = await gerantFrais.get('/api/gerant/etablissements');
+    expect(vus.status).toBe(200);
+    expect(vus.body.etablissements.map((e: { id: string }) => e.id)).toContain(ajouteId);
+  });
+
+  it('refuse un compte client inconnu', async () => {
+    const res = await admin
+      .post('/api/admin/comptes-clients/inconnu-xyz/etablissements')
+      .send({ nom: 'Nulle part' });
+    expect(res.status).toBe(404);
   });
 });

@@ -4,7 +4,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Utilisateur } from '../generated/prisma/client';
 import { emailConfigure, envoyerEmail, urlPublique } from '../lib/email';
 import { emailMotDePasseOublie } from '../lib/emails';
-import { AUTH_COOKIE_NAME, signToken } from '../lib/jwt';
+import { AUTH_COOKIE_NAME, COOKIE_OPTIONS, signToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import {
   DUREE_JETON_REINITIALISATION_MS,
@@ -79,13 +79,6 @@ const limiteOubli = rateLimit({
   legacyHeaders: false,
   message: { error: 'Trop de demandes. Réessayez dans quelques minutes.' },
 });
-
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  maxAge: 8 * 60 * 60 * 1000,
-};
 
 function toPublicUser(utilisateur: Utilisateur) {
   return {
@@ -463,7 +456,20 @@ authRouter.get('/me', requireAuth, async (req, res) => {
     return;
   }
 
-  res.json(toPublicUser(utilisateur));
+  // Gérant multi-établissement : l'espace doit refléter le restaurant choisi
+  // pour cette session, pas celui de rattachement. Le choix est revalidé ici
+  // aussi — un jeton trafiqué ne fait pas changer d'établissement.
+  let etablissementId = utilisateur.etablissementId;
+  const choisi = req.user!.etablissementChoisiId;
+  if (utilisateur.role === 'GERANT' && choisi && choisi !== etablissementId) {
+    const valide = await prisma.etablissement.findFirst({
+      where: { id: choisi, compteClientId: utilisateur.compteClientId ?? '', statut: 'ACTIF' },
+      select: { id: true },
+    });
+    if (valide) etablissementId = valide.id;
+  }
+
+  res.json({ ...toPublicUser(utilisateur), etablissementId });
 });
 
 authRouter.post('/logout', (_req, res) => {

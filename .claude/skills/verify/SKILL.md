@@ -60,9 +60,15 @@ value:'dark'}])`, un contexte de navigateur par thème. Contrôler la bascule en
   croit avoir réussi.
 - Le volet d'addition s'appelle « Addition · 2 440 DA » (le montant est dans le
   libellé) : chercher par préfixe, pas par égalité.
-- Le prédicat passé à `page.evaluate` est SÉRIALISÉ : il ne peut pas appeler un
+- Le prédicat passé à `page.evaluate` est SÉRIALISÉ : il ne peut ni appeler un
   helper défini côté Node (`() => !modalOuvert()` échoue par
-  « modalOuvert is not defined »). Tout écrire dans la fonction.
+  « modalOuvert is not defined »), ni capturer une variable de la portée
+  (`(nom) => texte.includes(nom)` reçoit `undefined` si `nom` n'est pas passé en
+  argument à `evaluate`, et l'attente échoue sans rien dire). Tout écrire dans
+  la fonction, ou passer explicitement les arguments.
+- L'espace éditeur liste les comptes du plus récent au plus ancien : viser une
+  fiche par son nom (« Le Bon Grill »), jamais la première de la liste — sinon
+  l'action part sur « La Palmeraie ».
 - Après une coupure, l'onglet « Addition » reste brièvement désactivé le temps
   que les cibles hors ligne soient recalculées : attendre `!bouton.disabled`
   plutôt que de cliquer tout de suite.

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant, plagePeriode } from './partage';
+import { contexteDe, plagePeriode } from './partage';
 
 // Historiques des gestes exceptionnels du service : annulations et remises.
 // Tous deux acceptent une période optionnelle (?debut=&fin=). Sans elle, on
@@ -17,7 +17,7 @@ historiquesRouter.get('/annulations', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const annulations = await prisma.annulation.findMany({
     where: { etablissementId, creeLe },
@@ -62,7 +62,7 @@ historiquesRouter.get('/remises', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const remises = await prisma.remise.findMany({
     where: { etablissementId, creeLe },

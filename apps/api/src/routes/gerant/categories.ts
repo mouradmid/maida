@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 export const categoriesRouter = Router();
 
 categoriesRouter.get('/categories', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const categories = await prisma.categorie.findMany({
     where: { etablissementId },
@@ -28,7 +28,7 @@ categoriesRouter.post('/categories', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const categorie = await prisma.categorie.create({
     data: { nom, type: type ?? undefined, etablissementId },
@@ -39,7 +39,7 @@ categoriesRouter.post('/categories', async (req, res) => {
 
 categoriesRouter.patch('/categories/:id', async (req, res) => {
   const { nom, statut, type, suiteParDefaut } = req.body ?? {};
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const categorie = await prisma.categorie.findUnique({ where: { id: req.params.id } });
   if (!categorie || categorie.etablissementId !== etablissementId) {

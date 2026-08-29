@@ -6,12 +6,46 @@ import { prisma } from '../../lib/prisma';
 
 export const arrondi = (n: number) => Math.round(n * 100) / 100;
 
-export async function getContexteGerant(gerantId: string) {
+/**
+ * L'établissement sur lequel porte la requête.
+ *
+ * Une enseigne peut tenir plusieurs restaurants sous le même compte client. Le
+ * gérant en choisit un pour sa session (jeton `etab`) ; à défaut, c'est son
+ * établissement de rattachement. **Le choix est revalidé ici à chaque
+ * requête** : il doit appartenir au compte client du gérant et être actif,
+ * sinon on retombe sur son rattachement. C'est cette vérification, et non le
+ * contenu du jeton, qui garantit l'étanchéité entre clients.
+ */
+export async function getContexteGerant(gerantId: string, etablissementChoisiId?: string) {
   const gerant = await prisma.utilisateur.findUnique({ where: { id: gerantId } });
   if (!gerant?.etablissementId || !gerant?.compteClientId) {
     throw new Error('Gérant sans établissement associé');
   }
+
+  if (etablissementChoisiId && etablissementChoisiId !== gerant.etablissementId) {
+    const choisi = await prisma.etablissement.findFirst({
+      where: {
+        id: etablissementChoisiId,
+        compteClientId: gerant.compteClientId,
+        statut: 'ACTIF',
+      },
+      select: { id: true },
+    });
+    if (choisi) {
+      return { compteClientId: gerant.compteClientId, etablissementId: choisi.id };
+    }
+  }
+
   return { compteClientId: gerant.compteClientId, etablissementId: gerant.etablissementId };
+}
+
+/**
+ * Raccourci pour les routes : le contexte tel que la requête le définit.
+ * Toutes les routes gérant passent par là — c'est le seul point où la
+ * sélection d'établissement entre en jeu.
+ */
+export function contexteDe(req: Request) {
+  return getContexteGerant(req.user!.id, req.user!.etablissementChoisiId);
 }
 
 // Période optionnelle (?debut=&fin=) des historiques du gérant. Renvoie le

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
-import { arrondi, getContexteGerant } from './partage';
+import { arrondi, contexteDe } from './partage';
 
 // Rapports de ventes de l'espace gérant.
 // Convention : CA commandé / palmarès produits / food cost sont BRUTS (avant
@@ -60,7 +60,7 @@ rapportsRouter.get('/rapports', async (req, res) => {
     return;
   }
 
-  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
+  const { compteClientId, etablissementId } = await contexteDe(req);
   const periode = { gte: dateDebut, lte: dateFin };
 
   // Le food cost n'est renvoyé que si le module est accordé au compte client.

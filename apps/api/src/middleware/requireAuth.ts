@@ -7,6 +7,10 @@ declare global {
       user?: {
         id: string;
         role: 'SUPER_ADMIN' | 'GERANT' | 'SERVEUR';
+        // Établissement choisi pour cette session (gérant multi-établissement).
+        // Une simple préférence : elle est revalidée à chaque requête contre
+        // les établissements du compte client.
+        etablissementChoisiId?: string;
         // Date d'émission de la session, pour la comparer à un éventuel
         // changement de mot de passe.
         emiseLe: Date;
@@ -27,6 +31,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     req.user = {
       id: payload.sub,
       role: payload.role,
+      etablissementChoisiId: payload.etab,
       emiseLe: new Date((payload.iat ?? 0) * 1000),
     };
     next();

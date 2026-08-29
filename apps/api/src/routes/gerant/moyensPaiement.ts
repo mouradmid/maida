@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ModePaiement } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 // Moyens de paiement acceptés par l'établissement. La liste des moyens
 // possibles est dérivée de l'énumération Prisma : en ajouter un au schéma
@@ -12,7 +12,7 @@ export const moyensPaiementRouter = Router();
 const MOYENS_PAIEMENT_VALIDES = Object.values(ModePaiement);
 
 moyensPaiementRouter.get('/moyens-paiement', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const etablissement = await prisma.etablissement.findUnique({
     where: { id: etablissementId },
@@ -37,7 +37,7 @@ moyensPaiementRouter.patch('/moyens-paiement', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const etablissement = await prisma.etablissement.update({
     where: { id: etablissementId },

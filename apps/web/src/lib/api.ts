@@ -931,6 +931,30 @@ export const api = {
       }>
     >(`/admin/connexions${echecsSeulement ? '?echecs=true' : ''}`),
 
+  // Établissements du compte client, pour le gérant d'une enseigne qui en tient
+  // plusieurs. `actuelId` est celui sur lequel porte la session en cours.
+  listEtablissementsGerant: () =>
+    apiFetch<{
+      actuelId: string;
+      etablissements: Array<{ id: string; nom: string; ville: string | null }>;
+    }>('/gerant/etablissements'),
+
+  // Bascule la session sur un autre restaurant du même compte.
+  choisirEtablissement: (etablissementId: string) =>
+    apiFetch<{ id: string; nom: string; ville: string | null }>('/gerant/etablissement', {
+      method: 'POST',
+      body: JSON.stringify({ etablissementId }),
+    }),
+
+  ajouterEtablissement: (
+    compteClientId: string,
+    data: { nom: string; adresse?: string; ville?: string },
+  ) =>
+    apiFetch<{ id: string; nom: string; ville: string | null; codeTerminal: string }>(
+      `/admin/comptes-clients/${compteClientId}/etablissements`,
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+
   // `configure` dit si un serveur d'envoi est branché : sans lui, les messages
   // sont préparés et tracés, mais ne partent nulle part.
   listEmails: (echecsSeulement: boolean) =>

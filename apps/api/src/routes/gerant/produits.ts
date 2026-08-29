@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 export const produitsRouter = Router();
 
@@ -44,7 +44,7 @@ function validerTempsPreparation(valeur: unknown): { ok: true; valeur: number | 
 }
 
 produitsRouter.get('/produits', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
   const { categorieId } = req.query;
 
   const produits = await prisma.produit.findMany({
@@ -97,7 +97,7 @@ produitsRouter.post('/produits', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const categorie = await prisma.categorie.findUnique({ where: { id: categorieId } });
   if (!categorie || categorie.etablissementId !== etablissementId) {
@@ -135,7 +135,7 @@ produitsRouter.patch('/produits/:id', async (req, res) => {
     suiviQuantite,
     quantiteRestante,
   } = req.body ?? {};
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const produit = await prisma.produit.findUnique({ where: { id: req.params.id } });
   if (!produit || produit.etablissementId !== etablissementId) {
@@ -229,7 +229,7 @@ produitsRouter.post('/produits/:produitId/groupes', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const produit = await prisma.produit.findUnique({ where: { id: req.params.produitId } });
   if (!produit || produit.etablissementId !== etablissementId) {
@@ -246,7 +246,7 @@ produitsRouter.post('/produits/:produitId/groupes', async (req, res) => {
 });
 
 produitsRouter.delete('/groupes/:id', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const groupe = await prisma.groupeOption.findUnique({
     where: { id: req.params.id },
@@ -269,7 +269,7 @@ produitsRouter.post('/groupes/:groupeId/valeurs', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const groupe = await prisma.groupeOption.findUnique({
     where: { id: req.params.groupeId },
@@ -288,7 +288,7 @@ produitsRouter.post('/groupes/:groupeId/valeurs', async (req, res) => {
 });
 
 produitsRouter.delete('/valeurs/:id', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const optionValeur = await prisma.optionValeur.findUnique({
     where: { id: req.params.id },

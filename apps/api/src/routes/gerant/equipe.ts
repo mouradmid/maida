@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { DroitUtilisateur } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 export const equipeRouter = Router();
 
@@ -16,7 +16,7 @@ const SELECT_SERVEUR = {
 } as const;
 
 equipeRouter.get('/serveurs', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const serveurs = await prisma.utilisateur.findMany({
     where: { etablissementId, role: 'SERVEUR' },
@@ -40,7 +40,7 @@ equipeRouter.patch('/serveurs/:id/droits', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const serveur = await prisma.utilisateur.findFirst({
     where: { id: req.params.id, etablissementId, role: 'SERVEUR' },
@@ -71,7 +71,7 @@ equipeRouter.post('/serveurs', async (req, res) => {
     return;
   }
 
-  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
+  const { compteClientId, etablissementId } = await contexteDe(req);
 
   const serveursExistants = await prisma.utilisateur.findMany({
     where: { etablissementId, role: 'SERVEUR', codePinHash: { not: null } },

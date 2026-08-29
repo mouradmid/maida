@@ -4,6 +4,7 @@ import { requireCompteActif } from '../../middleware/requireCompteActif';
 import { requireRole } from '../../middleware/requireRole';
 import { categoriesRouter } from './categories';
 import { equipeRouter } from './equipe';
+import { etablissementsRouter } from './etablissements';
 import { historiquesRouter } from './historiques';
 import { journeesRouter } from './journees';
 import { moyensPaiementRouter } from './moyensPaiement';
@@ -21,6 +22,7 @@ export const gerantRouter = Router();
 
 gerantRouter.use(requireAuth, requireRole('GERANT'), requireCompteActif);
 
+gerantRouter.use(etablissementsRouter);
 gerantRouter.use(equipeRouter);
 gerantRouter.use(categoriesRouter);
 gerantRouter.use(produitsRouter);

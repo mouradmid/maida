@@ -240,6 +240,39 @@ adminRouter.delete('/reinitialisations/:id', async (req, res) => {
   res.status(204).send();
 });
 
+// Une enseigne qui ouvre un deuxième restaurant : on lui ajoute un
+// établissement sous le même compte, avec son propre code d'installation. Les
+// gérants du compte y accèdent aussitôt, sans nouvel identifiant.
+adminRouter.post('/comptes-clients/:id/etablissements', async (req, res) => {
+  const { nom, adresse, ville } = req.body ?? {};
+
+  if (typeof nom !== 'string' || !nom.trim()) {
+    res.status(400).json({ error: "Le nom de l'établissement est requis" });
+    return;
+  }
+
+  const compte = await prisma.compteClient.findUnique({ where: { id: req.params.id } });
+  if (!compte) {
+    res.status(404).json({ error: 'Compte client introuvable' });
+    return;
+  }
+
+  const etablissement = await prisma.etablissement.create({
+    data: {
+      nom: nom.trim(),
+      adresse: typeof adresse === 'string' && adresse.trim() ? adresse.trim() : null,
+      ville: typeof ville === 'string' && ville.trim() ? ville.trim() : null,
+      codeTerminal: genererCodeTerminal(),
+      compteClientId: compte.id,
+    },
+  });
+
+  res.status(201).json({
+    ...etablissement,
+    codeTerminal: formaterCodeTerminal(etablissement.codeTerminal),
+  });
+});
+
 adminRouter.post('/comptes-clients', async (req, res) => {
   const { nomEnseigne, etablissement, gerant } = req.body ?? {};
 

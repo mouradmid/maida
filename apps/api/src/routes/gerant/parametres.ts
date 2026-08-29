@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
 import { formaterCodeTerminal, genererCodeTerminal } from '../../lib/securite';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 // Paramètres de l'établissement : modules accordés au compte client,
 // préférences d'affichage du gérant et code d'installation des tablettes.
@@ -9,7 +9,7 @@ import { getContexteGerant } from './partage';
 export const parametresRouter = Router();
 
 parametresRouter.get('/parametres', async (req, res) => {
-  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
+  const { compteClientId, etablissementId } = await contexteDe(req);
 
   const [compte, etablissement] = await Promise.all([
     prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
@@ -32,7 +32,7 @@ parametresRouter.get('/parametres', async (req, res) => {
 // qu'un employé part avec. Les caisses déjà rattachées ne sont pas
 // déconnectées — le code ne sert qu'au premier rattachement.
 parametresRouter.post('/terminal/code', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const etablissement = await prisma.etablissement.update({
     where: { id: etablissementId },
@@ -59,7 +59,7 @@ parametresRouter.patch('/parametres', async (req, res) => {
     return;
   }
 
-  const { compteClientId, etablissementId } = await getContexteGerant(req.user!.id);
+  const { compteClientId, etablissementId } = await contexteDe(req);
 
   const [compte, etablissement] = await Promise.all([
     prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),

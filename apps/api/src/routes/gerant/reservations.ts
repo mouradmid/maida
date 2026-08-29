@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 // Vue gérant des réservations : fiabilité des clients et historique.
 // (La prise de réservation elle-même vit dans l'espace caisse.)
@@ -8,7 +8,7 @@ import { getContexteGerant } from './partage';
 export const reservationsRouter = Router();
 
 reservationsRouter.get('/reservations', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   // Fenêtre d'analyse : 90 derniers jours + tout ce qui est à venir.
   const depuis = new Date(Date.now() - 90 * 24 * 60 * 60_000);

@@ -103,6 +103,10 @@
   répertoire clients (contacts récoltés aux réservations) et historique des réservations
 - Menu, plan de salle, équipe et droits, moyens de paiement, historique des annulations et
   remises, journées de caisse **filtrables par période**
+- **Plusieurs restaurants sous la même enseigne** : un seul identifiant, un sélecteur en haut
+  de l'écran, et tout l'espace suit — menu, salle, équipe, rapports, code d'installation. Chaque
+  restaurant garde ses propres données ; deux appareils peuvent rester ouverts sur deux
+  restaurants différents. Invisible pour les clients qui n'en ont qu'un
 
 ### Espace super-admin (éditeur)
 
@@ -110,6 +114,8 @@
   immédiatement), modules par compte, réinitialisation de mot de passe gérant
 - Activité par client (commandes 7 jours, dernière activité) et code d'installation de chaque
   établissement, à dicter au client qui monte sa première caisse
+- **Ajout d'un restaurant à une enseigne existante** : le nouveau reçoit son propre code
+  d'installation et les gérants du compte y accèdent aussitôt, sans nouvel identifiant
 - **Journal des erreurs serveur**
 - **Journal des connexions** : qui s'est connecté, où, depuis quelle adresse, et surtout les
   tentatives refusées — filtrables d'un clic pour repérer un acharnement sur un code PIN
@@ -140,7 +146,7 @@
   précédente en une commande, sauvegarde de la base chaque nuit — mode d'emploi dans
   `HEBERGEMENT.md`
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **143 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **150 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
@@ -166,7 +172,8 @@
 - [ ] Réservation en ligne par le client depuis le menu QR
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
-- [ ] Multi-établissement pour un même compte client
+- [ ] Rapports consolidés d'une enseigne à plusieurs restaurants (aujourd'hui, un restaurant à
+      la fois)
 
 ## 🔗 Liens utiles
 

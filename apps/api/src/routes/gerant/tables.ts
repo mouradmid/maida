@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { FormeTable, Prisma } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
-import { getContexteGerant } from './partage';
+import { contexteDe } from './partage';
 
 // Plan de salle : création, déplacement et redimensionnement des tables.
 
@@ -58,7 +58,7 @@ function placeLibre(
 }
 
 tablesRouter.get('/tables', async (req, res) => {
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const tables = await prisma.table.findMany({
     where: { etablissementId },
@@ -84,7 +84,7 @@ tablesRouter.post('/tables', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const largeurTable = entierArrondi(largeur);
   const hauteurTable = entierArrondi(hauteur);
@@ -125,7 +125,7 @@ tablesRouter.post('/tables', async (req, res) => {
 tablesRouter.patch('/tables/:id', async (req, res) => {
   const { numero, forme, nombreCouverts, largeur, hauteur, positionX, positionY, statut } =
     req.body ?? {};
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const table = await prisma.table.findUnique({ where: { id: req.params.id } });
   if (!table || table.etablissementId !== etablissementId) {

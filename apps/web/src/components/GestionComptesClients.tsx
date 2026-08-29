@@ -41,6 +41,11 @@ export function GestionComptesClients() {
   const [mdpEnEdition, setMdpEnEdition] = useState<string | null>(null);
   const [nouveauMdp, setNouveauMdp] = useState('');
 
+  // Enseigne qui ouvre un restaurant de plus, sous le même compte.
+  const [etabEnAjout, setEtabEnAjout] = useState<string | null>(null);
+  const [nouvelEtabNom, setNouvelEtabNom] = useState('');
+  const [nouvelEtabVille, setNouvelEtabVille] = useState('');
+
   async function charger() {
     try {
       setComptes(await api.listComptesClients());
@@ -54,6 +59,26 @@ export function GestionComptesClients() {
   useEffect(() => {
     charger();
   }, []);
+
+  async function handleAjouterEtablissement(compteClientId: string) {
+    setErreur(null);
+    setMessage(null);
+    try {
+      const etablissement = await api.ajouterEtablissement(compteClientId, {
+        nom: nouvelEtabNom,
+        ville: nouvelEtabVille || undefined,
+      });
+      setEtabEnAjout(null);
+      setNouvelEtabNom('');
+      setNouvelEtabVille('');
+      setMessage(
+        `« ${etablissement.nom} » ajouté — code d'installation ${etablissement.codeTerminal}. Les gérants du compte y ont accès immédiatement.`,
+      );
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
 
   async function handleCreer(e: React.FormEvent) {
     e.preventDefault();
@@ -245,6 +270,45 @@ export function GestionComptesClients() {
                     </span>
                   </p>
                 ))}
+                <p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEtabEnAjout(etabEnAjout === compte.id ? null : compte.id);
+                      setNouvelEtabNom('');
+                      setNouvelEtabVille('');
+                    }}
+                    className={boutonDiscret}
+                  >
+                    + Ajouter un restaurant à cette enseigne
+                  </button>
+                </p>
+                {etabEnAjout === compte.id && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
+                    <input
+                      type="text"
+                      value={nouvelEtabNom}
+                      onChange={(ev) => setNouvelEtabNom(ev.target.value)}
+                      placeholder="Nom du restaurant"
+                      className={`${champ} max-w-xs px-2 py-1`}
+                    />
+                    <input
+                      type="text"
+                      value={nouvelEtabVille}
+                      onChange={(ev) => setNouvelEtabVille(ev.target.value)}
+                      placeholder="Ville (optionnel)"
+                      className={`${champ} max-w-[10rem] px-2 py-1`}
+                    />
+                    <button
+                      type="button"
+                      disabled={!nouvelEtabNom.trim()}
+                      onClick={() => handleAjouterEtablissement(compte.id)}
+                      className={`${boutonPrimaire} px-3 py-1 text-sm disabled:opacity-40`}
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+                )}
                 {compte.gerants.map((g) => (
                   <p key={g.id} className="flex flex-wrap items-center gap-2">
                     👤 {g.prenom} {g.nom}

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
-import { arrondi, getContexteGerant, plagePeriode } from './partage';
+import { arrondi, contexteDe, plagePeriode } from './partage';
 
 // Historique des journées de caisse (clôtures), avec les encaissements
 // rattachés à chacune.
@@ -17,7 +17,7 @@ journeesRouter.get('/journees', async (req, res) => {
     return;
   }
 
-  const { etablissementId } = await getContexteGerant(req.user!.id);
+  const { etablissementId } = await contexteDe(req);
 
   const journees = await prisma.journeeCaisse.findMany({
     where: { etablissementId, ouverteLe },
