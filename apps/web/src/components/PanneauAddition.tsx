@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import type { AdditionDetail, LigneCommande, ModePaiement } from '../lib/api';
+import { api, type AdditionDetail, type LigneCommande, type ModePaiement } from '../lib/api';
+import { mettreGesteEnAttente, type CibleHorsLigne } from '../lib/horsLigne';
 import { imprimerTicket } from '../lib/imprimante';
 import { ticketClient } from '../lib/ticket';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { badgeVert, da } from '../lib/ui';
-import { ModalGesteCommercial } from './ModalGesteCommercial';
+import { ModalGesteCommercial, type ArticleOffrable, type GesteSaisi } from './ModalGesteCommercial';
 
 export interface InfosEtablissement {
   nom: string;
@@ -40,12 +41,16 @@ export function vueDepuisDetail(detail: AdditionDetail, libelle: string): VueAdd
 
 /**
  * Face « addition » d'une table : ce qui est facturable, ce qui a déjà été
- * payé, et les gestes qui s'y rattachent. Hors ligne, l'affichage est le même —
- * seuls la remise et le ticket détaillé, qui exigent le serveur, se désactivent.
+ * payé, et les gestes qui s'y rattachent. Hors ligne, l'affichage est le même,
+ * et remises comme offerts restent possibles — ils attendent dans la file
+ * locale. Seuls le ticket détaillé et la validation par code gérant, qui
+ * exigent le serveur, se désactivent.
  */
 export function PanneauAddition({
   vue,
   detail,
+  cible,
+  quantitesEngagees,
   etablissement,
   droitRemiser,
   horsLigne,
@@ -53,6 +58,10 @@ export function PanneauAddition({
 }: {
   vue: VueAddition;
   detail: AdditionDetail | null;
+  // Hors ligne : l'addition reconstruite localement, cible du geste en file.
+  cible: CibleHorsLigne | null;
+  // Hors ligne : quantités déjà offertes ou payées dans la file locale.
+  quantitesEngagees: Record<string, number>;
   etablissement: InfosEtablissement | null;
   droitRemiser: boolean;
   horsLigne: boolean;
@@ -60,17 +69,84 @@ export function PanneauAddition({
 }) {
   const [modalGeste, setModalGeste] = useState(false);
 
+  const offrables: ArticleOffrable[] = vue.lignes
+    .map((l) => ({
+      id: l.id,
+      nomProduit: l.nomProduit,
+      prixUnitaire: l.prixUnitaire,
+      disponible:
+        l.quantite -
+        l.quantitePayee -
+        l.quantiteAnnulee -
+        l.quantiteOfferte -
+        (quantitesEngagees[l.id] ?? 0),
+    }))
+    .filter((l) => l.disponible > 0);
+
+  // Sans réseau, un code gérant ne peut pas être vérifié (les codes ne quittent
+  // jamais le serveur) : seul un serveur qui a lui-même le droit peut faire un
+  // geste pendant la coupure.
+  const gesteImpossible = horsLigne
+    ? !droitRemiser
+      ? 'Sans réseau, un code gérant ne peut pas être vérifié : ce geste attendra le retour de la connexion'
+      : !cible
+        ? "Cette addition n'est pas modifiable hors ligne"
+        : null
+    : !detail || detail.statut !== 'OUVERTE'
+      ? 'Addition indisponible'
+      : null;
+
+  async function envoyerGeste(geste: GesteSaisi) {
+    if (horsLigne) {
+      if (!cible) throw new Error("Cette addition n'est pas modifiable hors ligne");
+      mettreGesteEnAttente({
+        description: `${vue.libelle} — ${geste.type === 'REMISE' ? 'remise' : 'offert'} ${da(geste.montant)}`,
+        type: geste.type,
+        montant: geste.montant,
+        motif: geste.motif,
+        commentaire: geste.commentaire,
+        mode: geste.type === 'REMISE' ? geste.mode : undefined,
+        valeur: geste.type === 'REMISE' ? geste.valeur : undefined,
+        lignes: geste.type === 'OFFERT' ? geste.lignes : undefined,
+        additionId: cible.additionId,
+        cleCommandeLocale: cible.additionId ? undefined : cible.cleCommandeLocale,
+      });
+    } else {
+      if (!detail) throw new Error('Addition indisponible');
+      if (geste.type === 'REMISE') {
+        await api.creerRemise(detail.id, {
+          mode: geste.mode,
+          valeur: geste.valeur,
+          motif: geste.motif,
+          commentaire: geste.commentaire,
+          codeGerant: geste.codeGerant,
+        });
+      } else {
+        await api.offrirArticles(detail.id, {
+          lignes: geste.lignes,
+          motif: geste.motif,
+          commentaire: geste.commentaire,
+          codeGerant: geste.codeGerant,
+        });
+      }
+    }
+    setModalGeste(false);
+    await onGesteApplique();
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {modalGeste && detail && (
+      {modalGeste && (
         <ModalGesteCommercial
-          detail={detail}
-          droitRemiser={droitRemiser}
+          titre={vue.libelle}
+          solde={vue.solde}
+          offrables={offrables}
+          // Hors ligne, le modal ne propose jamais le code gérant : seul un
+          // serveur qui a le droit arrive jusqu'ici.
+          droitRemiser={droitRemiser || horsLigne}
+          horsLigne={horsLigne}
           onFermer={() => setModalGeste(false)}
-          onApplique={async () => {
-            setModalGeste(false);
-            await onGesteApplique();
-          }}
+          onConfirmer={envoyerGeste}
         />
       )}
 
@@ -92,7 +168,10 @@ export function PanneauAddition({
 
       <ul className="flex flex-col divide-y divide-stone-100 text-sm">
         {vue.lignes.map((l) => {
-          const facturable = l.quantite - l.quantiteAnnulee - l.quantiteOfferte;
+          // Ce qui a été offert ou payé hors ligne n'est pas encore connu du
+          // serveur : on le retire ici pour que la ligne dise la vérité.
+          const engagee = quantitesEngagees[l.id] ?? 0;
+          const facturable = Math.max(0, l.quantite - l.quantiteAnnulee - l.quantiteOfferte - engagee);
           const rienAFacturer = facturable === 0;
           return (
             <li key={l.id} className="flex items-center justify-between gap-2 py-2">
@@ -120,6 +199,11 @@ export function PanneauAddition({
                 {l.quantiteAnnulee > 0 && (
                   <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
                     {l.quantiteAnnulee} annulé{l.quantiteAnnulee > 1 ? 's' : ''}
+                  </span>
+                )}
+                {engagee > 0 && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                    {engagee} à synchroniser
                   </span>
                 )}
               </span>
@@ -152,9 +236,9 @@ export function PanneauAddition({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={horsLigne || !detail || detail.statut !== 'OUVERTE'}
+          disabled={gesteImpossible !== null}
           onClick={() => setModalGeste(true)}
-          title={horsLigne ? 'Une remise doit être validée par le serveur' : undefined}
+          title={gesteImpossible ?? undefined}
           className="rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-800 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
         >
           % Remise / Offert

@@ -9,7 +9,7 @@ import {
   type LigneSourceEntree,
 } from '../../lib/commandes';
 import { prisma } from '../../lib/prisma';
-import { getContexteServeur } from './partage';
+import { getContexteServeur, lireCleIdempotence, lireDateHorsLigne } from './partage';
 import { INCLUDE_COMMANDE, toPublicCommande } from './vues';
 
 export const commandesRouter = Router();
@@ -110,29 +110,15 @@ commandesRouter.post('/commandes', async (req, res) => {
     res.status(400).json({ error: 'Canal invalide' });
     return;
   }
-  if (
-    cleIdempotence !== undefined &&
-    (typeof cleIdempotence !== 'string' || !cleIdempotence.trim() || cleIdempotence.length > 100)
-  ) {
+  const cle = lireCleIdempotence(cleIdempotence);
+  if (cle === false) {
     res.status(400).json({ error: "Clé d'idempotence invalide" });
     return;
   }
-  // Heure réelle de prise de commande quand elle a été enregistrée hors ligne :
-  // la cuisine et les rapports gardent la bonne chronologie après resynchronisation.
-  let creeLeFinal: Date | undefined;
-  if (creeLeHorsLigne !== undefined) {
-    const date = typeof creeLeHorsLigne === 'string' ? new Date(creeLeHorsLigne) : null;
-    const maintenant = Date.now();
-    if (
-      !date ||
-      Number.isNaN(date.getTime()) ||
-      date.getTime() > maintenant + 5 * 60_000 ||
-      date.getTime() < maintenant - 48 * 60 * 60_000
-    ) {
-      res.status(400).json({ error: 'Date de prise hors ligne invalide' });
-      return;
-    }
-    creeLeFinal = date;
+  const creeLeFinal = lireDateHorsLigne(creeLeHorsLigne);
+  if (creeLeFinal === false) {
+    res.status(400).json({ error: 'Date de prise hors ligne invalide' });
+    return;
   }
   if (canal === 'SUR_PLACE' && typeof tableId !== 'string') {
     res.status(400).json({ error: 'La table est requise pour une commande sur place' });
@@ -153,9 +139,9 @@ commandesRouter.post('/commandes', async (req, res) => {
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
   // Rejeu d'une commande déjà synchronisée : on renvoie l'existante, sans doublon.
-  if (typeof cleIdempotence === 'string') {
+  if (cle) {
     const existante = await prisma.commande.findUnique({
-      where: { cleIdempotence: cleIdempotence.trim() },
+      where: { cleIdempotence: cle },
       include: INCLUDE_COMMANDE,
     });
     if (existante) {
@@ -279,7 +265,7 @@ commandesRouter.post('/commandes', async (req, res) => {
         data: {
           canal,
           additionId,
-          cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
+          cleIdempotence: cle ?? null,
           creeLe: creeLeFinal,
           noteCuisine: typeof noteCuisine === 'string' && noteCuisine.trim() ? noteCuisine.trim() : null,
           etablissementId,
@@ -316,13 +302,9 @@ commandesRouter.post('/commandes', async (req, res) => {
     }
     // Deux synchronisations simultanées de la même commande hors ligne :
     // la seconde renvoie celle que la première vient de créer.
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002' &&
-      typeof cleIdempotence === 'string'
-    ) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && cle) {
       const existante = await prisma.commande.findUnique({
-        where: { cleIdempotence: cleIdempotence.trim() },
+        where: { cleIdempotence: cle },
         include: INCLUDE_COMMANDE,
       });
       if (existante && existante.etablissementId === etablissementId) {

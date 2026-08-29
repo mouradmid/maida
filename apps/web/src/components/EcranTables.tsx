@@ -13,6 +13,7 @@ import {
 } from '../lib/api';
 import {
   ciblesHorsLigne,
+  quantitesEngageesHorsLigne,
   lireCache,
   mettreEnAttente,
   nouvelleCle,
@@ -117,8 +118,13 @@ export function EcranTables({
   const [cibles, setCibles] = useState<CibleHorsLigne[]>([]);
   const [cleCibleEmporter, setCleCibleEmporter] = useState<string | null>(null);
 
+  // Quantités déjà offertes ou payées dans la file locale : le serveur ne les
+  // connaît pas encore, donc l'écran doit les retrancher lui-même.
+  const [engagees, setEngagees] = useState<Record<string, number>>({});
+
   useEffect(() => {
     setCibles(horsLigne ? ciblesHorsLigne() : []);
+    setEngagees(quantitesEngageesHorsLigne());
   }, [horsLigne, enAttente]);
 
   async function chargerDemandes() {
@@ -362,7 +368,8 @@ export function EcranTables({
       total: cibleCourante.total,
       totalPaye: cibleCourante.dejaPaye,
       solde: cibleCourante.solde,
-      montantRemises: 0,
+      // Remises et offerts accordés pendant la coupure, encore dans la file.
+      montantRemises: cibleCourante.montantGestes,
       lignes: canal === 'SUR_PLACE' ? lignesEnvoyees.map((e) => e.ligne) : [],
       paiements: [],
     };
@@ -722,11 +729,17 @@ export function EcranTables({
                   <PanneauAddition
                     vue={vueAddition}
                     detail={horsLigne ? null : detailAddition}
+                    cible={cibleCourante}
+                    quantitesEngagees={engagees}
                     etablissement={etablissement}
                     droitRemiser={droitRemiser}
                     horsLigne={horsLigne}
                     onGesteApplique={async () => {
-                      setConfirmation('Geste commercial appliqué.');
+                      setConfirmation(
+                        horsLigne
+                          ? 'Geste enregistré hors ligne, il partira au retour du réseau.'
+                          : 'Geste commercial appliqué.',
+                      );
                       if (detailAddition) await rafraichirApresAddition(detailAddition.id);
                     }}
                   />
@@ -734,6 +747,7 @@ export function EcranTables({
                     vue={vueAddition}
                     additionId={horsLigne ? null : (detailAddition?.id ?? null)}
                     cible={cibleCourante}
+                    quantitesEngagees={engagees}
                     moyensActifs={moyensActifs}
                     journeeOuverte={journeeOuverte}
                     horsLigne={horsLigne}

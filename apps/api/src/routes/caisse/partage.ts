@@ -7,6 +7,34 @@ import { prisma } from '../../lib/prisma';
 
 export const arrondi = (n: number) => Math.round(n * 100) / 100;
 
+// Clé d'idempotence d'une action prise hors ligne : rejouer la même clé ne doit
+// jamais créer un doublon. Renvoie la clé nettoyée, `undefined` si absente, ou
+// `false` si la valeur reçue est inexploitable.
+export function lireCleIdempotence(valeur: unknown): string | undefined | false {
+  if (valeur === undefined) return undefined;
+  if (typeof valeur !== 'string' || !valeur.trim() || valeur.length > 100) return false;
+  return valeur.trim();
+}
+
+// Heure réelle de l'action quand elle a été enregistrée hors ligne : la
+// cuisine, la caisse et les rapports gardent la bonne chronologie après
+// resynchronisation. Bornée (+5 min / −48 h) pour qu'une tablette à l'heure
+// fausse ne puisse pas antidater indéfiniment.
+export function lireDateHorsLigne(valeur: unknown): Date | undefined | false {
+  if (valeur === undefined) return undefined;
+  const date = typeof valeur === 'string' ? new Date(valeur) : null;
+  const maintenant = Date.now();
+  if (
+    !date ||
+    Number.isNaN(date.getTime()) ||
+    date.getTime() > maintenant + 5 * 60_000 ||
+    date.getTime() < maintenant - 48 * 60 * 60_000
+  ) {
+    return false;
+  }
+  return date;
+}
+
 export async function getContexteServeur(serveurId: string) {
   const serveur = await prisma.utilisateur.findUnique({ where: { id: serveurId } });
   if (!serveur?.etablissementId) {

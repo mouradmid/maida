@@ -1377,6 +1377,131 @@ describe('Idempotence des paiements hors ligne', () => {
   });
 });
 
+// Pendant une coupure, le serveur peut offrir un article, accorder une remise
+// et faire payer chacun sa part. Tout part dans une file locale et se rejoue au
+// retour du réseau : ce bloc vérifie qu'un rejeu n'applique jamais deux fois le
+// même geste ni le même encaissement.
+describe('Gestes commerciaux et paiement par article hors ligne', () => {
+  const cleOffert = `test-hl-offert-${Date.now()}`;
+  const cleRemise = `test-hl-remise-${Date.now()}`;
+  const clePaiement = `test-hl-articles-${Date.now()}`;
+  const horsLigneIlYA20Min = () => new Date(Date.now() - 20 * 60_000).toISOString();
+  let additionId = '';
+  let lignePlatId = '';
+  let ligneBoissonId = '';
+
+  it('prépare une addition à emporter (2 plats + 2 boissons)', async () => {
+    const commande = await serveur.post('/api/caisse/commandes').send({
+      canal: 'EMPORTER',
+      lignes: [
+        { produitId: produitPlatId, quantite: 2 },
+        { produitId: produitBoissonId, quantite: 2 },
+      ],
+    });
+    expect(commande.status).toBe(201);
+    additionId = commande.body.additionId;
+    const ligne = (nom: string) =>
+      commande.body.lignes.find((l: { nomProduit: string }) => l.nomProduit === nom).id as string;
+    lignePlatId = ligne('Plat T');
+    ligneBoissonId = ligne('Boisson T');
+  });
+
+  it('refuse une date de geste hors ligne aberrante', async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/offert`).send({
+      lignes: [{ ligneCommandeId: ligneBoissonId, quantite: 1 }],
+      motif: 'Client fidèle',
+      cleIdempotence: `${cleOffert}-refuse`,
+      creeLeHorsLigne: new Date(Date.now() + 3 * 60 * 60_000).toISOString(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('offre un article hors ligne, et le rejeu ne l’offre pas deux fois', async () => {
+    const premier = await serveur.post(`/api/caisse/additions/${additionId}/offert`).send({
+      lignes: [{ ligneCommandeId: ligneBoissonId, quantite: 1 }],
+      motif: 'Attente trop longue',
+      cleIdempotence: cleOffert,
+      creeLeHorsLigne: horsLigneIlYA20Min(),
+    });
+    expect(premier.status).toBe(201);
+    const soldeApresOffert = premier.body.soldeRestant;
+
+    const rejeu = await serveur.post(`/api/caisse/additions/${additionId}/offert`).send({
+      lignes: [{ ligneCommandeId: ligneBoissonId, quantite: 1 }],
+      motif: 'Attente trop longue',
+      cleIdempotence: cleOffert,
+    });
+    expect(rejeu.status).toBe(200);
+    expect(rejeu.body.soldeRestant).toBe(soldeApresOffert);
+
+    const ligne = await prisma.ligneCommande.findUniqueOrThrow({ where: { id: ligneBoissonId } });
+    expect(ligne.quantiteOfferte).toBe(1);
+    expect(await prisma.remise.count({ where: { cleIdempotence: cleOffert } })).toBe(1);
+  });
+
+  it("garde l'heure réelle du geste, pas celle de la synchronisation", async () => {
+    const remise = await prisma.remise.findUniqueOrThrow({ where: { cleIdempotence: cleOffert } });
+    expect(Date.now() - remise.creeLe.getTime()).toBeGreaterThan(15 * 60_000);
+  });
+
+  it('accorde une remise hors ligne, et le rejeu ne la double pas', async () => {
+    const premier = await serveur.post(`/api/caisse/additions/${additionId}/remise`).send({
+      mode: 'MONTANT',
+      valeur: 100,
+      motif: 'Geste commercial',
+      cleIdempotence: cleRemise,
+      creeLeHorsLigne: horsLigneIlYA20Min(),
+    });
+    expect(premier.status).toBe(201);
+    const soldeApresRemise = premier.body.soldeRestant;
+
+    const rejeu = await serveur.post(`/api/caisse/additions/${additionId}/remise`).send({
+      mode: 'MONTANT',
+      valeur: 100,
+      motif: 'Geste commercial',
+      cleIdempotence: cleRemise,
+    });
+    expect(rejeu.status).toBe(200);
+    expect(rejeu.body.montant).toBe(100);
+    expect(rejeu.body.soldeRestant).toBe(soldeApresRemise);
+    expect(await prisma.remise.count({ where: { cleIdempotence: cleRemise } })).toBe(1);
+  });
+
+  it('encaisse par article hors ligne, et le rejeu ne double pas le paiement', async () => {
+    const premier = await serveur.post(`/api/caisse/additions/${additionId}/paiements`).send({
+      mode: 'ARTICLES',
+      lignes: [{ ligneCommandeId: lignePlatId, quantite: 1 }],
+      moyenPaiement: 'ESPECES',
+      cleIdempotence: clePaiement,
+      creeLeHorsLigne: horsLigneIlYA20Min(),
+    });
+    expect(premier.status).toBe(201);
+
+    const rejeu = await serveur.post(`/api/caisse/additions/${additionId}/paiements`).send({
+      mode: 'ARTICLES',
+      lignes: [{ ligneCommandeId: lignePlatId, quantite: 1 }],
+      moyenPaiement: 'ESPECES',
+      cleIdempotence: clePaiement,
+    });
+    expect(rejeu.status).toBe(200);
+    expect(rejeu.body.id).toBe(premier.body.id);
+
+    const ligne = await prisma.ligneCommande.findUniqueOrThrow({ where: { id: lignePlatId } });
+    expect(ligne.quantitePayee).toBe(1);
+    expect(await prisma.paiement.count({ where: { cleIdempotence: clePaiement } })).toBe(1);
+  });
+
+  it('refuse de payer un article déjà offert', async () => {
+    const res = await serveur.post(`/api/caisse/additions/${additionId}/paiements`).send({
+      mode: 'ARTICLES',
+      lignes: [{ ligneCommandeId: ligneBoissonId, quantite: 2 }],
+      moyenPaiement: 'ESPECES',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('reste 1');
+  });
+});
+
 describe('Menu public (QR code)', () => {
   it('sert le menu sans authentification, sans données sensibles', async () => {
     const res = await request(app).get(`/api/public/menu/${etablissementId}`);

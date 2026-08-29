@@ -669,6 +669,7 @@ export const api = {
           moyenPaiement: ModePaiement;
           montantRecu?: number;
           cleIdempotence?: string;
+          creeLeHorsLigne?: string;
         },
   ) =>
     apiFetch<ResultatPaiement>(`/caisse/additions/${additionId}/paiements`, {
@@ -698,6 +699,9 @@ export const api = {
       motif: string;
       commentaire?: string;
       codeGerant?: string;
+      // Geste accordé pendant une coupure, rejoué à la reconnexion.
+      cleIdempotence?: string;
+      creeLeHorsLigne?: string;
     },
   ) =>
     apiFetch<{ montant: number; soldeRestant: number; additionCloturee: boolean }>(
@@ -712,6 +716,8 @@ export const api = {
       motif: string;
       commentaire?: string;
       codeGerant?: string;
+      cleIdempotence?: string;
+      creeLeHorsLigne?: string;
     },
   ) =>
     apiFetch<{ soldeRestant: number; additionCloturee: boolean }>(

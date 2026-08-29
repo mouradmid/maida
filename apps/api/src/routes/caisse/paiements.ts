@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { ModePaiement, Prisma } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
-import { getContexteServeur, getJourneeOuverte } from './partage';
+import { getContexteServeur, getJourneeOuverte, lireCleIdempotence, lireDateHorsLigne } from './partage';
 import { INCLUDE_ADDITION, calculerTotaux } from './vues';
 
 export const paiementsRouter = Router();
@@ -48,32 +48,20 @@ paiementsRouter.post('/additions/:id/paiements', async (req, res) => {
   const { mode, montant, moyenPaiement, montantRecu, lignes, cleIdempotence, creeLeHorsLigne } =
     req.body ?? {};
 
-  if (
-    cleIdempotence !== undefined &&
-    (typeof cleIdempotence !== 'string' || !cleIdempotence.trim() || cleIdempotence.length > 100)
-  ) {
+  const cle = lireCleIdempotence(cleIdempotence);
+  if (cle === false) {
     res.status(400).json({ error: "Clé d'idempotence invalide" });
     return;
   }
-  let creeLeFinal: Date | undefined;
-  if (creeLeHorsLigne !== undefined) {
-    const date = typeof creeLeHorsLigne === 'string' ? new Date(creeLeHorsLigne) : null;
-    const maintenant = Date.now();
-    if (
-      !date ||
-      Number.isNaN(date.getTime()) ||
-      date.getTime() > maintenant + 5 * 60_000 ||
-      date.getTime() < maintenant - 48 * 60 * 60_000
-    ) {
-      res.status(400).json({ error: "Date d'encaissement hors ligne invalide" });
-      return;
-    }
-    creeLeFinal = date;
+  const creeLeFinal = lireDateHorsLigne(creeLeHorsLigne);
+  if (creeLeFinal === false) {
+    res.status(400).json({ error: "Date d'encaissement hors ligne invalide" });
+    return;
   }
 
   // Rejeu d'un paiement déjà synchronisé : on renvoie l'existant, sans double.
-  if (typeof cleIdempotence === 'string') {
-    const rejoue = await repondrePaiementExistant(cleIdempotence.trim(), etablissementId, res);
+  if (cle) {
+    const rejoue = await repondrePaiementExistant(cle, etablissementId, res);
     if (rejoue) return;
   }
 
@@ -186,7 +174,7 @@ paiementsRouter.post('/additions/:id/paiements', async (req, res) => {
         data: {
           additionId: addition.id,
           journeeCaisseId: journee.id,
-          cleIdempotence: typeof cleIdempotence === 'string' ? cleIdempotence.trim() : null,
+          cleIdempotence: cle ?? null,
           creeLe: creeLeFinal,
           montant: montantFinal,
           moyenPaiement: moyenPaiementValide,
@@ -236,12 +224,8 @@ paiementsRouter.post('/additions/:id/paiements', async (req, res) => {
     });
   } catch (error) {
     // Deux synchronisations simultanées du même paiement hors ligne.
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002' &&
-      typeof cleIdempotence === 'string'
-    ) {
-      const rejoue = await repondrePaiementExistant(cleIdempotence.trim(), etablissementId, res);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && cle) {
+      const rejoue = await repondrePaiementExistant(cle, etablissementId, res);
       if (rejoue) return;
     }
     throw error;

@@ -62,9 +62,14 @@
   reçu client et **réservations** — **exactement au même endroit et de la même façon qu'en ligne**. Il n'y a pas de
   « mode hors ligne » à connaître : le volet « Addition » de la table affiche le même détail
   (articles, total, reste à payer) reconstruit depuis le dernier état connu, et encaisse en
-  solde total, en pourcentage ou en montant libre, y compris en plusieurs fois. Seuls le
-  paiement par article, la remise et le ticket détaillé — qui exigent le serveur — se
-  désactivent, avec l'explication au survol
+  solde total, en pourcentage, en montant libre **ou article par article**, y compris en
+  plusieurs fois
+- **Remises et articles offerts pendant la coupure** : le geste s'applique tout de suite à
+  l'écran — le reste à payer baisse, l'article part en « offert » — et il rejoint le serveur au
+  retour du réseau, à l'heure où il a vraiment été accordé. Un article offert ou déjà réglé hors
+  ligne ne peut pas l'être une seconde fois. Seule limite assumée : sans réseau, le code d'un
+  gérant ne peut pas être vérifié (les codes ne quittent jamais le serveur), donc le geste est
+  réservé aux serveurs qui en ont eux-mêmes le droit ; les autres voient l'explication au survol
 - **Coupure détectée en quelques secondes, même quand le wifi « marche »** : un réseau qui accepte
   la connexion sans jamais répondre ne trompe plus la caisse (`navigator.onLine` n'y voit rien).
   Chaque requête a un délai maximal, la première sans réponse fait basculer tout l'écran en local,
@@ -132,7 +137,7 @@
   précédente en une commande, sauvegarde de la base chaque nuit — mode d'emploi dans
   `HEBERGEMENT.md`
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **126 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **135 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
@@ -156,7 +161,6 @@
 - [ ] **Envoi d'e-mails** depuis le domaine : débloque l'envoi automatique du lien de mot de
       passe oublié et les confirmations de réservation
 - [ ] Réservation en ligne par le client + email de confirmation
-- [ ] Hors-ligne : paiement par article et remises
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
 - [ ] Multi-établissement pour un même compte client

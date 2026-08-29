@@ -30,14 +30,49 @@ export interface PaiementEnAttente {
   montant: number;
   moyenPaiement: 'ESPECES' | 'CARTE' | 'CHEQUE' | 'AUTRE';
   montantRecu?: number;
+  // Paiement par article : les articles réglés, pour que le serveur verrouille
+  // les bonnes quantités au rejeu. Absent = encaissement d'un simple montant.
+  lignes?: LigneCiblee[];
   // Cible du paiement : une addition connue du serveur, OU une commande
   // locale (l'additionId sera résolu après la synchronisation des commandes).
   additionId?: string;
   cleCommandeLocale?: string;
 }
 
+export interface LigneCiblee {
+  ligneCommandeId: string;
+  quantite: number;
+}
+
+/**
+ * Geste commercial accordé pendant une coupure : remise sur l'addition, ou
+ * articles offerts. Hors ligne, la caisse ne peut pas vérifier le code d'un
+ * gérant (les codes ne quittent jamais le serveur) : le geste n'est donc
+ * proposé qu'au serveur qui a lui-même le droit de remiser.
+ */
+export interface GesteEnAttente {
+  cleGeste: string;
+  creeLe: string;
+  description: string;
+  type: 'REMISE' | 'OFFERT';
+  // Effet du geste sur le solde, calculé localement : c'est lui qui fait
+  // baisser le reste à payer affiché tant que le réseau n'est pas revenu.
+  montant: number;
+  motif: string;
+  commentaire?: string;
+  // Remise
+  mode?: 'POURCENTAGE' | 'MONTANT';
+  valeur?: number;
+  // Offert : les articles offerts (identifiants venant du serveur, donc
+  // seuls les articles déjà envoyés avant la coupure sont offrables).
+  lignes?: LigneCiblee[];
+  additionId?: string;
+  cleCommandeLocale?: string;
+}
+
 const CLE_FILE = 'maida.commandesEnAttente';
 const CLE_FILE_PAIEMENTS = 'maida.paiementsEnAttente';
+const CLE_FILE_GESTES = 'maida.gestesEnAttente';
 const CLE_FILE_RESERVATIONS = 'maida.reservationsEnAttente';
 // Correspondance clé de commande locale → additionId serveur, persistée pour
 // survivre à une coupure qui reviendrait en plein milieu d'une synchronisation.
@@ -77,7 +112,7 @@ function ecrireFileAttente(file: CommandeEnAttente[]) {
  * mais restée sans réponse (réseau muet, délai dépassé) ne peut donc pas créer
  * un doublon — le serveur reconnaît la clé et renvoie l'existant.
  */
-export function nouvelleCle(prefixe: 'hl' | 'hlp' | 'hlr'): string {
+export function nouvelleCle(prefixe: 'hl' | 'hlp' | 'hlg' | 'hlr'): string {
   return `${prefixe}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -114,10 +149,37 @@ export function mettrePaiementEnAttente(
 ): PaiementEnAttente {
   const entree: PaiementEnAttente = {
     ...paiement,
-    clePaiement: `hlp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    clePaiement: nouvelleCle('hlp'),
     creeLe: new Date().toISOString(),
   };
   ecrirePaiementsEnAttente([...lirePaiementsEnAttente(), entree]);
+  return entree;
+}
+
+// --- File des gestes commerciaux hors ligne ---
+
+export function lireGestesEnAttente(): GesteEnAttente[] {
+  try {
+    return JSON.parse(localStorage.getItem(CLE_FILE_GESTES) ?? '[]') as GesteEnAttente[];
+  } catch {
+    return [];
+  }
+}
+
+function ecrireGestesEnAttente(file: GesteEnAttente[]) {
+  localStorage.setItem(CLE_FILE_GESTES, JSON.stringify(file));
+  notifier();
+}
+
+export function mettreGesteEnAttente(
+  geste: Omit<GesteEnAttente, 'cleGeste' | 'creeLe'>,
+): GesteEnAttente {
+  const entree: GesteEnAttente = {
+    ...geste,
+    cleGeste: nouvelleCle('hlg'),
+    creeLe: new Date().toISOString(),
+  };
+  ecrireGestesEnAttente([...lireGestesEnAttente(), entree]);
   return entree;
 }
 
@@ -165,7 +227,12 @@ export function mettreReservationEnAttente(
 }
 
 export function nombreEnAttente(): number {
-  return lireFileAttente().length + lirePaiementsEnAttente().length + lireReservationsEnAttente().length;
+  return (
+    lireFileAttente().length +
+    lireGestesEnAttente().length +
+    lirePaiementsEnAttente().length +
+    lireReservationsEnAttente().length
+  );
 }
 
 function lireMapAdditions(): Record<string, string> {
@@ -189,23 +256,26 @@ function memoriserAddition(cleCommande: string, additionId: string) {
 
 export interface ResultatSync {
   commandes: number;
+  gestes: number;
   paiements: number;
   reservations: number;
   erreurs: string[];
 }
 
-// Rejoue les files dans l'ordre : les commandes d'abord (leur synchronisation
-// donne l'additionId), puis les paiements, puis les réservations. S'arrête à la
-// première coupure réseau ; une erreur métier est signalée mais ne bloque pas
-// la suite.
+// Rejoue les files dans l'ordre du service : les commandes d'abord (leur
+// synchronisation donne l'additionId), puis les gestes commerciaux — une remise
+// ou un offert change le solde, donc ils doivent précéder les paiements —, puis
+// les paiements, puis les réservations. S'arrête à la première coupure réseau ;
+// une erreur métier est signalée mais ne bloque pas la suite.
 export async function synchroniser(): Promise<ResultatSync> {
-  const rienAFaire = { commandes: 0, paiements: 0, reservations: 0, erreurs: [] };
+  const rienAFaire = { commandes: 0, gestes: 0, paiements: 0, reservations: 0, erreurs: [] };
   if (syncEnCours) return rienAFaire;
   // Réseau connu comme muet : on ne rejoue rien, la sonde préviendra du retour.
   if (reseauCoupe()) return rienAFaire;
   syncEnCours = true;
   const erreurs: string[] = [];
   let commandes = 0;
+  let gestes = 0;
   let paiements = 0;
   let reservations = 0;
   try {
@@ -222,7 +292,7 @@ export async function synchroniser(): Promise<ResultatSync> {
       } catch (err) {
         if (err instanceof ErreurReseau) {
           syncEnCours = false;
-          return { commandes, paiements, reservations, erreurs }; // toujours hors ligne
+          return { commandes, gestes, paiements, reservations, erreurs }; // toujours hors ligne
         }
         erreurs.push(
           `${entree.description} : ${err instanceof Error ? err.message : 'erreur inconnue'}`,
@@ -232,6 +302,48 @@ export async function synchroniser(): Promise<ResultatSync> {
     }
 
     const mapAdditions = lireMapAdditions();
+
+    for (const entree of lireGestesEnAttente()) {
+      const additionId = entree.additionId ?? mapAdditions[entree.cleCommandeLocale ?? ''];
+      const retirer = () =>
+        ecrireGestesEnAttente(lireGestesEnAttente().filter((e) => e.cleGeste !== entree.cleGeste));
+      if (!additionId) {
+        erreurs.push(`${entree.description} : la commande liée n'a pas pu être synchronisée`);
+        retirer();
+        continue;
+      }
+      try {
+        if (entree.type === 'REMISE') {
+          await api.creerRemise(additionId, {
+            mode: entree.mode ?? 'MONTANT',
+            valeur: entree.valeur ?? entree.montant,
+            motif: entree.motif,
+            commentaire: entree.commentaire,
+            cleIdempotence: entree.cleGeste,
+            creeLeHorsLigne: entree.creeLe,
+          });
+        } else {
+          await api.offrirArticles(additionId, {
+            lignes: entree.lignes ?? [],
+            motif: entree.motif,
+            commentaire: entree.commentaire,
+            cleIdempotence: entree.cleGeste,
+            creeLeHorsLigne: entree.creeLe,
+          });
+        }
+        gestes += 1;
+        retirer();
+      } catch (err) {
+        if (err instanceof ErreurReseau) break;
+        // Article déjà payé entre-temps, addition soldée… : le gérant retrouve
+        // le geste manquant dans l'historique et pourra le refaire.
+        erreurs.push(
+          `${entree.description} : ${err instanceof Error ? err.message : 'erreur inconnue'}`,
+        );
+        retirer();
+      }
+    }
+
     for (const entree of lirePaiementsEnAttente()) {
       const additionId = entree.additionId ?? mapAdditions[entree.cleCommandeLocale ?? ''];
       const retirer = () =>
@@ -245,14 +357,26 @@ export async function synchroniser(): Promise<ResultatSync> {
         continue;
       }
       try {
-        await api.creerPaiement(additionId, {
-          mode: 'MONTANT',
-          montant: entree.montant,
-          moyenPaiement: entree.moyenPaiement,
-          montantRecu: entree.montantRecu,
-          cleIdempotence: entree.clePaiement,
-          creeLeHorsLigne: entree.creeLe,
-        });
+        await api.creerPaiement(
+          additionId,
+          entree.lignes
+            ? {
+                mode: 'ARTICLES',
+                lignes: entree.lignes,
+                moyenPaiement: entree.moyenPaiement,
+                montantRecu: entree.montantRecu,
+                cleIdempotence: entree.clePaiement,
+                creeLeHorsLigne: entree.creeLe,
+              }
+            : {
+                mode: 'MONTANT',
+                montant: entree.montant,
+                moyenPaiement: entree.moyenPaiement,
+                montantRecu: entree.montantRecu,
+                cleIdempotence: entree.clePaiement,
+                creeLeHorsLigne: entree.creeLe,
+              },
+        );
         paiements += 1;
         retirer();
       } catch (err) {
@@ -287,7 +411,7 @@ export async function synchroniser(): Promise<ResultatSync> {
   } finally {
     syncEnCours = false;
   }
-  return { commandes, paiements, reservations, erreurs };
+  return { commandes, gestes, paiements, reservations, erreurs };
 }
 
 // À appeler une fois au démarrage de l'espace caisse.
@@ -297,6 +421,7 @@ export function demarrerSynchronisation(onResultat?: (r: ResultatSync) => void) 
     const resultat = await synchroniser();
     if (
       (resultat.commandes > 0 ||
+        resultat.gestes > 0 ||
         resultat.paiements > 0 ||
         resultat.reservations > 0 ||
         resultat.erreurs.length > 0) &&
@@ -341,8 +466,10 @@ export function lireCache<T>(cle: string): T | null {
 export interface CibleHorsLigne {
   cle: string;
   libelle: string;
-  // Montant facturable connu, avant déduction des paiements en file.
+  // Montant facturable connu, avant déduction des gestes et des paiements en file.
   total: number;
+  // Remises et offerts accordés hors ligne, encore en file.
+  montantGestes: number;
   // Déjà encaissé hors ligne sur cette addition (paiements encore en file).
   dejaPaye: number;
   solde: number;
@@ -369,6 +496,7 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
       cle: t.addition!.id,
       libelle: `Table ${t.numero}`,
       total: t.addition!.solde,
+      montantGestes: 0,
       dejaPaye: 0,
       solde: t.addition!.solde,
       additionId: t.addition!.id,
@@ -396,6 +524,7 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
       cle: commande.cleIdempotence,
       libelle: table ? `Table ${table.numero}` : `À emporter (${heure})`,
       total: commande.total,
+      montantGestes: 0,
       dejaPaye: 0,
       solde: commande.total,
       cleCommandeLocale: commande.cleIdempotence,
@@ -404,19 +533,37 @@ export function ciblesHorsLigne(): CibleHorsLigne[] {
   }
 
   const paiements = lirePaiementsEnAttente();
+  const gestes = lireGestesEnAttente();
   for (const entree of entrees) {
-    entree.dejaPaye = arrondi(
-      paiements
-        .filter(
-          (p) =>
-            (entree.additionId && p.additionId === entree.additionId) ||
-            (entree.cleCommandeLocale && p.cleCommandeLocale === entree.cleCommandeLocale),
-        )
-        .reduce((s, p) => s + p.montant, 0),
-    );
-    entree.solde = Math.max(0, arrondi(entree.total - entree.dejaPaye));
+    const concerne = (p: { additionId?: string; cleCommandeLocale?: string }) =>
+      Boolean(
+        (entree.additionId && p.additionId === entree.additionId) ||
+        (entree.cleCommandeLocale && p.cleCommandeLocale === entree.cleCommandeLocale),
+      );
+    // Remises et offerts accordés pendant la coupure : ils réduisent ce qui
+    // reste facturable, exactement comme le ferait le serveur.
+    entree.montantGestes = arrondi(gestes.filter(concerne).reduce((s, g) => s + g.montant, 0));
+    entree.dejaPaye = arrondi(paiements.filter(concerne).reduce((s, p) => s + p.montant, 0));
+    entree.solde = Math.max(0, arrondi(entree.total - entree.montantGestes - entree.dejaPaye));
   }
 
   // Une addition soldée hors ligne disparaît des cibles encaissables.
   return entrees.filter((e) => e.solde > 0.01);
+}
+
+/**
+ * Quantités déjà engagées hors ligne sur chaque article (offertes ou payées).
+ * Sans ce décompte, le même plat pourrait être offert puis repayé pendant la
+ * coupure : le serveur refuserait l'un des deux à la resynchronisation.
+ */
+export function quantitesEngageesHorsLigne(): Record<string, number> {
+  const engagees: Record<string, number> = {};
+  const ajouter = (lignes: LigneCiblee[] | undefined) => {
+    for (const l of lignes ?? []) {
+      engagees[l.ligneCommandeId] = (engagees[l.ligneCommandeId] ?? 0) + l.quantite;
+    }
+  };
+  for (const geste of lireGestesEnAttente()) ajouter(geste.lignes);
+  for (const paiement of lirePaiementsEnAttente()) ajouter(paiement.lignes);
+  return engagees;
 }

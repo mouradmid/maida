@@ -53,6 +53,19 @@ value:'dark'}])`, un contexte de navigateur par thème. Contrôler la bascule en
 .getPropertyValue('--bg')`), pas seulement à l'œil sur la capture.
 - Cliquer un élément par texte : filtrer `document.querySelectorAll('button')`
   sur `textContent` en EXCLUANT les conteneurs (`!b.querySelector('button')`).
+  Prévoir une option « exact » : `includes('Offrir')` attrape l'onglet
+  « Offrir des articles » AVANT le bouton de validation « Offrir », et le
+  parcours part en silence dans la mauvaise branche. Et **refuser de cliquer un
+  bouton désactivé** : `.click()` sur un `disabled` ne fait rien et le script
+  croit avoir réussi.
+- Le volet d'addition s'appelle « Addition · 2 440 DA » (le montant est dans le
+  libellé) : chercher par préfixe, pas par égalité.
+- Le prédicat passé à `page.evaluate` est SÉRIALISÉ : il ne peut pas appeler un
+  helper défini côté Node (`() => !modalOuvert()` échoue par
+  « modalOuvert is not defined »). Tout écrire dans la fonction.
+- Après une coupure, l'onglet « Addition » reste brièvement désactivé le temps
+  que les cibles hors ligne soient recalculées : attendre `!bouton.disabled`
+  plutôt que de cliquer tout de suite.
 - Un défaut de superposition (« ce badge passe par-dessus le modal ») ne se
   prouve pas à la capture : interroger `document.elementFromPoint(x, y)` au
   centre de l'élément suspect. Et pour trouver le coupable, remonter la chaîne

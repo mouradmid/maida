@@ -399,6 +399,13 @@ model Remise {
   commentaire String?
   creeLe      DateTime   @default(now())
 
+  // Générée par la caisse pour les gestes accordés hors ligne : garantit
+  // qu'une resynchronisation répétée n'applique jamais deux fois le geste.
+  // Un offert peut porter sur plusieurs articles, donc créer plusieurs lignes
+  // ici : seule la première porte la clé, et sa présence suffit à reconnaître
+  // la requête déjà appliquée (les lignes naissent dans la même transaction).
+  cleIdempotence String? @unique
+
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, type ModePaiement } from '../lib/api';
+import { api, type LigneCommande, type ModePaiement } from '../lib/api';
 import { mettrePaiementEnAttente, nouvelleCle, type CibleHorsLigne } from '../lib/horsLigne';
 import { imprimerTicket } from '../lib/imprimante';
 import { ticketRecuHorsLigne } from '../lib/ticket';
@@ -18,15 +18,16 @@ const LIBELLES_MODE: Record<Mode, string> = {
 
 /**
  * Encaissement d'une addition : mode de partage, moyen de paiement, monnaie
- * rendue. Sans réseau, le même écran encaisse dans la file locale — seul le
- * paiement par article, qui a besoin du serveur pour verrouiller les articles,
- * devient indisponible. Le paiement en file porte sa clé d'idempotence et sera
- * rejoué sans doublon.
+ * rendue. Sans réseau, le même écran encaisse dans la file locale, y compris
+ * article par article : les articles réglés partent avec le paiement et le
+ * serveur verrouille les bonnes quantités au rejeu. Chaque paiement en file
+ * porte sa clé d'idempotence et ne peut donc pas être compté deux fois.
  */
 export function PanneauPaiement({
   vue,
   additionId,
   cible,
+  quantitesEngagees,
   moyensActifs,
   journeeOuverte,
   horsLigne,
@@ -37,6 +38,8 @@ export function PanneauPaiement({
   vue: VueAddition;
   additionId: string | null;
   cible: CibleHorsLigne | null;
+  // Hors ligne : quantités déjà offertes ou payées dans la file locale.
+  quantitesEngagees: Record<string, number>;
   moyensActifs: ModePaiement[];
   journeeOuverte: boolean;
   horsLigne: boolean;
@@ -54,18 +57,27 @@ export function PanneauPaiement({
   const [montantRecu, setMontantRecu] = useState('');
   const [enCours, setEnCours] = useState(false);
 
-  const lignesDisponibles = vue.lignes.filter(
-    (l) => l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte > 0,
-  );
+  // Ce qui reste réellement à régler par article : le serveur ignore encore ce
+  // qui a été offert ou payé pendant la coupure, on le retire donc ici.
+  const restantParLigne = (l: LigneCommande) =>
+    l.quantite -
+    l.quantitePayee -
+    l.quantiteAnnulee -
+    l.quantiteOfferte -
+    (quantitesEngagees[l.id] ?? 0);
+
+  const lignesDisponibles = vue.lignes.filter((l) => restantParLigne(l) > 0);
 
   const montantArticles = lignesDisponibles.reduce(
     (s, l) => s + (selection[l.id] ?? 0) * l.prixUnitaire,
     0,
   );
 
-  // Le paiement par article n'est pas rejouable hors ligne : on retombe sur le
-  // solde total plutôt que de laisser un mode inopérant sélectionné.
-  const modeEffectif: Mode = horsLigne && mode === 'ARTICLES' ? 'TOTAL' : mode;
+  // Le paiement par article a besoin d'articles connus du serveur : une table
+  // entièrement ouverte pendant la coupure n'en a pas encore, on retombe alors
+  // sur le solde total plutôt que de laisser un mode inopérant sélectionné.
+  const articlesIndisponibles = horsLigne && !cible?.additionId;
+  const modeEffectif: Mode = articlesIndisponibles && mode === 'ARTICLES' ? 'TOTAL' : mode;
 
   let montantPropose = 0;
   if (modeEffectif === 'TOTAL') montantPropose = vue.solde;
@@ -85,11 +97,18 @@ export function PanneauPaiement({
       return;
     }
     const recu = moyenPaiement === 'ESPECES' && montantRecu ? Number(montantRecu) : undefined;
+    const lignesReglees =
+      modeEffectif === 'ARTICLES'
+        ? Object.entries(selection)
+            .filter(([, qte]) => qte > 0)
+            .map(([ligneCommandeId, quantite]) => ({ ligneCommandeId, quantite }))
+        : undefined;
     mettrePaiementEnAttente({
       description: `${cible.libelle} — ${montantPropose} DA`,
       montant: montantPropose,
       moyenPaiement,
       montantRecu: recu,
+      lignes: lignesReglees,
       additionId: cible.additionId,
       cleCommandeLocale: cible.additionId ? undefined : cible.cleCommandeLocale,
     });
@@ -103,6 +122,7 @@ export function PanneauPaiement({
       ),
     );
     const reste = Math.max(0, Math.round((vue.solde - montantPropose) * 100) / 100);
+    setSelection({});
     setMontantLibre('');
     setMontantRecu('');
     onEncaisse(
@@ -172,14 +192,18 @@ export function PanneauPaiement({
     <div className="flex flex-col gap-3 border-t border-stone-100 pt-3">
       <div className="flex flex-wrap gap-2">
         {(Object.keys(LIBELLES_MODE) as Mode[]).map((m) => {
-          const indisponible = horsLigne && m === 'ARTICLES';
+          const indisponible = articlesIndisponibles && m === 'ARTICLES';
           return (
             <button
               key={m}
               type="button"
               disabled={indisponible}
               onClick={() => setMode(m)}
-              title={indisponible ? 'Le paiement par article revient avec le réseau' : undefined}
+              title={
+                indisponible
+                  ? 'Cette table a été ouverte hors ligne : ses articles ne sont pas encore connus du serveur'
+                  : undefined
+              }
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 modeEffectif === m
                   ? 'bg-brand-600 text-white'
@@ -221,7 +245,7 @@ export function PanneauPaiement({
       {modeEffectif === 'ARTICLES' && (
         <ul className="flex flex-col gap-2 text-sm">
           {lignesDisponibles.map((l) => {
-            const restant = l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte;
+            const restant = restantParLigne(l);
             const qteChoisie = selection[l.id] ?? 0;
             return (
               <li key={l.id} className="flex items-center justify-between gap-2">

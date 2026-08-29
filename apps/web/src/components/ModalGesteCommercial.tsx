@@ -1,21 +1,51 @@
 import { useState } from 'react';
-import { api, type AdditionDetail } from '../lib/api';
-import { boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
+import type { LigneCiblee } from '../lib/horsLigne';
+import { boutonSecondaire, carte, champ, da, messageErreur } from '../lib/ui';
 import { Modal } from './Modal';
 
 const MOTIFS_PREDEFINIS = ['Client fidèle', 'Geste commercial', 'Attente trop longue', 'Autre'];
 const POURCENTAGES_RAPIDES = [5, 10, 20, 50];
 
+/** Un article encore offrable, avec la quantité qui reste à offrir. */
+export interface ArticleOffrable {
+  id: string;
+  nomProduit: string;
+  prixUnitaire: number;
+  disponible: number;
+}
+
+/** Le geste tel que le serveur vient de le saisir, avant tout envoi. */
+export type GesteSaisi = {
+  montant: number;
+  motif: string;
+  commentaire?: string;
+  codeGerant?: string;
+} & (
+  | { type: 'REMISE'; mode: 'POURCENTAGE' | 'MONTANT'; valeur: number }
+  | { type: 'OFFERT'; lignes: LigneCiblee[] }
+);
+
+/**
+ * Saisie d'un geste commercial. Le composant ne connaît ni le réseau ni l'API :
+ * il remonte le geste au panneau, qui l'envoie au serveur ou le met dans la
+ * file locale selon l'état de la connexion.
+ */
 export function ModalGesteCommercial({
-  detail,
+  titre,
+  solde,
+  offrables,
   droitRemiser,
+  horsLigne,
+  onConfirmer,
   onFermer,
-  onApplique,
 }: {
-  detail: AdditionDetail;
+  titre: string;
+  solde: number;
+  offrables: ArticleOffrable[];
   droitRemiser: boolean;
+  horsLigne: boolean;
+  onConfirmer: (geste: GesteSaisi) => Promise<void>;
   onFermer: () => void;
-  onApplique: () => void;
 }) {
   const [volet, setVolet] = useState<'REMISE' | 'OFFERT'>('REMISE');
 
@@ -33,23 +63,22 @@ export function ModalGesteCommercial({
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
-  const lignesOffrables = detail.commandes
-    .flatMap((c) => c.lignes)
-    .filter((l) => l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte > 0);
-
-  const lignesChoisies = Object.entries(selection)
+  const lignesChoisies: LigneCiblee[] = Object.entries(selection)
     .filter(([, qte]) => qte > 0)
     .map(([ligneCommandeId, quantite]) => ({ ligneCommandeId, quantite }));
 
   const montantRemiseEstime =
     modeRemise === 'POURCENTAGE'
-      ? Math.round(((detail.solde * (Number(pourcentage) || 0)) / 100) * 100) / 100
+      ? Math.round(((solde * (Number(pourcentage) || 0)) / 100) * 100) / 100
       : Number(montantLibre) || 0;
 
-  const montantOffertEstime = lignesChoisies.reduce((s, choix) => {
-    const ligne = lignesOffrables.find((l) => l.id === choix.ligneCommandeId);
-    return s + (ligne ? ligne.prixUnitaire * choix.quantite : 0);
-  }, 0);
+  const montantOffertEstime =
+    Math.round(
+      lignesChoisies.reduce((s, choix) => {
+        const article = offrables.find((l) => l.id === choix.ligneCommandeId);
+        return s + (article ? article.prixUnitaire * choix.quantite : 0);
+      }, 0) * 100,
+    ) / 100;
 
   async function handleConfirmer() {
     setErreur(null);
@@ -69,25 +98,28 @@ export function ModalGesteCommercial({
       setErreur('Saisissez une remise valide');
       return;
     }
+    if (volet === 'REMISE' && montantRemiseEstime > solde + 0.01) {
+      setErreur(`La remise dépasse le reste à payer (${da(solde)})`);
+      return;
+    }
+    const commun = {
+      motif,
+      commentaire: commentaire.trim() || undefined,
+      codeGerant: codeGerant || undefined,
+    };
     setEnCours(true);
     try {
-      if (volet === 'REMISE') {
-        await api.creerRemise(detail.id, {
-          mode: modeRemise,
-          valeur: modeRemise === 'POURCENTAGE' ? Number(pourcentage) : Number(montantLibre),
-          motif,
-          commentaire: commentaire.trim() || undefined,
-          codeGerant: codeGerant || undefined,
-        });
-      } else {
-        await api.offrirArticles(detail.id, {
-          lignes: lignesChoisies,
-          motif,
-          commentaire: commentaire.trim() || undefined,
-          codeGerant: codeGerant || undefined,
-        });
-      }
-      onApplique();
+      await onConfirmer(
+        volet === 'REMISE'
+          ? {
+              ...commun,
+              type: 'REMISE',
+              mode: modeRemise,
+              valeur: modeRemise === 'POURCENTAGE' ? Number(pourcentage) : Number(montantLibre),
+              montant: montantRemiseEstime,
+            }
+          : { ...commun, type: 'OFFERT', lignes: lignesChoisies, montant: montantOffertEstime },
+      );
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
       setCodeGerant('');
@@ -99,9 +131,10 @@ export function ModalGesteCommercial({
   return (
     <Modal>
       <div className={`${carte} max-h-[90vh] w-full max-w-md overflow-y-auto`}>
-        <h3 className="text-lg font-semibold text-stone-900">
-          Geste commercial — {detail.table ? `Table ${detail.table.numero}` : 'À emporter'}
-        </h3>
+        <h3 className="text-lg font-semibold text-stone-900">Geste commercial — {titre}</h3>
+        {horsLigne && (
+          <p className="mt-1 text-xs text-warn">Hors ligne : le geste part dès le retour du réseau.</p>
+        )}
 
         <div className="mt-4 flex flex-col gap-4">
           <div className="flex gap-2">
@@ -171,7 +204,7 @@ export function ModalGesteCommercial({
                     onChange={(e) => setPourcentage(e.target.value)}
                     className={`${champ} w-24`}
                   />
-                  <span className="text-sm text-stone-500">% du solde ({detail.solde} DA)</span>
+                  <span className="text-sm text-stone-500">% du solde ({da(solde)})</span>
                 </div>
               ) : (
                 <input
@@ -186,7 +219,7 @@ export function ModalGesteCommercial({
               )}
               <div className="flex items-center justify-between rounded-lg bg-brand-50 px-4 py-2.5">
                 <span className="text-sm font-medium text-brand-900">Remise</span>
-                <span className="text-lg font-bold text-brand-800">−{montantRemiseEstime} DA</span>
+                <span className="text-lg font-bold text-brand-800">−{da(montantRemiseEstime)}</span>
               </div>
             </div>
           )}
@@ -194,8 +227,7 @@ export function ModalGesteCommercial({
           {volet === 'OFFERT' && (
             <div className="flex flex-col gap-3">
               <ul className="flex flex-col gap-2 text-sm">
-                {lignesOffrables.map((l) => {
-                  const offrable = l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte;
+                {offrables.map((l) => {
                   const qteChoisie = selection[l.id] ?? 0;
                   return (
                     <li key={l.id} className="flex items-center justify-between gap-2">
@@ -210,19 +242,19 @@ export function ModalGesteCommercial({
                         />
                         <span>
                           {l.nomProduit}{' '}
-                          <span className="text-xs text-stone-400">({l.prixUnitaire} DA)</span>
+                          <span className="text-xs text-stone-400">({da(l.prixUnitaire)})</span>
                         </span>
                       </label>
-                      {qteChoisie > 0 && offrable > 1 && (
+                      {qteChoisie > 0 && l.disponible > 1 && (
                         <input
                           type="number"
                           min="1"
-                          max={offrable}
+                          max={l.disponible}
                           value={qteChoisie}
                           onChange={(e) =>
                             setSelection((s) => ({
                               ...s,
-                              [l.id]: Math.min(offrable, Math.max(1, Number(e.target.value))),
+                              [l.id]: Math.min(l.disponible, Math.max(1, Number(e.target.value))),
                             }))
                           }
                           className={`${champ} w-16 px-2 py-1`}
@@ -231,14 +263,14 @@ export function ModalGesteCommercial({
                     </li>
                   );
                 })}
-                {lignesOffrables.length === 0 && (
+                {offrables.length === 0 && (
                   <li className="text-stone-400">Plus rien à offrir sur cette addition.</li>
                 )}
               </ul>
               {montantOffertEstime > 0 && (
                 <div className="flex items-center justify-between rounded-lg bg-brand-50 px-4 py-2.5">
                   <span className="text-sm font-medium text-brand-900">Offert</span>
-                  <span className="text-lg font-bold text-brand-800">−{montantOffertEstime} DA</span>
+                  <span className="text-lg font-bold text-brand-800">−{da(montantOffertEstime)}</span>
                 </div>
               )}
             </div>

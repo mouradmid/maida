@@ -28,15 +28,18 @@ export function EspaceCaisse() {
 
   // Rejoue automatiquement les commandes prises hors ligne dès que possible.
   useEffect(() => {
-    demarrerSynchronisation(({ commandes, paiements, reservations, erreurs }) => {
+    demarrerSynchronisation(({ commandes, gestes, paiements, reservations, erreurs }) => {
       if (erreurs.length > 0) {
         setMessageSync({
           texte: `Synchronisation : ${erreurs.length} opération${erreurs.length > 1 ? 's' : ''} refusée${erreurs.length > 1 ? 's' : ''} — ${erreurs.join(' · ')}`,
           erreur: true,
         });
-      } else if (commandes > 0 || paiements > 0 || reservations > 0) {
+      } else if (commandes > 0 || gestes > 0 || paiements > 0 || reservations > 0) {
         const parties = [
           commandes > 0 ? `${commandes} commande${commandes > 1 ? 's' : ''}` : null,
+          gestes > 0
+            ? `${gestes} geste${gestes > 1 ? 's' : ''} commercia${gestes > 1 ? 'ux' : 'l'}`
+            : null,
           paiements > 0 ? `${paiements} paiement${paiements > 1 ? 's' : ''}` : null,
           reservations > 0 ? `${reservations} réservation${reservations > 1 ? 's' : ''}` : null,
         ].filter(Boolean);
