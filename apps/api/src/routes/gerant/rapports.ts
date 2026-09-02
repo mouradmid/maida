@@ -5,6 +5,10 @@ import { arrondi, contexteDe } from './partage';
 // Rapports de ventes de l'espace gérant.
 // Convention : CA commandé / palmarès produits / food cost sont BRUTS (avant
 // gestes commerciaux) ; le CA encaissé est le réel.
+//
+// Un rapport porte au choix sur le restaurant affiché ou sur toute l'enseigne
+// (?portee=enseigne) : même période, mêmes indicateurs, agrégés sur tous les
+// restaurants du compte client, avec le détail restaurant par restaurant.
 
 export const rapportsRouter = Router();
 
@@ -47,7 +51,7 @@ function resumeCout(t: { ventes: number; ventesCoutees: number; cout: number }) 
 }
 
 rapportsRouter.get('/rapports', async (req, res) => {
-  const { debut, fin } = req.query;
+  const { debut, fin, portee } = req.query;
 
   if (typeof debut !== 'string' || typeof fin !== 'string') {
     res.status(400).json({ error: 'Période requise (debut et fin)' });
@@ -61,7 +65,25 @@ rapportsRouter.get('/rapports', async (req, res) => {
   }
 
   const { compteClientId, etablissementId } = await contexteDe(req);
+  const surEnseigne = portee === 'enseigne';
   const periode = { gte: dateDebut, lte: dateFin };
+
+  // Les restaurants couverts par le rapport. En portée « enseigne », tous ceux
+  // du compte client — jamais au-delà : c'est le compte du gérant, et non le
+  // paramètre d'URL, qui borne la lecture. Le restaurant affiché reste du lot
+  // même s'il a été suspendu, pour qu'un rapport ne perde pas en chemin celui
+  // qu'on était en train de regarder.
+  const restaurants = surEnseigne
+    ? await prisma.etablissement.findMany({
+        where: { compteClientId, OR: [{ statut: 'ACTIF' }, { id: etablissementId }] },
+        select: { id: true, nom: true },
+        orderBy: { creeLe: 'asc' },
+      })
+    : await prisma.etablissement.findMany({
+        where: { id: etablissementId },
+        select: { id: true, nom: true },
+      });
+  const dansLaPortee = { in: restaurants.map((r) => r.id) };
 
   // Le food cost n'est renvoyé que si le module est accordé au compte client.
   const compte = await prisma.compteClient.findUnique({
@@ -72,13 +94,18 @@ rapportsRouter.get('/rapports', async (req, res) => {
 
   const [paiements, commandes, annulations, remises] = await Promise.all([
     prisma.paiement.findMany({
-      where: { addition: { etablissementId }, creeLe: periode },
-      select: { montant: true, moyenPaiement: true },
+      where: { addition: { etablissementId: dansLaPortee }, creeLe: periode },
+      select: {
+        montant: true,
+        moyenPaiement: true,
+        addition: { select: { etablissementId: true } },
+      },
     }),
     prisma.commande.findMany({
-      where: { etablissementId, creeLe: periode },
+      where: { etablissementId: dansLaPortee, creeLe: periode },
       select: {
         statut: true,
+        etablissementId: true,
         serveur: { select: { id: true, nom: true, prenom: true } },
         lignes: {
           select: {
@@ -95,14 +122,33 @@ rapportsRouter.get('/rapports', async (req, res) => {
       },
     }),
     prisma.annulation.findMany({
-      where: { etablissementId, creeLe: periode },
-      select: { montant: true, quantite: true, apresPreparation: true },
+      where: { etablissementId: dansLaPortee, creeLe: periode },
+      select: { montant: true, quantite: true, apresPreparation: true, etablissementId: true },
     }),
     prisma.remise.findMany({
-      where: { etablissementId, creeLe: periode },
-      select: { type: true, montant: true, quantite: true },
+      where: { etablissementId: dansLaPortee, creeLe: periode },
+      select: { type: true, montant: true, quantite: true, etablissementId: true },
     }),
   ]);
+
+  // Totaux restaurant par restaurant : la seule lecture qui permette de
+  // comparer deux salles sur la même période. Alimentée dans tous les cas,
+  // renvoyée seulement en portée enseigne — sur un seul restaurant, elle ne
+  // ferait que répéter les indicateurs du haut.
+  const parEtablissementMap = new Map(
+    restaurants.map((r) => [
+      r.id,
+      {
+        nom: r.nom,
+        caEncaisse: 0,
+        nbPaiements: 0,
+        caCommande: 0,
+        nbCommandes: 0,
+        pertes: 0,
+        remises: 0,
+      },
+    ]),
+  );
 
   // Encaissements par moyen de paiement
   const parMoyenMap = new Map<string, { montant: number; nombre: number }>();
@@ -111,6 +157,12 @@ rapportsRouter.get('/rapports', async (req, res) => {
     entree.montant += Number(p.montant);
     entree.nombre += 1;
     parMoyenMap.set(p.moyenPaiement, entree);
+
+    const restaurant = parEtablissementMap.get(p.addition.etablissementId);
+    if (restaurant) {
+      restaurant.caEncaisse += Number(p.montant);
+      restaurant.nbPaiements += 1;
+    }
   }
   const parMoyen = [...parMoyenMap.entries()]
     .map(([moyenPaiement, v]) => ({ moyenPaiement, montant: arrondi(v.montant), nombre: v.nombre }))
@@ -127,7 +179,14 @@ rapportsRouter.get('/rapports', async (req, res) => {
   const parCategorieMap = new Map<string, { quantite: number; montant: number }>();
   const parServeurMap = new Map<
     string,
-    { nom: string; prenom: string; nbCommandes: number; montant: number }
+    {
+      id: string;
+      nom: string;
+      prenom: string;
+      etablissement: string;
+      nbCommandes: number;
+      montant: number;
+    }
   >();
   const parType = {
     NOURRITURE: { ventes: 0, ventesCoutees: 0, cout: 0 },
@@ -188,9 +247,20 @@ rapportsRouter.get('/rapports', async (req, res) => {
     }
 
     caCommande += montantCommande;
+    const restaurant = parEtablissementMap.get(commande.etablissementId);
+    if (restaurant) {
+      restaurant.caCommande += montantCommande;
+      restaurant.nbCommandes += 1;
+    }
+
+    // Un serveur appartient à un restaurant : en portée enseigne, deux
+    // homonymes de deux salles doivent rester distincts à l'écran, d'où
+    // l'identifiant et le nom du restaurant renvoyés avec la ligne.
     const serveur = parServeurMap.get(commande.serveur.id) ?? {
+      id: commande.serveur.id,
       nom: commande.serveur.nom,
       prenom: commande.serveur.prenom,
+      etablissement: restaurant?.nom ?? '',
       nbCommandes: 0,
       montant: 0,
     };
@@ -208,16 +278,39 @@ rapportsRouter.get('/rapports', async (req, res) => {
       pertes.apresPreparation.montant += Number(a.montant);
       pertes.apresPreparation.quantite += a.quantite;
     }
+    const restaurant = parEtablissementMap.get(a.etablissementId);
+    if (restaurant) restaurant.pertes += Number(a.montant);
+  }
+
+  for (const r of remises) {
+    const restaurant = parEtablissementMap.get(r.etablissementId);
+    if (restaurant) restaurant.remises += Number(r.montant);
   }
 
   res.json({
     periode: { debut: dateDebut, fin: dateFin },
+    portee: surEnseigne ? 'enseigne' : 'etablissement',
     caEncaisse,
     nbPaiements: paiements.length,
     parMoyen,
     caCommande: arrondi(caCommande),
     nbCommandes,
     ticketMoyen: nbCommandes > 0 ? arrondi(caCommande / nbCommandes) : 0,
+    parEtablissement: surEnseigne
+      ? [...parEtablissementMap.entries()]
+          .map(([id, v]) => ({
+            id,
+            nom: v.nom,
+            caEncaisse: arrondi(v.caEncaisse),
+            nbPaiements: v.nbPaiements,
+            caCommande: arrondi(v.caCommande),
+            nbCommandes: v.nbCommandes,
+            ticketMoyen: v.nbCommandes > 0 ? arrondi(v.caCommande / v.nbCommandes) : 0,
+            pertes: arrondi(v.pertes),
+            remises: arrondi(v.remises),
+          }))
+          .sort((a, b) => b.caEncaisse - a.caEncaisse || b.caCommande - a.caCommande)
+      : null,
     parProduit: [...parProduitMap.entries()]
       .map(([nom, v]) => ({
         nom,

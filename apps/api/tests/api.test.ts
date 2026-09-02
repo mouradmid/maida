@@ -2588,6 +2588,9 @@ describe('Plusieurs restaurants pour un même compte', () => {
   const deuxieme = request.agent(app);
   let secondEtablissementId = '';
   let etablissementEtranger = '';
+  // Une vente réelle dans l'annexe : sans elle, un rapport d'enseigne ne
+  // prouverait rien (il rendrait les mêmes chiffres qu'un seul restaurant).
+  const CA_ANNEXE = 3000;
 
   beforeAll(async () => {
     const etab = await prisma.etablissement.create({
@@ -2599,8 +2602,48 @@ describe('Plusieurs restaurants pour un même compte', () => {
       },
     });
     secondEtablissementId = etab.id;
-    await prisma.categorie.create({
+    const categorie = await prisma.categorie.create({
       data: { nom: 'Carte annexe', type: 'NOURRITURE', etablissementId: etab.id },
+    });
+
+    const produit = await prisma.produit.create({
+      data: {
+        nom: 'Couscous annexe',
+        prix: CA_ANNEXE,
+        tauxTva: 9,
+        categorieId: categorie.id,
+        etablissementId: etab.id,
+      },
+    });
+    const serveurAnnexe = await prisma.utilisateur.create({
+      data: {
+        role: 'SERVEUR',
+        nom: 'Annexe',
+        prenom: 'Serveur',
+        compteClientId,
+        etablissementId: etab.id,
+      },
+    });
+    const addition = await prisma.addition.create({ data: { etablissementId: etab.id } });
+    await prisma.commande.create({
+      data: {
+        canal: 'SUR_PLACE',
+        etablissementId: etab.id,
+        serveurId: serveurAnnexe.id,
+        additionId: addition.id,
+        lignes: {
+          create: {
+            nomProduit: produit.nom,
+            prixUnitaire: CA_ANNEXE,
+            tauxTva: 9,
+            quantite: 1,
+            produitId: produit.id,
+          },
+        },
+      },
+    });
+    await prisma.paiement.create({
+      data: { montant: CA_ANNEXE, moyenPaiement: 'ESPECES', additionId: addition.id },
     });
 
     const autre = await prisma.etablissement.findFirst({
@@ -2616,7 +2659,14 @@ describe('Plusieurs restaurants pour un même compte', () => {
   });
 
   afterAll(async () => {
-    await prisma.categorie.deleteMany({ where: { etablissementId: secondEtablissementId } });
+    const dansAnnexe = { etablissementId: secondEtablissementId };
+    await prisma.paiement.deleteMany({ where: { addition: dansAnnexe } });
+    await prisma.ligneCommande.deleteMany({ where: { commande: dansAnnexe } });
+    await prisma.commande.deleteMany({ where: dansAnnexe });
+    await prisma.addition.deleteMany({ where: dansAnnexe });
+    await prisma.produit.deleteMany({ where: dansAnnexe });
+    await prisma.utilisateur.deleteMany({ where: dansAnnexe });
+    await prisma.categorie.deleteMany({ where: dansAnnexe });
     await prisma.etablissement.delete({ where: { id: secondEtablissementId } });
   });
 
@@ -2626,6 +2676,62 @@ describe('Plusieurs restaurants pour un même compte', () => {
     expect(res.body.etablissements).toHaveLength(2);
     expect(res.body.etablissements.map((e: { id: string }) => e.id)).toContain(secondEtablissementId);
     expect(res.body.actuelId).toBe(etablissementId);
+  });
+
+  it("consolide les rapports de toute l'enseigne à la demande", async () => {
+    const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fin = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    const seul = await deuxieme.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}`);
+    expect(seul.status).toBe(200);
+    expect(seul.body.portee).toBe('etablissement');
+    expect(seul.body.parEtablissement).toBeNull();
+
+    const enseigne = await deuxieme.get(
+      `/api/gerant/rapports?debut=${debut}&fin=${fin}&portee=enseigne`,
+    );
+    expect(enseigne.status).toBe(200);
+    expect(enseigne.body.portee).toBe('enseigne');
+    expect(enseigne.body.caEncaisse).toBe(seul.body.caEncaisse + CA_ANNEXE);
+    expect(enseigne.body.nbCommandes).toBe(seul.body.nbCommandes + 1);
+
+    // Le détail restaurant par restaurant recompose exactement le total.
+    const detail: Array<{ id: string; caEncaisse: number; nbCommandes: number }> =
+      enseigne.body.parEtablissement;
+    expect(detail).toHaveLength(2);
+    expect(detail.reduce((s, e) => s + e.caEncaisse, 0)).toBe(enseigne.body.caEncaisse);
+    const annexe = detail.find((e) => e.id === secondEtablissementId);
+    expect(annexe?.caEncaisse).toBe(CA_ANNEXE);
+    expect(annexe?.nbCommandes).toBe(1);
+
+    // Palmarès et activité par serveur suivent la portée.
+    const nomsSeul = seul.body.parProduit.map((p: { nom: string }) => p.nom);
+    const nomsEnseigne = enseigne.body.parProduit.map((p: { nom: string }) => p.nom);
+    expect(nomsSeul).not.toContain('Couscous annexe');
+    expect(nomsEnseigne).toContain('Couscous annexe');
+    expect(
+      enseigne.body.parServeur.some(
+        (s: { etablissement: string }) => s.etablissement === 'Resto Test — Annexe',
+      ),
+    ).toBe(true);
+  });
+
+  it("la portée enseigne s'arrête au compte client, jamais au-delà", async () => {
+    const debut = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fin = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    const res = await deuxieme.get(`/api/gerant/rapports?debut=${debut}&fin=${fin}&portee=enseigne`);
+    expect(res.status).toBe(200);
+
+    // Exactement les établissements du compte du gérant, et rien d'autre : ce
+    // sont ses droits, pas le paramètre d'URL, qui bornent la consolidation.
+    const rendus = res.body.parEtablissement.map((e: { id: string }) => e.id).sort();
+    const attendus = await prisma.etablissement.findMany({
+      where: { compteClientId },
+      select: { id: true },
+    });
+    expect(rendus).toEqual(attendus.map((e) => e.id).sort());
+    if (etablissementEtranger) expect(rendus).not.toContain(etablissementEtranger);
   });
 
   it('bascule sur le second restaurant, et les écrans suivent', async () => {

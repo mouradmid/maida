@@ -107,6 +107,12 @@
   de l'écran, et tout l'espace suit — menu, salle, équipe, rapports, code d'installation. Chaque
   restaurant garde ses propres données ; deux appareils peuvent rester ouverts sur deux
   restaurants différents. Invisible pour les clients qui n'en ont qu'un
+- **Rapports consolidés de l'enseigne** : un bouton « Toute l'enseigne » et le rapport entier
+  bascule — CA, ticket moyen, palmarès produits, TVA, moyens de paiement et pertes additionnés
+  sur tous les restaurants, plus une carte **CA par restaurant** pour les comparer d'un coup
+  d'œil et une activité par serveur qui rappelle la salle de chacun. L'export CSV suit la même
+  portée, avec sa ligne par restaurant. La consolidation s'arrête au compte client : c'est le
+  compte du gérant, jamais l'adresse demandée, qui borne la lecture
 
 ### Espace super-admin (éditeur)
 
@@ -146,7 +152,7 @@
   précédente en une commande, sauvegarde de la base chaque nuit — mode d'emploi dans
   `HEBERGEMENT.md`
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **150 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **152 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
@@ -172,8 +178,9 @@
 - [ ] Réservation en ligne par le client depuis le menu QR
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
-- [ ] Rapports consolidés d'une enseigne à plusieurs restaurants (aujourd'hui, un restaurant à
-      la fois)
+- [ ] Montrer l'enseigne à plusieurs restaurants dans la démonstration publique (aujourd'hui
+      « Le Bon Grill » n'en tient qu'un : le sélecteur et les rapports consolidés ne se voient
+      pas sur maidapos.com)
 
 ## 🔗 Liens utiles
 

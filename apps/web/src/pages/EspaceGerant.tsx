@@ -105,7 +105,9 @@ export function EspaceGerant() {
               restaurant : aucun ne peut garder en mémoire les chiffres du
               précédent. */}
           <div key={etablissementCourant ?? 'aucun'} className="flex min-w-0 flex-col gap-6">
-            {onglet === 'rapports' && <RapportsGerant />}
+            {onglet === 'rapports' && (
+              <RapportsGerant nbRestaurants={maison?.etablissements.length ?? 1} />
+            )}
             {onglet === 'reservations' && <ReservationsGerant />}
             {onglet === 'salle' && <PlanDeSalle />}
             {onglet === 'menu' && <GestionMenu />}

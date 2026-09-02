@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, type ParametresGerant, type RapportVentes, type ResumeCout } from '../lib/api';
-import { boutonSecondaire, carte, da, messageErreur } from '../lib/ui';
+import {
+  api,
+  type ParametresGerant,
+  type PorteeRapport,
+  type RapportVentes,
+  type ResumeCout,
+} from '../lib/api';
+import { boutonSecondaire, carte, chipActive, chipInactive, da, messageErreur } from '../lib/ui';
 import { type CelluleCsv, dateFichier, nombreCsv, telechargerCsv } from '../lib/export';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { bornes, type Periode } from '../lib/periode';
@@ -17,9 +23,14 @@ function dateCourte(iso: string): string {
 // Construit le CSV du rapport : synthèse des indicateurs puis détails vendus.
 // `voirCouts` conditionne l'export des coûts/marges comme à l'écran.
 function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
+  const surEnseigne = rapport.portee === 'enseigne';
   const lignes: CelluleCsv[][] = [];
   lignes.push(["Maïda — Chiffre d'affaires et indicateurs"]);
   lignes.push(['Période', `${dateCourte(rapport.periode.debut)} au ${dateCourte(rapport.periode.fin)}`]);
+  lignes.push([
+    'Portée',
+    surEnseigne ? "Toute l'enseigne (tous les restaurants)" : 'Restaurant affiché',
+  ]);
   lignes.push([]);
 
   lignes.push(['INDICATEURS']);
@@ -45,6 +56,33 @@ function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
     if (boissons.pct !== null) {
       lignes.push(['Beverage cost boissons (%)', nombreCsv(boissons.pct)]);
       lignes.push(['Marge brute boissons (DA)', nombreCsv(boissons.marge ?? 0)]);
+    }
+  }
+
+  if (rapport.parEtablissement) {
+    lignes.push([]);
+    lignes.push(['DÉTAIL PAR RESTAURANT']);
+    lignes.push([
+      'Restaurant',
+      'Commandes',
+      'CA commandé (DA)',
+      'Ticket moyen (DA)',
+      'Paiements',
+      'CA encaissé (DA)',
+      'Pertes (DA)',
+      'Remises & offerts (DA)',
+    ]);
+    for (const e of rapport.parEtablissement) {
+      lignes.push([
+        e.nom,
+        e.nbCommandes,
+        nombreCsv(e.caCommande),
+        nombreCsv(e.ticketMoyen),
+        e.nbPaiements,
+        nombreCsv(e.caEncaisse),
+        nombreCsv(e.pertes),
+        nombreCsv(e.remises),
+      ]);
     }
   }
 
@@ -86,12 +124,16 @@ function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
 
   lignes.push([]);
   lignes.push(['ACTIVITÉ PAR SERVEUR']);
-  lignes.push(['Serveur', 'Commandes', 'Montant (DA)']);
+  const enTeteServeur: CelluleCsv[] = ['Serveur', 'Commandes', 'Montant (DA)'];
+  if (surEnseigne) enTeteServeur.splice(1, 0, 'Restaurant');
+  lignes.push(enTeteServeur);
   for (const s of rapport.parServeur) {
-    lignes.push([`${s.prenom} ${s.nom}`, s.nbCommandes, nombreCsv(s.montant)]);
+    const ligne: CelluleCsv[] = [`${s.prenom} ${s.nom}`, s.nbCommandes, nombreCsv(s.montant)];
+    if (surEnseigne) ligne.splice(1, 0, s.etablissement);
+    lignes.push(ligne);
   }
 
-  telechargerCsv(`maida-ca-${dateFichier()}.csv`, lignes);
+  telechargerCsv(`maida-ca${surEnseigne ? '-enseigne' : ''}-${dateFichier()}.csv`, lignes);
 }
 
 function Tuile({
@@ -188,8 +230,16 @@ function LigneBarre({
   );
 }
 
-export function RapportsGerant() {
+/**
+ * Rapports de ventes de la période.
+ *
+ * `nbRestaurants` est le nombre de restaurants de l'enseigne : au-delà d'un,
+ * le gérant peut basculer le rapport entier sur l'ensemble. Pour l'immense
+ * majorité des clients — un seul restaurant — l'écran reste identique.
+ */
+export function RapportsGerant({ nbRestaurants = 1 }: { nbRestaurants?: number }) {
   const [periode, setPeriode] = useState<Periode>('aujourdhui');
+  const [portee, setPortee] = useState<PorteeRapport>('etablissement');
   const [persoDebut, setPersoDebut] = useState('');
   const [persoFin, setPersoFin] = useState('');
   const [rapport, setRapport] = useState<RapportVentes | null>(null);
@@ -220,7 +270,7 @@ export function RapportsGerant() {
     setChargement(true);
     setErreur(null);
     api
-      .getRapports(plage[0], plage[1])
+      .getRapports(plage[0], plage[1], portee)
       .then((r) => {
         if (!annule) setRapport(r);
       })
@@ -233,12 +283,13 @@ export function RapportsGerant() {
     return () => {
       annule = true;
     };
-  }, [periode, persoDebut, persoFin]);
+  }, [periode, persoDebut, persoFin, portee]);
 
   const voirCouts = (parametres?.moduleFoodCost ?? false) && (parametres?.suiviCoutsActive ?? true);
   const maxProduit = rapport?.parProduit[0]?.montant ?? 0;
   const maxCategorie = rapport?.parCategorie[0]?.montant ?? 0;
   const maxServeur = rapport?.parServeur[0]?.montant ?? 0;
+  const maxEtablissement = rapport?.parEtablissement?.[0]?.caEncaisse ?? 0;
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -251,6 +302,28 @@ export function RapportsGerant() {
           persoFin={persoFin}
           onPersoFin={setPersoFin}
         />
+        {nbRestaurants > 1 && (
+          <div className="flex gap-2" role="group" aria-label="Portée du rapport">
+            <button
+              type="button"
+              onClick={() => setPortee('etablissement')}
+              aria-pressed={portee === 'etablissement'}
+              title="Ne compter que le restaurant affiché"
+              className={portee === 'etablissement' ? chipActive : chipInactive}
+            >
+              Ce restaurant
+            </button>
+            <button
+              type="button"
+              onClick={() => setPortee('enseigne')}
+              aria-pressed={portee === 'enseigne'}
+              title={`Additionner la période sur les ${nbRestaurants} restaurants de l'enseigne`}
+              className={portee === 'enseigne' ? chipActive : chipInactive}
+            >
+              Toute l'enseigne
+            </button>
+          </div>
+        )}
         <button
           type="button"
           onClick={() => rapport && exporterRapport(rapport, voirCouts)}
@@ -318,6 +391,27 @@ export function RapportsGerant() {
             <div className="grid gap-3 sm:grid-cols-2">
               <CarteCout titre="Food cost — nourriture" resume={rapport.foodCost.nourriture} />
               <CarteCout titre="Beverage cost — boissons" resume={rapport.foodCost.boissons} />
+            </div>
+          )}
+
+          {rapport.parEtablissement && (
+            <div className={carte}>
+              <h3 className="mb-2 font-semibold text-stone-900">CA par restaurant</h3>
+              <ul className="flex flex-col divide-y divide-stone-100">
+                {rapport.parEtablissement.map((e) => (
+                  <LigneBarre
+                    key={e.id}
+                    libelle={e.nom}
+                    quantite={`${e.nbCommandes} commande${e.nbCommandes > 1 ? 's' : ''} · ticket moyen ${da(e.ticketMoyen)}`}
+                    montant={e.caEncaisse}
+                    max={maxEtablissement}
+                  />
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-stone-400">
+                Montants encaissés sur la période. Les palmarès et les totaux ci-dessous additionnent les{' '}
+                {rapport.parEtablissement.length} restaurants.
+              </p>
             </div>
           )}
 
@@ -427,8 +521,9 @@ export function RapportsGerant() {
                 <ul className="flex flex-col divide-y divide-stone-100">
                   {rapport.parServeur.map((s) => (
                     <LigneBarre
-                      key={`${s.prenom}-${s.nom}`}
+                      key={s.id}
                       libelle={`${s.prenom} ${s.nom}`}
+                      sousLibelle={rapport.portee === 'enseigne' ? s.etablissement : undefined}
                       quantite={`${s.nbCommandes} commande${s.nbCommandes > 1 ? 's' : ''}`}
                       montant={s.montant}
                       max={maxServeur}

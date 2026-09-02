@@ -234,8 +234,12 @@ export interface JourneeGerant extends JourneeCaisse {
   totaux: TotauxJournee;
 }
 
+/** Le rapport porte sur le restaurant affiché, ou sur toute l'enseigne. */
+export type PorteeRapport = 'etablissement' | 'enseigne';
+
 export interface RapportVentes {
   periode: { debut: string; fin: string };
+  portee: PorteeRapport;
   caEncaisse: number;
   nbPaiements: number;
   parMoyen: Array<{ moyenPaiement: ModePaiement; montant: number; nombre: number }>;
@@ -252,7 +256,28 @@ export interface RapportVentes {
     foodCostPct: number | null;
   }>;
   parCategorie: Array<{ nom: string; quantite: number; montant: number }>;
-  parServeur: Array<{ nom: string; prenom: string; nbCommandes: number; montant: number }>;
+  parServeur: Array<{
+    id: string;
+    nom: string;
+    prenom: string;
+    // Le restaurant du serveur : affiché seulement en portée enseigne, où deux
+    // homonymes de deux salles se retrouvent dans la même liste.
+    etablissement: string;
+    nbCommandes: number;
+    montant: number;
+  }>;
+  // Détail restaurant par restaurant, renseigné en portée enseigne seulement.
+  parEtablissement: Array<{
+    id: string;
+    nom: string;
+    caEncaisse: number;
+    nbPaiements: number;
+    caCommande: number;
+    nbCommandes: number;
+    ticketMoyen: number;
+    pertes: number;
+    remises: number;
+  }> | null;
   pertes: {
     montant: number;
     quantite: number;
@@ -990,9 +1015,10 @@ export const api = {
     }),
 
   // Agrégations sur toute une période : plus long, et sans repli hors ligne.
-  getRapports: (debut: Date, fin: Date) =>
+  // `portee` étend le rapport à tous les restaurants de l'enseigne.
+  getRapports: (debut: Date, fin: Date, portee: PorteeRapport = 'etablissement') =>
     apiFetch<RapportVentes>(
-      `/gerant/rapports?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}`,
+      `/gerant/rapports?debut=${encodeURIComponent(debut.toISOString())}&fin=${encodeURIComponent(fin.toISOString())}&portee=${portee}`,
       {},
       DELAI_REQUETE_LONG_MS,
     ),
