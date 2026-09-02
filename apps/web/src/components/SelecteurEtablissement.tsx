@@ -1,4 +1,4 @@
-import { chipActive, chipInactive } from '../lib/ui';
+import { bascule } from '../lib/ui';
 
 /**
  * Bascule entre les restaurants d'une même enseigne.
@@ -32,7 +32,7 @@ export function SelecteurEtablissement({
             disabled={enCours || e.id === actuelId}
             onClick={() => onChoisir(e.id)}
             aria-current={e.id === actuelId ? 'true' : undefined}
-            className={`${e.id === actuelId ? chipActive : chipInactive} shrink-0 justify-start whitespace-nowrap md:w-full`}
+            className={`${bascule(e.id === actuelId)} shrink-0 justify-start whitespace-nowrap md:w-full`}
           >
             {e.nom}
             {e.ville && <span className="ml-1.5 text-xs opacity-70">{e.ville}</span>}

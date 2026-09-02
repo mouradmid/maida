@@ -6,20 +6,13 @@ import {
   type CategorieMenu,
   type Commande,
   type DemandeClient,
-  type ModePaiement,
   type ProduitMenu,
   type TableCaisse,
   type Utilisateur,
 } from '../lib/api';
-import {
-  ciblesHorsLigne,
-  quantitesEngageesHorsLigne,
-  lireCache,
-  mettreEnAttente,
-  nouvelleCle,
-  sauvegarderCache,
-  type CibleHorsLigne,
-} from '../lib/horsLigne';
+import { lireCache, mettreEnAttente, nouvelleCle, sauvegarderCache } from '../lib/horsLigne';
+import { useContexteEncaissement } from '../hooks/useContexteEncaissement';
+import { useFileHorsLigne } from '../hooks/useFileHorsLigne';
 import { useHorsLigne } from '../hooks/useHorsLigne';
 import { usePanier, type ChoixOption } from '../hooks/usePanier';
 import { badgeBrand, badgeNeutre, carte, da } from '../lib/ui';
@@ -35,12 +28,7 @@ import { GrilleMenu } from './GrilleMenu';
 import { ListeEmporterEnPreparation, ListeEmporterHorsLigne } from './ListesEmporter';
 import { ModalOptionsProduit } from './ModalOptionsProduit';
 import { PanierCommande, type LigneRajout } from './PanierCommande';
-import {
-  PanneauAddition,
-  vueDepuisDetail,
-  type InfosEtablissement,
-  type VueAddition,
-} from './PanneauAddition';
+import { PanneauAddition, vueDepuisDetail, type VueAddition } from './PanneauAddition';
 import { PanneauPaiement } from './PanneauPaiement';
 
 // Les deux faces d'une table : ce qu'on lui envoie, et ce qu'elle doit.
@@ -108,24 +96,14 @@ export function EcranTables({
   // Addition d'une vente à emporter sélectionnée dans la liste (une vente à
   // emporter n'a pas de table sur laquelle s'appuyer).
   const [additionEmporterId, setAdditionEmporterId] = useState<string | null>(null);
-  const [moyensActifs, setMoyensActifs] = useState<ModePaiement[]>(['ESPECES']);
-  const [journeeOuverte, setJourneeOuverte] = useState(true);
-  const [etablissement, setEtablissement] = useState<InfosEtablissement | null>(null);
 
   // Hors ligne : l'addition détaillée n'est pas joignable, on encaisse le solde
   // total sur le dernier état connu (tables en cache + commandes en file).
   const { horsLigne, enAttente } = useHorsLigne();
-  const [cibles, setCibles] = useState<CibleHorsLigne[]>([]);
+  const { cibles, engagees } = useFileHorsLigne(horsLigne, enAttente);
   const [cleCibleEmporter, setCleCibleEmporter] = useState<string | null>(null);
 
-  // Quantités déjà offertes ou payées dans la file locale : le serveur ne les
-  // connaît pas encore, donc l'écran doit les retrancher lui-même.
-  const [engagees, setEngagees] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    setCibles(horsLigne ? ciblesHorsLigne() : []);
-    setEngagees(quantitesEngageesHorsLigne());
-  }, [horsLigne, enAttente]);
+  const { moyensActifs, journeeOuverte, etablissement } = useContexteEncaissement(horsLigne);
 
   async function chargerDemandes() {
     try {
@@ -152,34 +130,13 @@ export function EcranTables({
     }
   }
 
-  // Ce qu'il faut pour encaisser : moyens acceptés, journée ouverte, en-tête du
-  // ticket. Isolé du menu pour qu'une panne ici n'empêche pas de commander.
-  async function chargerContexteEncaissement() {
-    try {
-      const [moyens, etatJournee, infosEtab] = await Promise.all([
-        api.caisseMoyensPaiement(),
-        api.getJournee(),
-        api.caisseEtablissement(),
-      ]);
-      setMoyensActifs(moyens.actifs.length > 0 ? moyens.actifs : ['ESPECES']);
-      setJourneeOuverte(etatJournee.journee !== null);
-      setEtablissement(infosEtab);
-      sauvegarderCache('moyensPaiement', moyens.actifs);
-      sauvegarderCache('etablissement', infosEtab);
-    } catch {
-      // Hors ligne : on repart du dernier état connu.
-      setMoyensActifs(lireCache<ModePaiement[]>('moyensPaiement') ?? ['ESPECES']);
-      setEtablissement(lireCache<InfosEtablissement>('etablissement'));
-    }
-  }
-
   // Rafraîchissement périodique, suspendu pendant une coupure : inutile
   // d'encombrer un réseau muet, la sonde de lib/reseau.ts guette le retour. Dès
   // qu'il revient, on recharge tout de suite pour rattraper le service.
   useEffect(() => {
     if (horsLigne) return;
     chargerDemandes();
-    chargerContexteEncaissement();
+
     rafraichirCommandes();
     const minuterie = setInterval(() => {
       chargerDemandes();

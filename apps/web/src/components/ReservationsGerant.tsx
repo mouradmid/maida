@@ -1,24 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, type ParametresGerant, type StatutReservation } from '../lib/api';
-import { badgeNeutre, boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
+import { api, type ParametresGerant } from '../lib/api';
+import { badgeNeutre, bascule, boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
 import { type CelluleCsv, dateFichier, dateHeureCsv, telechargerCsv } from '../lib/export';
+import { LIBELLES_STATUT_RESERVATION } from '../lib/libelles';
+import { Tuile } from './Tuile';
 
 type Donnees = Awaited<ReturnType<typeof api.reservationsGerant>>;
 type Reservation = Donnees['reservations'][number];
-
-const LIBELLES_STATUT: Record<StatutReservation, { texte: string; classes: string }> = {
-  A_VENIR: { texte: 'À venir', classes: 'bg-sky-100 text-sky-800' },
-  ARRIVEE: { texte: 'Venu', classes: 'bg-green-100 text-green-800' },
-  ANNULEE: { texte: 'Annulée', classes: 'bg-stone-100 text-stone-500' },
-  NO_SHOW: { texte: 'No-show', classes: 'bg-red-100 text-red-800' },
-};
-
-const LIBELLE_STATUT: Record<StatutReservation, string> = {
-  A_VENIR: 'À venir',
-  ARRIVEE: 'Venu',
-  ANNULEE: 'Annulée',
-  NO_SHOW: 'No-show',
-};
 
 // Répertoire clients : on regroupe les réservations par client pour en tirer un
 // fichier de contacts (données récoltées à la réservation) avec leurs statistiques.
@@ -113,32 +101,12 @@ function exporterHistorique(reservations: Reservation[]) {
       r.email ?? '',
       r.nombreCouverts,
       r.table.numero,
-      LIBELLE_STATUT[r.statut],
+      LIBELLES_STATUT_RESERVATION[r.statut].texte,
       r.prisePar ? `${r.prisePar.prenom} ${r.prisePar.nom}` : 'En ligne (client)',
       r.note ?? '',
     ]);
   }
   telechargerCsv(`maida-reservations-${dateFichier()}.csv`, lignes);
-}
-
-function Tuile({
-  libelle,
-  valeur,
-  detail,
-  accent,
-}: {
-  libelle: string;
-  valeur: string;
-  detail?: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className={`${carte} flex flex-col gap-1`}>
-      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{libelle}</p>
-      <p className={`text-2xl font-bold ${accent ? 'text-red-700' : 'text-stone-900'}`}>{valeur}</p>
-      {detail && <p className="text-xs text-stone-500">{detail}</p>}
-    </div>
-  );
 }
 
 // Délais proposés au gérant. Des minutes en base, mais personne ne raisonne en
@@ -197,11 +165,7 @@ function ReglagesReservationEnLigne({
           onClick={() => enregistrer({ reservationEnLigneActive: !active })}
           disabled={enCours}
           aria-pressed={active}
-          className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
-            active
-              ? 'bg-brand-600 text-white'
-              : 'border border-stone-300 bg-card text-stone-500 hover:bg-stone-50'
-          }`}
+          className={`${bascule(active)} shrink-0 disabled:opacity-50`}
         >
           {active ? '✓ Activée' : 'Désactivée'}
         </button>
@@ -384,7 +348,7 @@ export function ReservationsGerant() {
           <h3 className="mb-2 font-semibold text-stone-900">Historique récent</h3>
           <ul className="flex flex-col divide-y divide-stone-100 text-sm">
             {reservations.slice(0, 25).map((r) => {
-              const statut = LIBELLES_STATUT[r.statut];
+              const statut = LIBELLES_STATUT_RESERVATION[r.statut];
               return (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <span className="flex min-w-0 flex-wrap items-center gap-2">

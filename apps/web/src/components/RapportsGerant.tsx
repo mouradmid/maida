@@ -6,11 +6,12 @@ import {
   type RapportVentes,
   type ResumeCout,
 } from '../lib/api';
-import { boutonSecondaire, carte, chipActive, chipInactive, da, messageErreur } from '../lib/ui';
+import { bascule, boutonSecondaire, carte, da, messageErreur } from '../lib/ui';
 import { type CelluleCsv, dateFichier, nombreCsv, telechargerCsv } from '../lib/export';
 import { LIBELLES_MOYEN } from '../lib/libelles';
 import { bornes, type Periode } from '../lib/periode';
 import { SelecteurPeriode } from './SelecteurPeriode';
+import { Tuile } from './Tuile';
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', {
@@ -134,28 +135,6 @@ function exporterRapport(rapport: RapportVentes, voirCouts: boolean) {
   }
 
   telechargerCsv(`maida-ca${surEnseigne ? '-enseigne' : ''}-${dateFichier()}.csv`, lignes);
-}
-
-function Tuile({
-  libelle,
-  valeur,
-  detail,
-  accent,
-}: {
-  libelle: string;
-  valeur: string;
-  detail?: string;
-  accent?: 'perte';
-}) {
-  return (
-    <div className={`${carte} flex flex-col gap-1`}>
-      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{libelle}</p>
-      <p className={`text-2xl font-bold ${accent === 'perte' ? 'text-red-700' : 'text-stone-900'}`}>
-        {valeur}
-      </p>
-      {detail && <p className="text-xs text-stone-500">{detail}</p>}
-    </div>
-  );
 }
 
 // Food cost ou beverage cost de la période : % + coût/marge, avec le taux de
@@ -309,7 +288,7 @@ export function RapportsGerant({ nbRestaurants = 1 }: { nbRestaurants?: number }
               onClick={() => setPortee('etablissement')}
               aria-pressed={portee === 'etablissement'}
               title="Ne compter que le restaurant affiché"
-              className={portee === 'etablissement' ? chipActive : chipInactive}
+              className={bascule(portee === 'etablissement')}
             >
               Ce restaurant
             </button>
@@ -318,7 +297,7 @@ export function RapportsGerant({ nbRestaurants = 1 }: { nbRestaurants?: number }
               onClick={() => setPortee('enseigne')}
               aria-pressed={portee === 'enseigne'}
               title={`Additionner la période sur les ${nbRestaurants} restaurants de l'enseigne`}
-              className={portee === 'enseigne' ? chipActive : chipInactive}
+              className={bascule(portee === 'enseigne')}
             >
               Toute l'enseigne
             </button>
@@ -338,11 +317,8 @@ export function RapportsGerant({ nbRestaurants = 1 }: { nbRestaurants?: number }
             type="button"
             onClick={handleToggleSuiviCouts}
             title="Affiche ou masque les coûts de revient, marges et food cost dans tout l'espace gérant"
-            className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-              parametres.suiviCoutsActive
-                ? 'bg-brand-600 text-white'
-                : 'bg-card text-stone-500 border border-stone-300 hover:bg-stone-50'
-            }`}
+            aria-pressed={parametres.suiviCoutsActive}
+            className={bascule(parametres.suiviCoutsActive)}
           >
             {parametres.suiviCoutsActive ? '✓ Coûts & marges affichés' : 'Coûts & marges masqués'}
           </button>
@@ -374,7 +350,7 @@ export function RapportsGerant({ nbRestaurants = 1 }: { nbRestaurants?: number }
                   ? `dont ${da(rapport.pertes.apresPreparation.montant)} de perte sèche après préparation`
                   : `${rapport.pertes.quantite} article${rapport.pertes.quantite > 1 ? 's' : ''} annulé${rapport.pertes.quantite > 1 ? 's' : ''}`
               }
-              accent={rapport.pertes.montant > 0 ? 'perte' : undefined}
+              accent={rapport.pertes.montant > 0}
             />
             <Tuile
               libelle="Remises & offerts"

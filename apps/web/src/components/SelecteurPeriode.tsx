@@ -1,5 +1,5 @@
 import { PERIODES, type Periode } from '../lib/periode';
-import { champ } from '../lib/ui';
+import { bascule, champ } from '../lib/ui';
 
 // Barre de sélection de période (pastilles + dates libres), partagée par les
 // écrans Rapports et Journées du gérant.
@@ -25,11 +25,8 @@ export function SelecteurPeriode({
           key={p.id}
           type="button"
           onClick={() => onPeriode(p.id)}
-          className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-            periode === p.id
-              ? 'bg-brand-600 text-white'
-              : 'bg-card text-stone-600 border border-stone-300 hover:bg-stone-50'
-          }`}
+          aria-pressed={periode === p.id}
+          className={bascule(periode === p.id)}
         >
           {p.libelle}
         </button>

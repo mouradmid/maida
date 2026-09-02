@@ -37,6 +37,14 @@ export const chipActive = `${chipBase} bg-brand-600 text-white`;
 
 export const chipInactive = `${chipBase} border border-line bg-card text-ink-soft hover:bg-surface`;
 
+/**
+ * Pastille à deux états (filtre choisi, réglage ouvert/fermé).
+ *
+ * Les écrans du gérant réécrivaient chacun ces deux jeux de classes à la main,
+ * et l'un d'eux avait déjà dérivé. Une seule fonction, un seul rendu.
+ */
+export const bascule = (actif: boolean) => (actif ? chipActive : chipInactive);
+
 export const boutonDiscret = 'text-sm font-medium text-brand-700 transition-colors hover:text-brand-900';
 
 export const carte = 'rounded-xl border border-line bg-card p-5 shadow-sm';

@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  api,
-  ErreurReseau,
-  type Reservation,
-  type StatutReservation,
-  type TableCaisse,
-} from '../lib/api';
+import { api, ErreurReseau, type Reservation, type TableCaisse } from '../lib/api';
 import {
   lireCache,
   lireReservationsEnAttente,
@@ -16,13 +10,7 @@ import {
 } from '../lib/horsLigne';
 import { useHorsLigne } from '../hooks/useHorsLigne';
 import { badgeNeutre, boutonPrimaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
-
-const LIBELLES_STATUT: Record<StatutReservation, { texte: string; classes: string }> = {
-  A_VENIR: { texte: 'À venir', classes: 'bg-sky-100 text-sky-800' },
-  ARRIVEE: { texte: 'Client arrivé', classes: 'bg-green-100 text-green-800' },
-  ANNULEE: { texte: 'Annulée', classes: 'bg-stone-100 text-stone-500' },
-  NO_SHOW: { texte: 'No-show', classes: 'bg-red-100 text-red-800' },
-};
+import { LIBELLES_STATUT_RESERVATION } from '../lib/libelles';
 
 function jourISO(date: Date) {
   const decale = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -349,7 +337,7 @@ export function Reservations() {
 
           <ul className="flex flex-col divide-y divide-stone-100">
             {reservations.map((r) => {
-              const statut = LIBELLES_STATUT[r.statut];
+              const statut = LIBELLES_STATUT_RESERVATION[r.statut];
               const modifiable = r.statut === 'A_VENIR' || r.statut === 'ARRIVEE';
               return (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">

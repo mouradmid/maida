@@ -4,6 +4,11 @@ import { api, ErreurReseau } from '../lib/api';
 import { da } from '../lib/ui';
 import { Logo } from '../components/Logo';
 import { Modal } from '../components/Modal';
+import {
+  FormulaireReservation,
+  type CreneauxReservation,
+  type ReservationConfirmee,
+} from '../components/FormulaireReservation';
 
 type MenuPublicData = Awaited<ReturnType<typeof api.menuPublic>>;
 type ProduitPublic = MenuPublicData['categories'][number]['produits'][number];
@@ -13,8 +18,6 @@ interface LignePanier {
   quantite: number;
   options: Array<{ groupeOptionId: string; optionValeurId: string; valeur: string }>;
 }
-
-type ReservationConfirmee = Awaited<ReturnType<typeof api.reserverEnLigne>>;
 
 function cleLigne(produitId: string, options: LignePanier['options']) {
   return `${produitId}::${options
@@ -65,18 +68,11 @@ export function MenuPublic() {
   const [erreurCommande, setErreurCommande] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<number | null>(null);
 
-  // Réservation en ligne
-  // Créneaux acceptables, figés à l'ouverture du formulaire : des bornes
-  // recalculées à chaque rendu se décaleraient sous les doigts du client.
-  const [bornes, setBornes] = useState<{ min: string; max: string } | null>(null);
-  const [nomClient, setNomClient] = useState('');
-  const [telephone, setTelephone] = useState('');
-  const [emailClient, setEmailClient] = useState('');
-  const [couverts, setCouverts] = useState(2);
-  const [quand, setQuand] = useState('');
-  const [noteReservation, setNoteReservation] = useState('');
-  const [reservationEnCours, setReservationEnCours] = useState(false);
-  const [erreurReservation, setErreurReservation] = useState<string | null>(null);
+  // Réservation en ligne : les créneaux acceptables sont figés à l'ouverture du
+  // formulaire (des bornes recalculées à chaque rendu se décaleraient sous les
+  // doigts du client), et leur présence suffit à dire que le formulaire est
+  // ouvert. Le reste de sa saisie lui appartient.
+  const [creneaux, setCreneaux] = useState<CreneauxReservation | null>(null);
   const [reservationConfirmee, setReservationConfirmee] = useState<ReservationConfirmee | null>(null);
 
   useEffect(() => {
@@ -176,36 +172,6 @@ export function MenuPublic() {
     }
   }
 
-  async function handleReserver() {
-    if (!etablissementId) return;
-    setErreurReservation(null);
-    setReservationEnCours(true);
-    try {
-      const resultat = await api.reserverEnLigne({
-        etablissementId,
-        nomClient: nomClient.trim(),
-        telephone: telephone.trim(),
-        email: emailClient.trim() || undefined,
-        nombreCouverts: couverts,
-        date: new Date(quand).toISOString(),
-        note: noteReservation.trim() || undefined,
-      });
-      setReservationConfirmee(resultat);
-      setBornes(null);
-      setNoteReservation('');
-    } catch (err) {
-      setErreurReservation(
-        err instanceof ErreurReseau
-          ? 'Pas de connexion — réessayez, ou appelez le restaurant.'
-          : err instanceof Error
-            ? err.message
-            : 'Une erreur est survenue',
-      );
-    } finally {
-      setReservationEnCours(false);
-    }
-  }
-
   if (erreur) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-6 text-center">
@@ -298,18 +264,16 @@ export function MenuPublic() {
                 const limites = menu.reservationEnLigne!;
                 const maintenant = Date.now();
                 const auPlusTot = new Date(maintenant + limites.delaiMinMinutes * 60_000);
-                setErreurReservation(null);
-                setBornes({
-                  min: pourChampDateHeure(auPlusTot),
-                  max: pourChampDateHeure(new Date(maintenant + limites.horizonJours * 24 * 3600_000)),
-                });
+                const min = pourChampDateHeure(auPlusTot);
                 // Première proposition : le premier créneau acceptable, arrondi
                 // à l'heure suivante — le client n'a plus qu'à ajuster.
-                if (!quand) {
-                  auPlusTot.setMinutes(0, 0, 0);
-                  auPlusTot.setHours(auPlusTot.getHours() + 1);
-                  setQuand(pourChampDateHeure(auPlusTot));
-                }
+                auPlusTot.setMinutes(0, 0, 0);
+                auPlusTot.setHours(auPlusTot.getHours() + 1);
+                setCreneaux({
+                  min,
+                  max: pourChampDateHeure(new Date(maintenant + limites.horizonJours * 24 * 3600_000)),
+                  defaut: pourChampDateHeure(auPlusTot),
+                });
               }}
               className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-brand-800 shadow-sm"
             >
@@ -437,124 +401,18 @@ export function MenuPublic() {
       )}
 
       {/* Réservation en ligne */}
-      {bornes && menu.reservationEnLigne && (
-        <Modal ancrage="bas">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleReserver();
-            }}
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-card p-5"
-          >
-            <h3 className="text-lg font-bold text-stone-900">Réserver une table</h3>
-            <p className="mt-1 text-sm text-stone-500">
-              Jusqu’à {menu.reservationEnLigne.couvertsMax} personnes, dans les{' '}
-              {menu.reservationEnLigne.horizonJours} prochains jours. Pour un plus grand groupe ou pour
-              tout à l’heure, appelez le restaurant.
-            </p>
-
-            <div className="mt-4 flex flex-col gap-3">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-stone-700">Quand ?</span>
-                <input
-                  type="datetime-local"
-                  required
-                  value={quand}
-                  onChange={(e) => setQuand(e.target.value)}
-                  min={bornes.min}
-                  max={bornes.max}
-                  className="rounded-lg border border-stone-300 px-3 py-2.5 text-sm"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-stone-700">Combien de personnes ?</span>
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  max={menu.reservationEnLigne.couvertsMax}
-                  value={couverts}
-                  onChange={(e) => setCouverts(Number(e.target.value))}
-                  className="rounded-lg border border-stone-300 px-3 py-2.5 text-sm"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-stone-700">Votre nom</span>
-                <input
-                  type="text"
-                  required
-                  maxLength={100}
-                  value={nomClient}
-                  onChange={(e) => setNomClient(e.target.value)}
-                  className="rounded-lg border border-stone-300 px-3 py-2.5 text-sm"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-stone-700">Votre téléphone</span>
-                <input
-                  type="tel"
-                  required
-                  maxLength={30}
-                  value={telephone}
-                  onChange={(e) => setTelephone(e.target.value)}
-                  className="rounded-lg border border-stone-300 px-3 py-2.5 text-sm"
-                />
-                <span className="text-xs text-stone-500">
-                  Pour vous joindre si le restaurant doit vous rappeler.
-                </span>
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-stone-700">
-                  Votre e-mail <span className="font-normal text-stone-400">(facultatif)</span>
-                </span>
-                <input
-                  type="email"
-                  maxLength={100}
-                  value={emailClient}
-                  onChange={(e) => setEmailClient(e.target.value)}
-                  className="rounded-lg border border-stone-300 px-3 py-2.5 text-sm"
-                />
-                <span className="text-xs text-stone-500">Pour recevoir la confirmation.</span>
-              </label>
-
-              <input
-                type="text"
-                maxLength={200}
-                value={noteReservation}
-                onChange={(e) => setNoteReservation(e.target.value)}
-                placeholder="Une précision ? (anniversaire, chaise haute...)"
-                className="rounded-lg border border-stone-300 px-3 py-2.5 text-sm"
-              />
-            </div>
-
-            {erreurReservation && (
-              <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {erreurReservation}
-              </p>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="submit"
-                disabled={reservationEnCours}
-                className="flex-1 rounded-lg bg-brand-600 py-3 font-semibold text-white disabled:opacity-40"
-              >
-                {reservationEnCours ? 'Envoi...' : 'Réserver'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setBornes(null)}
-                className="rounded-lg border border-stone-300 px-4 py-3 text-stone-600"
-              >
-                Retour
-              </button>
-            </div>
-          </form>
-        </Modal>
+      {creneaux && menu.reservationEnLigne && (
+        <FormulaireReservation
+          etablissementId={etablissementId!}
+          couvertsMax={menu.reservationEnLigne.couvertsMax}
+          horizonJours={menu.reservationEnLigne.horizonJours}
+          creneaux={creneaux}
+          onFerme={() => setCreneaux(null)}
+          onConfirmee={(r) => {
+            setCreneaux(null);
+            setReservationConfirmee(r);
+          }}
+        />
       )}
 
       {/* Panier */}
