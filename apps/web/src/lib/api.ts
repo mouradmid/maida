@@ -143,7 +143,9 @@ export interface Reservation {
   note: string | null;
   statut: StatutReservation;
   table: { id: string; numero: string };
-  prisePar: { nom: string; prenom: string };
+  // `null` = réservation prise en ligne par le client depuis le menu QR :
+  // personne de l'équipe n'a décroché.
+  prisePar: { nom: string; prenom: string } | null;
 }
 
 export interface Commande {
@@ -324,6 +326,11 @@ export interface ParametresGerant {
   moduleQrMenu: boolean;
   suiviCoutsActive: boolean;
   commandeClientActive: boolean;
+  // Réservation en ligne depuis le menu QR, et les limites que le gérant lui fixe.
+  reservationEnLigneActive: boolean;
+  reservationCouvertsMax: number;
+  reservationDelaiMinMinutes: number;
+  reservationHorizonJours: number;
   // Code que l'on tape une fois sur une tablette pour la rattacher à ce
   // restaurant, présenté en deux blocs (« ABCD-2345 »).
   codeTerminal: string | null;
@@ -775,6 +782,13 @@ export const api = {
     apiFetch<{
       etablissement: { nom: string; adresse: string | null; ville: string | null };
       commandeClientActive: boolean;
+      // `null` quand le restaurant ne prend pas les réservations en ligne.
+      // Sinon, les limites à afficher et à respecter avant même d'envoyer.
+      reservationEnLigne: {
+        couvertsMax: number;
+        delaiMinMinutes: number;
+        horizonJours: number;
+      } | null;
       categories: Array<{
         id: string;
         nom: string;
@@ -807,6 +821,25 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Réservation prise par le client depuis le menu QR : confirmée sur-le-champ
+  // (la table est choisie par le serveur) ou refusée avec la raison.
+  reserverEnLigne: (data: {
+    etablissementId: string;
+    nomClient: string;
+    telephone: string;
+    email?: string;
+    nombreCouverts: number;
+    date: string;
+    note?: string;
+  }) =>
+    apiFetch<{
+      id: string;
+      date: string;
+      nombreCouverts: number;
+      table: string;
+      confirmationEnvoyee: boolean;
+    }>('/public/reservations', { method: 'POST', body: JSON.stringify(data) }),
 
   listDemandes: () => apiFetch<DemandeClient[]>('/caisse/demandes', {}, DELAI_REQUETE_COURT_MS),
 
@@ -999,7 +1032,14 @@ export const api = {
 
   getParametres: () => apiFetch<ParametresGerant>('/gerant/parametres'),
 
-  updateParametres: (data: { suiviCoutsActive?: boolean; commandeClientActive?: boolean }) =>
+  updateParametres: (data: {
+    suiviCoutsActive?: boolean;
+    commandeClientActive?: boolean;
+    reservationEnLigneActive?: boolean;
+    reservationCouvertsMax?: number;
+    reservationDelaiMinMinutes?: number;
+    reservationHorizonJours?: number;
+  }) =>
     apiFetch<ParametresGerant>('/gerant/parametres', {
       method: 'PATCH',
       body: JSON.stringify(data),

@@ -430,7 +430,7 @@ export function Reservations() {
                     <span className="text-xs text-stone-500">
                       {r.telephone && <>📞 {r.telephone} · </>}
                       {r.email && <>✉ {r.email} · </>}
-                      prise par {r.prisePar.prenom}
+                      {r.prisePar ? `prise par ${r.prisePar.prenom}` : 'réservée en ligne'}
                       {r.note && <> · « {r.note} »</>}
                     </span>
                   </div>

@@ -3,6 +3,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { envoyerEmail } from '../../lib/email';
 import { emailConfirmationReservation } from '../../lib/emails';
 import { prisma } from '../../lib/prisma';
+import { trouverConflitReservation } from '../../lib/reservations';
 import { getContexteServeur } from './partage';
 
 export const reservationsRouter = Router();
@@ -26,32 +27,6 @@ function toPublicReservation(r: Prisma.ReservationGetPayload<{ include: typeof I
     table: r.table,
     prisePar: r.prisePar,
   };
-}
-
-// Détecte une réservation en conflit (chevauchement de créneau) sur une table donnée.
-async function trouverConflitReservation(
-  tableId: string,
-  debutCreneau: number,
-  dureeMinutes: number,
-  reservationExclueId?: string,
-) {
-  const finCreneau = debutCreneau + dureeMinutes * 60_000;
-  const voisines = await prisma.reservation.findMany({
-    where: {
-      tableId,
-      statut: { in: ['A_VENIR', 'ARRIVEE'] },
-      date: {
-        gte: new Date(debutCreneau - 12 * 60 * 60_000),
-        lte: new Date(finCreneau + 12 * 60 * 60_000),
-      },
-      ...(reservationExclueId ? { id: { not: reservationExclueId } } : {}),
-    },
-  });
-  return voisines.find((r) => {
-    const debutR = r.date.getTime();
-    const finR = debutR + r.dureeMinutes * 60_000;
-    return debutR < finCreneau && finR > debutCreneau;
-  });
 }
 
 reservationsRouter.get('/reservations', async (req, res) => {

@@ -1641,6 +1641,163 @@ describe('Commande client depuis le QR', () => {
   });
 });
 
+// Le client réserve lui-même depuis le menu QR. La réservation est confirmée
+// sur-le-champ : ce qui la borne, ce sont les limites du gérant et le plan de
+// salle — on ne peut pas réserver plus de tables qu'il n'en existe.
+describe('Réservation en ligne depuis le QR', () => {
+  // Un créneau lointain, à l'écart de celui des réservations prises à la caisse
+  // par les tests précédents : ici, les deux tables doivent être libres.
+  const creneau = (decalageJours = 10) =>
+    new Date(Date.now() + decalageJours * 24 * 60 * 60_000).toISOString();
+  const clientType = { nomClient: 'Client QR', telephone: '0550 99 88 77', nombreCouverts: 2 };
+  let tableAttribuee = '';
+
+  it("refuse tant que le gérant n'a pas ouvert la réservation en ligne", async () => {
+    const res = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId, ...clientType, date: creneau() });
+    expect(res.status).toBe(403);
+  });
+
+  it('le gérant ouvre la réservation en ligne et fixe ses limites', async () => {
+    const res = await gerant.patch('/api/gerant/parametres').send({
+      reservationEnLigneActive: true,
+      reservationCouvertsMax: 4,
+      reservationDelaiMinMinutes: 120,
+      reservationHorizonJours: 30,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.reservationEnLigneActive).toBe(true);
+
+    // Les limites descendent avec le menu, pour que le formulaire les applique
+    // avant même d'envoyer quoi que ce soit.
+    const menu = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(menu.body.reservationEnLigne).toEqual({
+      couvertsMax: 4,
+      delaiMinMinutes: 120,
+      horizonJours: 30,
+    });
+  });
+
+  it('refuse une valeur de réglage hors bornes', async () => {
+    const res = await gerant.patch('/api/gerant/parametres').send({ reservationCouvertsMax: 0 });
+    expect(res.status).toBe(400);
+  });
+
+  it('exige un téléphone : sans lui, le restaurant ne peut pas rappeler', async () => {
+    const res = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId, nomClient: 'Sans Téléphone', nombreCouverts: 2, date: creneau() });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('téléphone');
+  });
+
+  it('refuse hors des limites du gérant, en disant quoi faire à la place', async () => {
+    const tropGrand = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId, ...clientType, nombreCouverts: 12, date: creneau() });
+    expect(tropGrand.status).toBe(400);
+    expect(tropGrand.body.error).toContain('4 personnes');
+
+    // Dans une heure : en deçà des deux heures de préavis exigées.
+    const tropTot = await request(app)
+      .post('/api/public/reservations')
+      .send({
+        etablissementId,
+        ...clientType,
+        date: new Date(Date.now() + 60 * 60_000).toISOString(),
+      });
+    expect(tropTot.status).toBe(400);
+    expect(tropTot.body.error).toContain("2 heures à l'avance");
+
+    const tropLoin = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId, ...clientType, date: creneau(60) });
+    expect(tropLoin.status).toBe(400);
+    expect(tropLoin.body.error).toContain('30 jours');
+  });
+
+  it('attribue la plus petite table qui convient, puis se déclare complet', async () => {
+    const date = creneau();
+    // Le plan de salle du compte de test, tel que les blocs précédents l'ont
+    // laissé : le test se déduit de la salle réelle plutôt que d'un nombre de
+    // tables figé qu'un autre test pourrait faire mentir.
+    const accueillantes = await prisma.table.findMany({
+      where: { etablissementId, statut: 'ACTIF', nombreCouverts: { gte: 2 } },
+      orderBy: [{ nombreCouverts: 'asc' }, { numero: 'asc' }],
+    });
+    expect(accueillantes.length).toBeGreaterThanOrEqual(2);
+
+    // La plus petite table qui tient deux personnes, pas la première venue :
+    // bloquer une grande table pour deux, c'est refuser le groupe qui
+    // appellera juste après.
+    const premiere = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId, ...clientType, date, email: 'client.qr@test-auto.maida' });
+    expect(premiere.status).toBe(201);
+    expect(premiere.body.table).toBe(accueillantes[0].numero);
+    expect(premiere.body.confirmationEnvoyee).toBe(true);
+    tableAttribuee = premiere.body.table;
+
+    // On sature le créneau : une réservation par table restante, dans l'ordre
+    // du plus petit au plus grand.
+    for (const table of accueillantes.slice(1)) {
+      const suivante = await request(app)
+        .post('/api/public/reservations')
+        .send({ etablissementId, ...clientType, nomClient: `Client QR ${table.numero}`, date });
+      expect(suivante.status).toBe(201);
+      expect(suivante.body.table).toBe(table.numero);
+      expect(suivante.body.confirmationEnvoyee).toBe(false);
+    }
+
+    // Plus une seule table à donner sur ce créneau.
+    const enTrop = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId, ...clientType, nomClient: 'Client QR en trop', date });
+    expect(enTrop.status).toBe(409);
+    expect(enTrop.body.error).toContain('autre créneau');
+
+    // Une heure plus tard, le créneau chevauche encore (2 h d'occupation).
+    const chevauchante = await request(app)
+      .post('/api/public/reservations')
+      .send({
+        etablissementId,
+        ...clientType,
+        nomClient: 'Client Chevauchant',
+        date: new Date(new Date(date).getTime() + 60 * 60_000).toISOString(),
+      });
+    expect(chevauchante.status).toBe(409);
+  });
+
+  it('la caisse la voit comme les autres, mais sans personne qui l’ait prise', async () => {
+    const debut = new Date(Date.now() + 9 * 24 * 60 * 60_000).toISOString();
+    const fin = new Date(Date.now() + 11 * 24 * 60 * 60_000).toISOString();
+    const res = await serveur.get(`/api/caisse/reservations?debut=${debut}&fin=${fin}`);
+    expect(res.status).toBe(200);
+
+    const enLigne = res.body.find((r: { nomClient: string }) => r.nomClient === 'Client QR');
+    expect(enLigne.statut).toBe('A_VENIR');
+    expect(enLigne.telephone).toBe('0550 99 88 77');
+    expect(enLigne.table.numero).toBe(tableAttribuee);
+    // Personne n'a décroché : c'est ce nul qui distingue les deux origines.
+    expect(enLigne.prisePar).toBeNull();
+
+    // Et elle reste modifiable par la caisse comme n'importe quelle autre.
+    const arrivee = await serveur
+      .patch(`/api/caisse/reservations/${enLigne.id}`)
+      .send({ nombreCouverts: 3 });
+    expect(arrivee.status).toBe(200);
+    expect(arrivee.body.nombreCouverts).toBe(3);
+  });
+
+  it('ne réserve rien chez un établissement inconnu', async () => {
+    const res = await request(app)
+      .post('/api/public/reservations')
+      .send({ etablissementId: 'inconnu-xyz', ...clientType, date: creneau() });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
   const admin = request.agent(app);
 

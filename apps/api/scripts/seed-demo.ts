@@ -297,8 +297,10 @@ async function main() {
     data: {
       adresse: '12 rue des Frères Boudjema, Hydra',
       ville: 'Alger',
-      // La démo montre la commande client depuis le QR.
+      // La démo montre la commande client depuis le QR, et la réservation en
+      // ligne — les deux se voient depuis le menu public.
       commandeClientActive: true,
+      reservationEnLigneActive: true,
       // Code d'installation figé : il est affiché sur la page d'accueil du site
       // de démonstration, il ne doit donc pas changer à chaque rafraîchissement.
       codeTerminal: CODE_TERMINAL_DEMO,
@@ -690,6 +692,21 @@ async function main() {
       priseParId: serveurs[1].id,
     },
   });
+  // Une troisième prise en ligne par le client depuis le QR : `priseParId` nul,
+  // c'est ce qui la fait apparaître « En ligne » chez le gérant.
+  await prisma.reservation.create({
+    data: {
+      nomClient: 'Amine Ferhat',
+      telephone: '0770 45 67 89',
+      email: 'amine.ferhat@gmail.com',
+      nombreCouverts: 4,
+      date: dansMinutes(240),
+      note: 'Réservé depuis le QR code',
+      tableId: tablesParNumero.get('9')!,
+      etablissementId,
+      priseParId: null,
+    },
+  });
   // Historique pour les statistiques gérant : un habitué fiable, un habitué des lapins.
   const historiques: Array<{
     nom: string;
@@ -731,7 +748,9 @@ async function main() {
       },
     });
   }
-  console.log('Réservations de démo : 2 à venir (badge plan sur table 2) + historique avec no-shows.');
+  console.log(
+    'Réservations de démo : 3 à venir dont 1 prise en ligne (badge plan sur table 2) + historique avec no-shows.',
+  );
 
   // Une commande client en attente de validation (démo du flux QR → caisse).
   await prisma.demandeClient.create({

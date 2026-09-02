@@ -146,6 +146,21 @@ model Etablissement {
   // Le gérant choisit d'accepter (ou non) les commandes passées par les
   // clients depuis le QR à table. Désactivé par défaut : opt-in explicite.
   commandeClientActive Boolean             @default(false)
+
+  // Réservation en ligne par le client depuis le menu QR. Opt-in lui aussi, et
+  // borné par le gérant : une réservation en ligne engage une table sans que
+  // personne n'ait décroché, donc il fixe jusqu'où il accepte d'aller. Au-delà,
+  // le client est renvoyé vers le téléphone plutôt que refusé sans explication.
+  reservationEnLigneActive   Boolean @default(false)
+  // Couverts maximum pour une réservation en ligne : au-delà, un grand groupe
+  // se négocie de vive voix (menu, acompte, disposition de la salle).
+  reservationCouvertsMax     Int     @default(8)
+  // Délai minimum entre la demande et l'heure du repas : le temps que la
+  // cuisine et la salle voient venir.
+  reservationDelaiMinMinutes Int     @default(120)
+  // Horizon maximum : au-delà, le restaurant préfère être appelé.
+  reservationHorizonJours    Int     @default(30)
+
   creeLe               DateTime            @default(now())
 
   compteClientId String
@@ -594,8 +609,9 @@ enum StatutReservation {
   NO_SHOW
 }
 
-// Réservation prise par téléphone à la caisse (la réservation en ligne
-// par le client viendra avec le multi-canal).
+// Réservation prise par téléphone à la caisse, ou en ligne par le client
+// lui-même depuis le menu QR — auquel cas `priseParId` est nul : personne de
+// l'équipe n'a décroché, c'est le client qui a rempli le formulaire.
 model Reservation {
   id             String            @id @default(cuid())
   nomClient      String
@@ -618,8 +634,12 @@ model Reservation {
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
-  priseParId String
-  prisePar   Utilisateur @relation(fields: [priseParId], references: [id])
+  // Nul pour une réservation prise en ligne par le client depuis le QR : c'est
+  // ce nul, et lui seul, qui distingue les deux origines. D'où le `Restrict` —
+  // si une suppression d'employé pouvait vider ce champ, tout son historique
+  // se relirait un jour comme « pris en ligne ».
+  priseParId String?
+  prisePar   Utilisateur? @relation(fields: [priseParId], references: [id], onDelete: Restrict)
 
   @@map("reservations")
 }

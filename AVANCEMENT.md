@@ -23,6 +23,14 @@
   arrivée / annulation / no-show — **prise possible sans réseau** (le plan de salle vient du
   cache, la réservation attend dans la file et part à la reconnexion) ; **confirmation
   automatique par e-mail** au client qui a laissé son adresse
+- **Réservation en ligne par le client**, depuis le menu QR : il choisit son créneau et son
+  nombre de personnes, Maïda lui attribue **la plus petite table qui convient** (garder les
+  grandes tables pour les grands groupes) et confirme sur-le-champ — ou lui dit franchement
+  « complet sur ce créneau », sans jamais le laisser attendre. Le gérant ouvre le service quand
+  il veut et le borde : **jusqu'à combien de personnes, avec combien d'heures de préavis,
+  jusqu'à combien de jours à l'avance** ; au-delà, le client est renvoyé vers le téléphone. La
+  réservation arrive à la caisse comme les autres, marquée **« réservée en ligne »**, et reste
+  modifiable (table, horaire, couverts)
 - **Ruptures & quantités** : marquer un article « en rupture » en un geste (grisé à la caisse,
   masqué au menu QR), ou suivre une quantité par service qui se décompte à chaque envoi et passe
   en rupture à zéro — la quantité revient au stock si on annule avant préparation ; géré depuis le
@@ -152,7 +160,7 @@
   précédente en une commande, sauvegarde de la base chaque nuit — mode d'emploi dans
   `HEBERGEMENT.md`
 - **Bases de données séparées** : production (clients) / développement (tests) — étanchéité vérifiée
-- **CI GitHub Actions** : compilation, linter, **152 tests d'intégration** (API) et **12 tests
+- **CI GitHub Actions** : compilation, linter, **160 tests d'intégration** (API) et **12 tests
   unitaires** (front) à chaque push
 - ESLint + Prettier, TypeScript strict, isolation multi-tenant testée
 - Anti-brute-force sur les connexions, valeurs fiscales figées à la vente
@@ -175,7 +183,6 @@
 - [ ] **Premier restaurant pilote** (le produit est prêt)
 - [ ] **Brancher l'envoi d'e-mails** : le code est prêt et vérifié, il ne manque que le domaine
       et un fournisseur SMTP (7 lignes de configuration, marche à suivre dans `HEBERGEMENT.md`)
-- [ ] Réservation en ligne par le client depuis le menu QR
 - [ ] Essayer l'impression directe sur une vraie imprimante (le code est là et testé, mais
       aucun ticket n'est encore sorti d'une machine physique)
 - [ ] Montrer l'enseigne à plusieurs restaurants dans la démonstration publique (aujourd'hui

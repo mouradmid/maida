@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type StatutReservation } from '../lib/api';
-import { badgeNeutre, boutonSecondaire, carte, messageErreur } from '../lib/ui';
+import { api, type ParametresGerant, type StatutReservation } from '../lib/api';
+import { badgeNeutre, boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
 import { type CelluleCsv, dateFichier, dateHeureCsv, telechargerCsv } from '../lib/export';
 
 type Donnees = Awaited<ReturnType<typeof api.reservationsGerant>>;
@@ -114,7 +114,7 @@ function exporterHistorique(reservations: Reservation[]) {
       r.nombreCouverts,
       r.table.numero,
       LIBELLE_STATUT[r.statut],
-      `${r.prisePar.prenom} ${r.prisePar.nom}`,
+      r.prisePar ? `${r.prisePar.prenom} ${r.prisePar.nom}` : 'En ligne (client)',
       r.note ?? '',
     ]);
   }
@@ -141,8 +141,141 @@ function Tuile({
   );
 }
 
+// Délais proposés au gérant. Des minutes en base, mais personne ne raisonne en
+// minutes pour ça : on lui parle en heures.
+const DELAIS = [
+  { minutes: 0, libelle: 'Aucun (jusqu’à la dernière minute)' },
+  { minutes: 30, libelle: '30 minutes' },
+  { minutes: 60, libelle: '1 heure' },
+  { minutes: 120, libelle: '2 heures' },
+  { minutes: 240, libelle: '4 heures' },
+  { minutes: 1440, libelle: 'La veille (24 heures)' },
+];
+
+/**
+ * Réglages de la réservation en ligne : le gérant l'ouvre, et fixe jusqu'où.
+ *
+ * Elle passe par le menu QR — sans ce module, le client n'a aucune page où
+ * réserver, et la carte n'a pas lieu d'être.
+ */
+function ReglagesReservationEnLigne({
+  parametres,
+  onChange,
+}: {
+  parametres: ParametresGerant;
+  onChange: (p: ParametresGerant) => void;
+}) {
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  async function enregistrer(data: Parameters<typeof api.updateParametres>[0]) {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      onChange(await api.updateParametres(data));
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  const active = parametres.reservationEnLigneActive;
+
+  return (
+    <div className={`${carte} flex flex-col gap-3`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-stone-900">Réservation en ligne</h3>
+          <p className="mt-0.5 max-w-xl text-sm text-stone-500">
+            Vos clients réservent depuis le menu QR, sans vous appeler. Maïda leur attribue une table
+            libre et confirme tout de suite — la réservation apparaît à la caisse comme les autres.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => enregistrer({ reservationEnLigneActive: !active })}
+          disabled={enCours}
+          aria-pressed={active}
+          className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+            active
+              ? 'bg-brand-600 text-white'
+              : 'border border-stone-300 bg-card text-stone-500 hover:bg-stone-50'
+          }`}
+        >
+          {active ? '✓ Activée' : 'Désactivée'}
+        </button>
+      </div>
+
+      {active && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-stone-700">Jusqu’à combien de personnes</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              disabled={enCours}
+              defaultValue={parametres.reservationCouvertsMax}
+              onBlur={(e) => {
+                const valeur = Number(e.target.value);
+                if (valeur !== parametres.reservationCouvertsMax) {
+                  enregistrer({ reservationCouvertsMax: valeur });
+                }
+              }}
+              className={champ}
+            />
+            <span className="text-xs text-stone-500">Au-delà, le client est invité à vous appeler.</span>
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-stone-700">Prévenu au moins</span>
+            <select
+              disabled={enCours}
+              value={parametres.reservationDelaiMinMinutes}
+              onChange={(e) => enregistrer({ reservationDelaiMinMinutes: Number(e.target.value) })}
+              className={champ}
+            >
+              {DELAIS.map((d) => (
+                <option key={d.minutes} value={d.minutes}>
+                  {d.libelle}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-stone-500">
+              Le temps que la cuisine et la salle voient venir.
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-stone-700">Jusqu’à combien de jours à l’avance</span>
+            <input
+              type="number"
+              min={1}
+              max={365}
+              disabled={enCours}
+              defaultValue={parametres.reservationHorizonJours}
+              onBlur={(e) => {
+                const valeur = Number(e.target.value);
+                if (valeur !== parametres.reservationHorizonJours) {
+                  enregistrer({ reservationHorizonJours: valeur });
+                }
+              }}
+              className={champ}
+            />
+            <span className="text-xs text-stone-500">Au-delà, la réservation passe par vous.</span>
+          </label>
+        </div>
+      )}
+
+      {erreur && <p className={messageErreur}>{erreur}</p>}
+    </div>
+  );
+}
+
 export function ReservationsGerant() {
   const [donnees, setDonnees] = useState<Donnees | null>(null);
+  const [parametres, setParametres] = useState<ParametresGerant | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
@@ -150,6 +283,10 @@ export function ReservationsGerant() {
       .reservationsGerant()
       .then(setDonnees)
       .catch((err) => setErreur(err instanceof Error ? err.message : 'Erreur de chargement'));
+    api
+      .getParametres()
+      .then(setParametres)
+      .catch(() => setParametres(null));
   }, []);
 
   if (erreur) return <p className={messageErreur}>{erreur}</p>;
@@ -161,8 +298,8 @@ export function ReservationsGerant() {
     <div className="flex w-full flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm text-stone-500">
-          Les réservations se prennent à la caisse (onglet Réservations). Ici : la vue d'ensemble des 90
-          derniers jours.
+          Les réservations se prennent à la caisse (onglet Réservations), ou en ligne par le client
+          lui-même. Ici : la vue d'ensemble des 90 derniers jours.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -185,6 +322,10 @@ export function ReservationsGerant() {
           </button>
         </div>
       </div>
+
+      {parametres?.moduleQrMenu && (
+        <ReglagesReservationEnLigne parametres={parametres} onChange={setParametres} />
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Tuile
@@ -258,6 +399,7 @@ export function ReservationsGerant() {
                     <span className="font-medium text-stone-900">{r.nomClient}</span>
                     <span className={badgeNeutre}>Table {r.table.numero}</span>
                     <span className={badgeNeutre}>{r.nombreCouverts} couv.</span>
+                    {!r.prisePar && <span className={badgeNeutre}>En ligne</span>}
                   </span>
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statut.classes}`}
