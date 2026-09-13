@@ -26,3 +26,10 @@
 		}
 	}
 }
+
+# Le même site avec « www » devant : on ne sert pas deux adresses, on renvoie
+# vers la bonne. (L'enregistrement DNS « www » doit exister, sinon Caddy ne
+# peut pas obtenir ce certificat — le site principal, lui, continue de vivre.)
+www.{$DOMAINE} {
+	redir https://{$DOMAINE}{uri} permanent
+}
