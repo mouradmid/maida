@@ -11,6 +11,7 @@ set -euo pipefail
 
 UTILISATEUR=maida
 DOSSIER=/srv/maida
+CLES_ROOT=/root/.ssh/authorized_keys
 
 echo "→ Mises à jour et paquets de base"
 export DEBIAN_FRONTEND=noninteractive
@@ -38,6 +39,19 @@ id -u "$UTILISATEUR" > /dev/null 2>&1 || adduser --disabled-password --gecos '' 
 usermod -aG docker "$UTILISATEUR"
 mkdir -p "/home/$UTILISATEUR/.ssh"
 touch "/home/$UTILISATEUR/.ssh/authorized_keys"
+
+# La clé avec laquelle on vient de se connecter en root ouvre aussi le compte
+# de service : sans ça, personne ne peut déposer les fichiers dans $DOSSIER
+# avant que la clé de déploiement existe — et elle n'existe pas encore.
+if [ -s "$CLES_ROOT" ]; then
+	while read -r cle; do
+		[ -n "$cle" ] || continue
+		grep -qxF "$cle" "/home/$UTILISATEUR/.ssh/authorized_keys" \
+			|| echo "$cle" >> "/home/$UTILISATEUR/.ssh/authorized_keys"
+	done < "$CLES_ROOT"
+	echo "  clés de root recopiées : « scp … $UTILISATEUR@<ip> » marchera"
+fi
+
 chmod 700 "/home/$UTILISATEUR/.ssh"
 chmod 600 "/home/$UTILISATEUR/.ssh/authorized_keys"
 chown -R "$UTILISATEUR:$UTILISATEUR" "/home/$UTILISATEUR/.ssh"
@@ -52,10 +66,21 @@ ufw allow 80/tcp > /dev/null
 ufw allow 443/tcp > /dev/null
 ufw --force enable > /dev/null
 
-echo "→ Connexion SSH par mot de passe désactivée"
-# La clé du déploiement suffit ; un mot de passe se devine, pas une clé.
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-systemctl reload ssh || systemctl reload sshd
+echo "→ Connexion SSH par mot de passe"
+# La clé suffit ; un mot de passe se devine, pas une clé. Mais couper le mot
+# de passe quand aucune clé n'est installée, c'est se fermer la porte de sa
+# propre machine : dans ce cas on ne touche à rien et on le dit franchement.
+if [ -s "$CLES_ROOT" ]; then
+	sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+	systemctl reload ssh || systemctl reload sshd
+	echo "  désactivée (une clé est en place)"
+	MOT_DE_PASSE_ENCORE_ACTIF=non
+else
+	echo "  LAISSÉE ACTIVE : aucune clé dans $CLES_ROOT."
+	echo "  Installe ta clé publique (ssh-copy-id root@<ip> depuis ton poste),"
+	echo "  puis relance ce script : il fermera la porte."
+	MOT_DE_PASSE_ENCORE_ACTIF=oui
+fi
 
 echo "→ Sauvegarde de la base chaque nuit à 3 h"
 install -m 0755 -o "$UTILISATEUR" -g "$UTILISATEUR" \
@@ -68,10 +93,14 @@ chmod 644 /etc/cron.d/maida-sauvegarde
 
 echo
 echo "Serveur prêt."
+if [ "$MOT_DE_PASSE_ENCORE_ACTIF" = oui ]; then
+	echo
+	echo "⚠  La connexion par mot de passe est encore ouverte (voir plus haut)."
+fi
 echo
 echo "Il reste à faire, dans l'ordre :"
-echo "  1. déposer la clé publique de déploiement dans /home/$UTILISATEUR/.ssh/authorized_keys"
-echo "  2. copier docker-compose.yml, Caddyfile et sauvegarde.sh dans $DOSSIER"
-echo "  3. écrire $DOSSIER/.env (DOMAINE, POSTGRES_PASSWORD, JWT_SECRET)"
-echo "  4. faire pointer le domaine sur $(curl -fsS https://api.ipify.org || echo '<ip du serveur>')"
-echo "  5. cd $DOSSIER && docker compose up -d"
+echo "  1. copier docker-compose.yml, Caddyfile et sauvegarde.sh dans $DOSSIER"
+echo "  2. écrire $DOSSIER/.env (DOMAINE, POSTGRES_PASSWORD, JWT_SECRET)"
+echo "  3. faire pointer le domaine sur $(curl -fsS https://api.ipify.org || echo '<ip du serveur>')"
+echo "  4. cd $DOSSIER && docker compose up -d"
+echo "  5. plus tard, la clé de déploiement dans /home/$UTILISATEUR/.ssh/authorized_keys"

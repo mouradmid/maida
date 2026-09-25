@@ -13,10 +13,19 @@ la CI soit verte, sinon rien ne part.
 
 ## Ce qu'il faut avoir
 
+- **Une paire de clés SSH sur le poste de travail.** C'est la première chose, avant
+  même de louer quoi que ce soit : l'hébergeur demande la clé publique au moment
+  de créer la machine, et c'est elle qui t'ouvrira la porte ensuite.
+
+  ```bash
+  ssh-keygen -t ed25519 -C "mourad — poste de travail"   # entrée, entrée, entrée
+  cat ~/.ssh/id_ed25519.pub                              # à coller chez l'hébergeur
+  ```
+
 - Un serveur Debian 12 ou 13, 2 vCPU / 4 Go suffisent largement
-  (Hetzner CX22 ≈ 4,50 €/mois, OVH ou Scaleway conviennent aussi).
+  (Hetzner CX22 ≈ 4,50 €/mois, OVH ou Scaleway conviennent aussi) — **créé avec
+  la clé publique ci-dessus**, pas avec un mot de passe.
 - Un nom de domaine : **maidapos.com**.
-- Une paire de clés SSH pour le déploiement automatique (créée plus bas).
 
 ## Installation, une fois pour toutes
 
@@ -28,9 +37,16 @@ curl -fsSL https://raw.githubusercontent.com/mouradmid/maida/main/serveur/instal
 bash installer.sh
 ```
 
-Le script installe Docker, crée le compte de service `maida`, ferme le pare-feu
-sauf SSH/HTTP/HTTPS, coupe la connexion SSH par mot de passe, active les mises à
-jour de sécurité automatiques et programme la sauvegarde de 3 h du matin.
+Le script installe Docker, crée le compte de service `maida`, **lui recopie la
+clé qui vient d'ouvrir la session root** (sans quoi rien ne pourrait être déposé
+dans `/srv/maida` avant l'étape 6), ferme le pare-feu sauf SSH/HTTP/HTTPS, coupe
+la connexion SSH par mot de passe, active les mises à jour de sécurité
+automatiques et programme la sauvegarde de 3 h du matin.
+
+> Si aucune clé n'est installée pour root, le script **laisse volontairement la
+> connexion par mot de passe ouverte** et le dit : couper le mot de passe sans
+> clé, c'est se retrouver dehors de sa propre machine. Dans ce cas, installer la
+> clé (`ssh-copy-id root@<ip>` depuis le poste) puis relancer le script.
 
 ### 2. Faire pointer le domaine
 
@@ -101,15 +117,21 @@ s'afficher en « Envoyé ».
 
 ### 4. Premier démarrage
 
-Le dépôt est privé, donc l'image de l'application l'est aussi : il faut ouvrir
-la porte une première fois. Créer sur GitHub un jeton personnel avec la seule
-permission `read:packages` (_Settings_ → _Developer settings_ → _Personal access
-tokens_), puis, sur le serveur, en tant qu'utilisateur `maida` :
+Sur le serveur, en tant qu'utilisateur `maida` :
+
+```bash
+cd /srv/maida && docker compose up -d
+docker compose logs -f app     # Ctrl+C pour quitter
+```
+
+Si le `pull` de l'image est refusé (`denied` / `unauthorized`), c'est que le
+paquet publié sur ghcr.io est privé. Ouvrir la porte une seule fois : créer sur
+GitHub un jeton personnel avec la seule permission `read:packages` (_Settings_ →
+_Developer settings_ → _Personal access tokens_), puis
 
 ```bash
 echo '<le jeton>' | docker login ghcr.io -u mouradmid --password-stdin
-cd /srv/maida && docker compose up -d
-docker compose logs -f app     # Ctrl+C pour quitter
+docker compose up -d
 ```
 
 Les déploiements suivants s'authentifient tout seuls, avec un jeton temporaire
@@ -153,14 +175,15 @@ npx tsx scripts/seed-demo.ts
 
 ### 6. Brancher le déploiement automatique
 
-Créer la paire de clés **sur le poste de travail** :
+Le déploiement a sa **propre** clé, distincte de la tienne : si GitHub fuite,
+c'est elle qu'on révoque, et ton poste garde son accès. La créer **sur le poste
+de travail** :
 
 ```bash
 ssh-keygen -t ed25519 -f cle-deploiement -C "deploiement maida" -N ""
+ssh maida@<ip> 'cat >> ~/.ssh/authorized_keys' < cle-deploiement.pub
 ```
 
-- Coller le contenu de `cle-deploiement.pub` dans
-  `/home/maida/.ssh/authorized_keys` sur le serveur.
 - Dans GitHub → _Settings_ → _Secrets and variables_ → _Actions_, créer :
 
 | Secret            | Valeur                                   |
