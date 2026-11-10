@@ -4,7 +4,13 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Utilisateur } from '../generated/prisma/client';
 import { emailConfigure, envoyerEmail, urlPublique } from '../lib/email';
 import { emailMotDePasseOublie } from '../lib/emails';
-import { AUTH_COOKIE_NAME, COOKIE_OPTIONS, signToken } from '../lib/jwt';
+import {
+  AUTH_COOKIE_NAME,
+  COOKIE_OPTIONS,
+  lireJetonTerminal,
+  signerJetonTerminal,
+  signToken,
+} from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import {
   DUREE_JETON_REINITIALISATION_MS,
@@ -31,31 +37,40 @@ const limiteMotDePasse = rateLimit({
   message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
 });
 
-// Connexion par PIN : limitée par ÉTABLISSEMENT, pas par IP.
+// Connexion par PIN : limitée par adresse IP, et une connexion réussie depuis
+// cette adresse remet ses compteurs à zéro (voir plus bas).
 //
-// Toute l'équipe partage le wifi du restaurant : compter par IP revenait à
-// bloquer la caisse entière parce qu'un serveur s'était trompé dix fois. À
-// l'inverse, compter par établissement isole vraiment l'acharnement sur un
-// code — et une connexion réussie remet le compteur à zéro (voir plus bas),
-// donc une équipe qui travaille ne se bloque jamais elle-même.
+// Toute l'équipe partage le wifi du restaurant : des doigts maladroits y sont
+// effacés par la connexion suivante, la caisse ne se bloque jamais elle-même.
+// Un acharné, lui, ne réussit jamais : rien ne remet son compteur à zéro. Avec
+// des codes à 4 chiffres, c'est le plafond JOURNALIER qui fait la différence —
+// 15 essais par quart d'heure laisseraient passer 10 000 codes en une semaine.
+//
+// `ipKeyGenerator` regroupe les adresses IPv6 par préfixe /64 : sans lui, un
+// même abonné dispose de milliards d'adresses et contourne la limite en
+// changeant de numéro à chaque essai.
+const clePin = (ip: string | undefined) => `pin:${ipKeyGenerator(ip ?? '')}`;
+const MESSAGE_PIN = {
+  error:
+    'Trop de codes PIN incorrects sur cette caisse. Patientez quelques minutes, ou connectez-vous en gérant.',
+};
 const limitePin = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: enTest ? 10_000 : 15,
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const id = (req.body as { etablissementId?: unknown })?.etablissementId;
-    // Repli sur l'adresse quand l'établissement n'est pas dans la requête.
-    // `ipKeyGenerator` regroupe les adresses IPv6 par préfixe /64 : sans lui,
-    // un même abonné dispose de milliards d'adresses et contourne la limite en
-    // changeant de numéro à chaque essai.
-    return typeof id === 'string' && id ? `etab:${id}` : `ip:${ipKeyGenerator(req.ip ?? '')}`;
-  },
-  message: {
-    error:
-      'Trop de codes PIN incorrects sur cette caisse. Patientez quelques minutes, ou connectez-vous en gérant.',
-  },
+  keyGenerator: (req) => clePin(req.ip),
+  message: MESSAGE_PIN,
+});
+const limitePinJournee = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: enTest ? 10_000 : 60,
+  skipSuccessfulRequests: true,
+  standardHeaders: false,
+  legacyHeaders: false,
+  keyGenerator: (req) => clePin(req.ip),
+  message: MESSAGE_PIN,
 });
 
 // Rattachement d'une tablette à son établissement : limité par IP, c'est le
@@ -80,6 +95,11 @@ const limiteOubli = rateLimit({
   message: { error: 'Trop de demandes. Réessayez dans quelques minutes.' },
 });
 
+// Empreinte d'un mot de passe que personne ne connaît, au même coût que les
+// vraies : comparée quand l'adresse n'existe pas, pour que la réponse prenne
+// le même temps dans les deux cas.
+const HASH_LEURRE = bcrypt.hashSync('maida-leurre-sans-compte', 12);
+
 function toPublicUser(utilisateur: Utilisateur) {
   return {
     id: utilisateur.id,
@@ -101,12 +121,18 @@ authRouter.post('/login', limiteMotDePasse, async (req, res) => {
     return;
   }
 
-  const utilisateur = await prisma.utilisateur.findUnique({
-    where: { email },
+  // Insensible à la casse, comme la récupération du mot de passe : « Karim@… »
+  // et « karim@… » sont la même boîte, le gérant ne doit pas se voir refuser
+  // l'entrée pour une majuscule.
+  const utilisateur = await prisma.utilisateur.findFirst({
+    where: { email: { equals: email.trim(), mode: 'insensitive' } },
     include: { compteClient: { select: { statut: true } }, etablissement: { select: { nom: true } } },
   });
 
   if (!utilisateur || !utilisateur.motDePasseHash || utilisateur.statut !== 'ACTIF') {
+    // Même temps de réponse qu'un mauvais mot de passe : sinon la seule durée
+    // de la réponse dirait quelles adresses ont un compte chez Maïda.
+    await bcrypt.compare(password, HASH_LEURRE);
     await journaliserConnexion(req, {
       type: 'MOT_DE_PASSE',
       resultat: 'IDENTIFIANTS_INVALIDES',
@@ -189,14 +215,32 @@ authRouter.post('/terminal', limiteTerminal, async (req, res) => {
     return;
   }
 
-  res.json({ id: etablissement.id, nom: etablissement.nom, ville: etablissement.ville });
+  res.json({
+    id: etablissement.id,
+    nom: etablissement.nom,
+    ville: etablissement.ville,
+    jeton: signerJetonTerminal(etablissement.id),
+  });
 });
 
-authRouter.post('/login-pin', limitePin, async (req, res) => {
-  const { etablissementId, codePin } = req.body ?? {};
+authRouter.post('/login-pin', limitePin, limitePinJournee, async (req, res) => {
+  const { jetonTerminal, codePin } = req.body ?? {};
 
-  if (typeof etablissementId !== 'string' || typeof codePin !== 'string') {
-    res.status(400).json({ error: 'Établissement et code PIN requis' });
+  if (typeof codePin !== 'string') {
+    res.status(400).json({ error: 'Code PIN requis' });
+    return;
+  }
+
+  // L'établissement vient de la preuve de rattachement, jamais d'un identifiant
+  // envoyé tel quel : celui-ci est imprimé sur chaque QR code du restaurant.
+  // Une tablette rattachée avant cette règle n'a pas de preuve : elle redemande
+  // une fois son code d'installation.
+  const etablissementId = lireJetonTerminal(jetonTerminal);
+  if (!etablissementId) {
+    res.status(401).json({
+      error: "Cette tablette doit être rattachée à nouveau avec le code d'installation.",
+      terminalARattacher: true,
+    });
     return;
   }
 
@@ -212,6 +256,9 @@ authRouter.post('/login-pin', limitePin, async (req, res) => {
       statut: 'ACTIF',
       codePinHash: { not: null },
       compteClient: { statut: 'ACTIF' },
+      // La preuve de rattachement ne périme pas : c'est ici qu'un restaurant
+      // fermé cesse d'ouvrir ses caisses.
+      etablissement: { statut: 'ACTIF' },
     },
   });
 
@@ -237,7 +284,8 @@ authRouter.post('/login-pin', limitePin, async (req, res) => {
   // Quelqu'un connaît un code valide : l'équipe travaille, ce n'est pas une
   // attaque. On efface le compteur d'échecs pour que des doigts maladroits ne
   // finissent jamais par verrouiller la caisse en plein service.
-  limitePin.resetKey(`etab:${etablissementId}`);
+  limitePin.resetKey(clePin(req.ip));
+  limitePinJournee.resetKey(clePin(req.ip));
 
   await journaliserConnexion(req, {
     type: 'PIN',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, type Utilisateur } from '../lib/api';
+import { api, ErreurApi, type Utilisateur } from '../lib/api';
 import { boutonDiscret, boutonPrimaire, champ, messageErreur } from '../lib/ui';
 
 // La tablette retient le restaurant auquel elle a été rattachée. Le nom est
@@ -14,21 +14,33 @@ interface Terminal {
   id: string;
   nom: string;
   ville: string | null;
+  // Preuve signée du rattachement, exigée pour taper un code PIN.
+  jeton: string;
 }
 
 function lireTerminal(): Terminal | null {
   const brut = localStorage.getItem(CLE_TERMINAL);
   if (!brut) return null;
   try {
-    const terminal = JSON.parse(brut) as Terminal;
-    return terminal.id ? terminal : null;
+    const terminal = JSON.parse(brut) as Partial<Terminal>;
+    // Une tablette rattachée avant l'arrivée de la preuve n'en a pas : elle
+    // redemande son code d'installation, une seule fois.
+    return terminal.id && terminal.jeton ? (terminal as Terminal) : null;
   } catch {
     return null;
   }
 }
 
+// Vrai quand la tablette avait été rattachée avant l'arrivée de la preuve :
+// on lui explique pourquoi le code d'installation est redemandé.
+function rattachementAncien(): boolean {
+  const brut = localStorage.getItem(CLE_TERMINAL);
+  return brut !== null && lireTerminal() === null;
+}
+
 export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void }) {
   const [terminal, setTerminal] = useState<Terminal | null>(lireTerminal);
+  const [aRattacherDeNouveau, setARattacherDeNouveau] = useState(rattachementAncien);
   const [codePin, setCodePin] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -40,6 +52,7 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
   function rattacher(nouveau: Terminal) {
     localStorage.setItem(CLE_TERMINAL, JSON.stringify(nouveau));
     setTerminal(nouveau);
+    setARattacherDeNouveau(false);
     setErreur(null);
   }
 
@@ -56,8 +69,15 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
     setEnCours(true);
     setErreur(null);
     try {
-      onSuccess(await api.loginPin(terminal.id, pin));
+      onSuccess(await api.loginPin(terminal.jeton, pin));
     } catch (err) {
+      // Preuve refusée par le serveur : seule une nouvelle saisie du code
+      // d'installation peut débloquer la tablette.
+      if (err instanceof ErreurApi && err.donnees?.terminalARattacher) {
+        detacher();
+        setARattacherDeNouveau(true);
+        return;
+      }
       setErreur(err instanceof Error ? err.message : 'Erreur de connexion');
       setCodePin('');
     } finally {
@@ -86,7 +106,7 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
   }
 
   if (!terminal) {
-    return <RattachementTerminal onRattache={rattacher} />;
+    return <RattachementTerminal onRattache={rattacher} aRattacherDeNouveau={aRattacherDeNouveau} />;
   }
 
   return (
@@ -149,7 +169,13 @@ export function LoginPin({ onSuccess }: { onSuccess: (user: Utilisateur) => void
 }
 
 /** Premier démarrage d'une tablette : elle demande son code d'installation. */
-function RattachementTerminal({ onRattache }: { onRattache: (terminal: Terminal) => void }) {
+function RattachementTerminal({
+  onRattache,
+  aRattacherDeNouveau,
+}: {
+  onRattache: (terminal: Terminal) => void;
+  aRattacherDeNouveau: boolean;
+}) {
   const [code, setCode] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -170,6 +196,11 @@ function RattachementTerminal({ onRattache }: { onRattache: (terminal: Terminal)
 
   return (
     <form onSubmit={valider} className="flex w-full flex-col gap-4">
+      {aRattacherDeNouveau && (
+        <p className="rounded-lg bg-surface px-3 py-2 text-sm text-ink-soft">
+          Mise à jour de sécurité : tapez une dernière fois le code d'installation de cette tablette.
+        </p>
+      )}
       <div>
         <label className="mb-1 block text-sm font-medium text-ink-soft" htmlFor="codeTerminal">
           Code d'installation

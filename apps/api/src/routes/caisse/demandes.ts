@@ -5,6 +5,7 @@ import {
   resoudreLignesCommande,
   type LigneEntree,
 } from '../../lib/commandes';
+import { ErreurMetier, verrouillerEtablissement } from '../../lib/erreurs';
 import { prisma } from '../../lib/prisma';
 import { getContexteServeur } from './partage';
 import { INCLUDE_COMMANDE, toPublicCommande } from './vues';
@@ -85,6 +86,18 @@ demandesRouter.post('/demandes/:id/accepter', async (req, res) => {
   let commande;
   try {
     commande = await prisma.$transaction(async (tx) => {
+      // Deux serveurs qui touchent « Accepter » en même temps : un seul passe,
+      // sinon la cuisine recevrait la commande en double.
+      const prise = await tx.demandeClient.updateMany({
+        where: { id: demande.id, statut: 'EN_ATTENTE' },
+        data: { statut: 'ACCEPTEE', traiteeParId: req.user!.id, traiteeLe: new Date() },
+      });
+      if (prise.count === 0) {
+        throw new ErreurMetier(409, 'Cette demande a déjà été traitée');
+      }
+      // Une seule addition ouverte par table, même si une autre caisse envoie
+      // une commande sur cette table au même instant.
+      await verrouillerEtablissement(tx, etablissementId);
       await decompterStock(tx, resolution.lignes);
       const additionOuverte = await tx.addition.findFirst({
         where: { etablissementId, tableId: demande.tableId, statut: 'OUVERTE' },
@@ -124,12 +137,7 @@ demandesRouter.post('/demandes/:id/accepter', async (req, res) => {
 
       await tx.demandeClient.update({
         where: { id: demande.id },
-        data: {
-          statut: 'ACCEPTEE',
-          commandeId: creee.id,
-          traiteeParId: req.user!.id,
-          traiteeLe: new Date(),
-        },
+        data: { commandeId: creee.id },
       });
 
       return creee;
@@ -162,10 +170,15 @@ demandesRouter.post('/demandes/:id/refuser', async (req, res) => {
     return;
   }
 
-  await prisma.demandeClient.update({
-    where: { id: demande.id },
+  // Conditionnel : si un collègue vient de l'accepter, le refus ne l'écrase pas.
+  const refus = await prisma.demandeClient.updateMany({
+    where: { id: demande.id, statut: 'EN_ATTENTE' },
     data: { statut: 'REFUSEE', traiteeParId: req.user!.id, traiteeLe: new Date() },
   });
+  if (refus.count === 0) {
+    res.status(409).json({ error: 'Cette demande a déjà été traitée' });
+    return;
+  }
 
   res.status(204).send();
 });

@@ -1,6 +1,7 @@
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import { ErreurMetier } from './lib/erreurs';
 import { prisma } from './lib/prisma';
 import { adminRouter } from './routes/admin';
 import { authRouter } from './routes/auth';
@@ -54,6 +55,11 @@ if (production) {
 // qu'Express 5 transmet ici) est journalisée — console ET base de données,
 // pour être visible dans l'espace super-admin — puis renvoie un 500 propre.
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  // Un refus métier n'est pas une panne : il ne remplit pas le journal.
+  if (err instanceof ErreurMetier && !res.headersSent) {
+    res.status(err.status).json({ error: err.message });
+    return;
+  }
   console.error(`[erreur] ${req.method} ${req.path}`, err);
   const message = err instanceof Error ? err.message : String(err);
   const detail = err instanceof Error ? (err.stack ?? null) : null;

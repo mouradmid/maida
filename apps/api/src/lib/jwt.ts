@@ -36,10 +36,55 @@ export interface TokenPayload {
   iat?: number;
 }
 
+// L'algorithme est imposé à la vérification : un jeton ne doit jamais pouvoir
+// choisir lui-même comment il est contrôlé.
+const ALGORITHME = 'HS256' as const;
+
+// Deux sortes de jetons sont signées avec le même secret : les sessions et les
+// preuves de rattachement des tablettes. L'audience les sépare, pour qu'aucune
+// ne puisse être présentée à la place de l'autre.
+const AUDIENCE_SESSION = 'session';
+const AUDIENCE_TERMINAL = 'terminal';
+
 export function signToken(payload: TokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: '8h',
+    algorithm: ALGORITHME,
+    audience: AUDIENCE_SESSION,
+  });
 }
 
 export function verifyToken(token: string): TokenPayload {
-  return jwt.verify(token, JWT_SECRET) as TokenPayload;
+  return jwt.verify(token, JWT_SECRET, {
+    algorithms: [ALGORITHME],
+    audience: AUDIENCE_SESSION,
+  }) as TokenPayload;
+}
+
+/**
+ * Preuve qu'une tablette a été rattachée à un établissement avec son code
+ * d'installation. Elle est exigée pour taper un code PIN : sans elle,
+ * l'identifiant d'un restaurant (qui figure en clair sur ses QR codes) ne
+ * suffit plus pour essayer des codes depuis Internet. Sans expiration — la
+ * tablette reste rattachée tant qu'on ne la détache pas.
+ */
+export function signerJetonTerminal(etablissementId: string): string {
+  return jwt.sign({ etab: etablissementId }, JWT_SECRET, {
+    algorithm: ALGORITHME,
+    audience: AUDIENCE_TERMINAL,
+  });
+}
+
+/** L'établissement de la tablette, ou null si la preuve est absente ou fausse. */
+export function lireJetonTerminal(jeton: unknown): string | null {
+  if (typeof jeton !== 'string' || !jeton) return null;
+  try {
+    const { etab } = jwt.verify(jeton, JWT_SECRET, {
+      algorithms: [ALGORITHME],
+      audience: AUDIENCE_TERMINAL,
+    }) as { etab?: unknown };
+    return typeof etab === 'string' && etab ? etab : null;
+  } catch {
+    return null;
+  }
 }

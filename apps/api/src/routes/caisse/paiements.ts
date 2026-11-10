@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { ModePaiement, Prisma } from '../../generated/prisma/client';
 import { prisma } from '../../lib/prisma';
+import { ErreurMetier, verrouillerAddition } from '../../lib/erreurs';
 import { getContexteServeur, getJourneeOuverte, lireCleIdempotence, lireDateHorsLigne } from './partage';
 import { INCLUDE_ADDITION, calculerTotaux } from './vues';
 
@@ -91,33 +92,14 @@ paiementsRouter.post('/additions/:id/paiements', async (req, res) => {
     return;
   }
 
-  const addition = await prisma.addition.findUnique({
-    where: { id: req.params.id },
-    include: INCLUDE_ADDITION,
-  });
-  if (!addition || addition.etablissementId !== etablissementId) {
-    res.status(404).json({ error: 'Addition introuvable' });
-    return;
-  }
-  if (addition.statut !== 'OUVERTE') {
-    res.status(400).json({ error: 'Cette addition est déjà soldée' });
-    return;
-  }
-
-  const { solde } = calculerTotaux(addition);
-  const lignesParId = new Map(addition.commandes.flatMap((c) => c.lignes).map((l) => [l.id, l]));
-
-  let montantFinal: number;
-  let lignesAPayer: Array<{ ligneCommandeId: string; quantite: number; montant: number }> = [];
-
+  // Forme des articles vérifiée avant de verrouiller quoi que ce soit.
   if (mode === 'ARTICLES') {
     if (!Array.isArray(lignes) || lignes.length === 0) {
       res.status(400).json({ error: 'Sélectionnez au moins un article' });
       return;
     }
     for (const entree of lignes as LigneAPayer[]) {
-      const ligne = lignesParId.get(entree.ligneCommandeId);
-      if (!ligne) {
+      if (typeof entree?.ligneCommandeId !== 'string') {
         res.status(400).json({ error: 'Article invalide pour cette addition' });
         return;
       }
@@ -125,51 +107,79 @@ paiementsRouter.post('/additions/:id/paiements', async (req, res) => {
         res.status(400).json({ error: 'Quantité invalide' });
         return;
       }
-      const restant =
-        ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
-      if (entree.quantite > restant) {
-        res
-          .status(400)
-          .json({ error: `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})` });
-        return;
-      }
     }
-    lignesAPayer = (lignes as LigneAPayer[]).map((entree) => {
-      const ligne = lignesParId.get(entree.ligneCommandeId)!;
-      return {
-        ligneCommandeId: ligne.id,
-        quantite: entree.quantite,
-        montant: Number(ligne.prixUnitaire) * entree.quantite,
-      };
-    });
-    montantFinal = Math.round(lignesAPayer.reduce((s, l) => s + l.montant, 0) * 100) / 100;
-  } else {
-    if (typeof montant !== 'number' || !Number.isFinite(montant) || montant <= 0) {
-      res.status(400).json({ error: 'Montant invalide' });
-      return;
-    }
-    montantFinal = Math.round(montant * 100) / 100;
-  }
-
-  if (montantFinal > solde + 0.01) {
-    res.status(400).json({ error: `Le montant dépasse le solde restant (${solde} DZD)` });
-    return;
-  }
-  if (moyenPaiementValide === 'ESPECES' && montantRecu !== undefined && montantRecu < montantFinal) {
-    res.status(400).json({ error: 'Le montant reçu est inférieur au montant encaissé' });
-    return;
-  }
-
-  const journee = await getJourneeOuverte(etablissementId);
-  if (!journee) {
-    res.status(409).json({
-      error: "Aucune journée de caisse ouverte. Ouvrez la journée (onglet Journée) avant d'encaisser.",
-    });
+  } else if (typeof montant !== 'number' || !Number.isFinite(montant) || montant <= 0) {
+    res.status(400).json({ error: 'Montant invalide' });
     return;
   }
 
   try {
+    // Tout ce qui dépend de l'état de l'addition — solde, quantités restantes —
+    // se lit sous verrou : deux caisses qui encaissent la même table au même
+    // instant passent l'une après l'autre, et la seconde voit le paiement de
+    // la première.
     const resultat = await prisma.$transaction(async (tx) => {
+      await verrouillerAddition(tx, req.params.id);
+      const addition = await tx.addition.findUnique({
+        where: { id: req.params.id },
+        include: INCLUDE_ADDITION,
+      });
+      if (!addition || addition.etablissementId !== etablissementId) {
+        throw new ErreurMetier(404, 'Addition introuvable');
+      }
+      if (addition.statut !== 'OUVERTE') {
+        throw new ErreurMetier(400, 'Cette addition est déjà soldée');
+      }
+
+      const { solde } = calculerTotaux(addition);
+      const lignesParId = new Map(addition.commandes.flatMap((c) => c.lignes).map((l) => [l.id, l]));
+
+      let montantFinal: number;
+      let lignesAPayer: Array<{ ligneCommandeId: string; quantite: number; montant: number }> = [];
+
+      if (mode === 'ARTICLES') {
+        for (const entree of lignes as LigneAPayer[]) {
+          const ligne = lignesParId.get(entree.ligneCommandeId);
+          if (!ligne) {
+            throw new ErreurMetier(400, 'Article invalide pour cette addition');
+          }
+          const restant =
+            ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
+          if (entree.quantite > restant) {
+            throw new ErreurMetier(
+              400,
+              `Quantité indisponible pour ${ligne.nomProduit} (reste ${restant})`,
+            );
+          }
+        }
+        lignesAPayer = (lignes as LigneAPayer[]).map((entree) => {
+          const ligne = lignesParId.get(entree.ligneCommandeId)!;
+          return {
+            ligneCommandeId: ligne.id,
+            quantite: entree.quantite,
+            montant: Number(ligne.prixUnitaire) * entree.quantite,
+          };
+        });
+        montantFinal = Math.round(lignesAPayer.reduce((s, l) => s + l.montant, 0) * 100) / 100;
+      } else {
+        montantFinal = Math.round((montant as number) * 100) / 100;
+      }
+
+      if (montantFinal > solde + 0.01) {
+        throw new ErreurMetier(400, `Le montant dépasse le solde restant (${solde} DZD)`);
+      }
+      if (moyenPaiementValide === 'ESPECES' && montantRecu !== undefined && montantRecu < montantFinal) {
+        throw new ErreurMetier(400, 'Le montant reçu est inférieur au montant encaissé');
+      }
+
+      const journee = await getJourneeOuverte(etablissementId);
+      if (!journee) {
+        throw new ErreurMetier(
+          409,
+          "Aucune journée de caisse ouverte. Ouvrez la journée (onglet Journée) avant d'encaisser.",
+        );
+      }
+
       const paiement = await tx.paiement.create({
         data: {
           additionId: addition.id,

@@ -8,6 +8,7 @@ import {
   type LigneEntree,
   type LigneSourceEntree,
 } from '../../lib/commandes';
+import { verrouillerEtablissement } from '../../lib/erreurs';
 import { prisma } from '../../lib/prisma';
 import { getContexteServeur, lireCleIdempotence, lireDateHorsLigne } from './partage';
 import { INCLUDE_COMMANDE, toPublicCommande } from './vues';
@@ -154,21 +155,24 @@ commandesRouter.post('/commandes', async (req, res) => {
     }
   }
 
-  let additionId: string;
+  // L'addition n'est ouverte qu'au moment d'écrire la commande, dans la même
+  // transaction : une commande refusée (produit en rupture, ligne invalide) ne
+  // laisse plus derrière elle une addition vide qui fait paraître la table
+  // occupée. Ici, on ne fait que repérer celle qui existe déjà.
+  let tableCibleId: string | null = null;
+  let additionExistanteId: string | null = null;
   if (canal === 'SUR_PLACE') {
     const table = await prisma.table.findUnique({ where: { id: tableId } });
     if (!table || table.etablissementId !== etablissementId || table.statut !== 'ACTIF') {
       res.status(400).json({ error: 'Table invalide' });
       return;
     }
+    tableCibleId = table.id;
     const additionOuverte = await prisma.addition.findFirst({
       where: { etablissementId, tableId: table.id, statut: 'OUVERTE' },
+      select: { id: true },
     });
-    additionId = additionOuverte
-      ? additionOuverte.id
-      : (await prisma.addition.create({ data: { etablissementId, tableId: table.id } })).id;
-  } else {
-    additionId = (await prisma.addition.create({ data: { etablissementId, tableId: null } })).id;
+    additionExistanteId = additionOuverte?.id ?? null;
   }
 
   const lignesProduits = (lignes as Array<LigneEntree | LigneSourceEntree>).filter(
@@ -203,6 +207,11 @@ commandesRouter.post('/commandes', async (req, res) => {
     options: Array<{ optionValeurId: string | null; nomGroupe: string; valeur: string }>;
   }> = [];
   if (lignesSources.length > 0) {
+    // On ne duplique qu'un article de l'addition déjà ouverte sur cette table.
+    if (!additionExistanteId) {
+      res.status(400).json({ error: 'Article à dupliquer introuvable sur cette addition' });
+      return;
+    }
     // Plusieurs « + » sur le même article se cumulent en une seule ligne.
     const quantitesParSource = new Map<string, number>();
     for (const l of lignesSources) {
@@ -214,7 +223,11 @@ commandesRouter.post('/commandes', async (req, res) => {
     const sources = await prisma.ligneCommande.findMany({
       where: {
         id: { in: [...quantitesParSource.keys()] },
-        commande: { etablissementId, additionId, statut: { not: 'ANNULEE' } },
+        commande: {
+          etablissementId,
+          additionId: additionExistanteId,
+          statut: { not: 'ANNULEE' },
+        },
       },
       include: { options: true, produit: true },
     });
@@ -246,21 +259,38 @@ commandesRouter.post('/commandes', async (req, res) => {
     }
   }
 
-  // La table garde sa progression : une commande ajoutée pendant les plats
-  // part en préparation tout de suite, sans re-réclamer les suites servies.
-  const progression = await prisma.commande.aggregate({
-    where: { additionId, statut: { not: 'ANNULEE' } },
-    _max: { suiteReclamee: true },
-  });
-  const suiteReclamee = progression._max.suiteReclamee ?? 1;
-
   const toutesLignes = [...lignesAvecOptions, ...duplicats];
 
   try {
     // Décompte du stock et création dans la même transaction : si un produit
     // suivi vient d'être épuisé, rien n'est écrit et le serveur reçoit un 409.
     const commande = await prisma.$transaction(async (tx) => {
+      // Une seule addition ouverte par table, même quand deux caisses envoient
+      // une commande sur la même table au même instant.
+      await verrouillerEtablissement(tx, etablissementId);
       await decompterStock(tx, toutesLignes);
+
+      let additionId: string;
+      if (tableCibleId) {
+        const ouverte = await tx.addition.findFirst({
+          where: { etablissementId, tableId: tableCibleId, statut: 'OUVERTE' },
+          select: { id: true },
+        });
+        additionId =
+          ouverte?.id ??
+          (await tx.addition.create({ data: { etablissementId, tableId: tableCibleId } })).id;
+      } else {
+        additionId = (await tx.addition.create({ data: { etablissementId, tableId: null } })).id;
+      }
+
+      // La table garde sa progression : une commande ajoutée pendant les plats
+      // part en préparation tout de suite, sans re-réclamer les suites servies.
+      const progression = await tx.commande.aggregate({
+        where: { additionId, statut: { not: 'ANNULEE' } },
+        _max: { suiteReclamee: true },
+      });
+      const suiteReclamee = progression._max.suiteReclamee ?? 1;
+
       return tx.commande.create({
         data: {
           canal,

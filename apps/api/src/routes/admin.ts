@@ -321,7 +321,9 @@ adminRouter.post('/comptes-clients', async (req, res) => {
           role: 'GERANT',
           nom: gerant.nom,
           prenom: gerant.prenom,
-          email: gerant.email,
+          // Rangée en minuscules : la connexion ne tient pas compte de la casse,
+          // deux comptes ne doivent pas différer que par une majuscule.
+          email: gerant.email.trim().toLowerCase(),
           motDePasseHash,
           compteClientId: compteClient.id,
           etablissementId: nouvelEtablissement.id,

@@ -379,6 +379,18 @@ export class ErreurReseau extends Error {
   }
 }
 
+// Refus renvoyé par le serveur. Garde le corps de la réponse : certains refus
+// portent une consigne en plus du message (« rattachez à nouveau la tablette »).
+export class ErreurApi extends Error {
+  readonly donnees: Record<string, unknown> | null;
+
+  constructor(message: string, donnees: Record<string, unknown> | null) {
+    super(message);
+    this.name = 'ErreurApi';
+    this.donnees = donnees;
+  }
+}
+
 // Toute requête a un délai maximal : sans lui, un réseau qui accepte la
 // connexion sans jamais répondre bloquait l'écran plusieurs minutes au lieu de
 // basculer sur la file locale. `delaiMs` s'allonge pour les écrans du gérant,
@@ -424,7 +436,7 @@ async function apiFetch<T>(
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new Error(data?.error ?? 'Une erreur est survenue');
+    throw new ErreurApi(data?.error ?? 'Une erreur est survenue', data);
   }
 
   return data as T;
@@ -444,7 +456,7 @@ export const api = {
   // Rattache la tablette à son restaurant. Remplace l'ancienne liste publique
   // des établissements, qui exposait le portefeuille client de Maïda.
   rattacherTerminal: (code: string) =>
-    apiFetch<{ id: string; nom: string; ville: string | null }>('/auth/terminal', {
+    apiFetch<{ id: string; nom: string; ville: string | null; jeton: string }>('/auth/terminal', {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
@@ -470,10 +482,12 @@ export const api = {
       body: JSON.stringify({ jeton, motDePasse }),
     }),
 
-  loginPin: (etablissementId: string, codePin: string) =>
+  // La preuve de rattachement remplace l'identifiant du restaurant, qui figure
+  // en clair sur ses QR codes et ne doit plus suffire à essayer des codes.
+  loginPin: (jetonTerminal: string, codePin: string) =>
     apiFetch<Utilisateur>('/auth/login-pin', {
       method: 'POST',
-      body: JSON.stringify({ etablissementId, codePin }),
+      body: JSON.stringify({ jetonTerminal, codePin }),
     }),
 
   me: () => apiFetch<Utilisateur>('/auth/me'),
@@ -538,6 +552,20 @@ export const api = {
 
   createServeur: (data: { nom: string; prenom: string; codePin: string }) =>
     apiFetch('/gerant/serveurs', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Désactiver un serveur qui part, ou lui donner un nouveau code.
+  updateServeur: (id: string, data: { statut?: 'ACTIF' | 'DESACTIVE'; codePin?: string }) =>
+    apiFetch(`/gerant/serveurs/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  // Le code que le gérant tape sur une caisse pour valider ce qu'un serveur
+  // n'a pas le droit de faire seul.
+  etatCodePinGerant: () => apiFetch<{ defini: boolean }>('/gerant/code-pin'),
+
+  definirCodePinGerant: (codePin: string, motDePasse: string) =>
+    apiFetch<void>('/gerant/code-pin', {
+      method: 'PUT',
+      body: JSON.stringify({ codePin, motDePasse }),
+    }),
 
   updateDroitsServeur: (id: string, droits: DroitUtilisateur[]) =>
     apiFetch<{ id: string; droits: DroitUtilisateur[] }>(`/gerant/serveurs/${id}/droits`, {

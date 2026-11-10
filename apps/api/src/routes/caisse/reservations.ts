@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Prisma } from '../../generated/prisma/client';
-import { envoyerEmail } from '../../lib/email';
+import { emailValide, envoyerEmail } from '../../lib/email';
 import { emailConfirmationReservation } from '../../lib/emails';
 import { prisma } from '../../lib/prisma';
 import { trouverConflitReservation } from '../../lib/reservations';
@@ -81,11 +81,7 @@ reservationsRouter.post('/reservations', async (req, res) => {
     res.status(400).json({ error: 'Téléphone invalide' });
     return;
   }
-  if (
-    email !== undefined &&
-    email !== '' &&
-    (typeof email !== 'string' || email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-  ) {
+  if (email !== undefined && email !== '' && (typeof email !== 'string' || !emailValide(email))) {
     res.status(400).json({ error: 'Adresse email invalide' });
     return;
   }
@@ -265,11 +261,7 @@ reservationsRouter.patch('/reservations/:id', async (req, res) => {
     res.status(400).json({ error: 'Téléphone invalide' });
     return;
   }
-  if (
-    veutChangerEmail &&
-    (typeof email !== 'string' ||
-      (email.trim() !== '' && (email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))))
-  ) {
+  if (veutChangerEmail && (typeof email !== 'string' || (email.trim() !== '' && !emailValide(email)))) {
     res.status(400).json({ error: 'Adresse email invalide' });
     return;
   }

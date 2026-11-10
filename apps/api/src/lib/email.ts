@@ -73,6 +73,18 @@ export function reinitialiserTransporteur() {
   transporteur = null;
 }
 
+/**
+ * Une adresse simple, et rien d'autre : `nom@domaine.tld`. Les guillemets,
+ * chevrons, virgules, points-virgules et parenthèses sont refusés — ils sont
+ * légaux dans un en-tête d'e-mail, mais c'est précisément par eux qu'une saisie
+ * publique peut glisser un second destinataire dans le message envoyé.
+ */
+const ADRESSE_SIMPLE = /^[^\s@"<>;,()[\]\\]+@[^\s@"<>;,()[\]\\]+\.[^\s@"<>;,()[\]\\]+$/;
+
+export function emailValide(adresse: string): boolean {
+  return adresse.length <= 100 && ADRESSE_SIMPLE.test(adresse);
+}
+
 export function emailConfigure(): boolean {
   return lireConfig() !== null;
 }

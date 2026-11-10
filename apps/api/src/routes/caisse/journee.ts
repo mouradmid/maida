@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { Prisma } from '../../generated/prisma/client';
+import { ErreurMetier, verrouillerEtablissement } from '../../lib/erreurs';
 import { prisma } from '../../lib/prisma';
 import { arrondi, getContexteServeur, getJourneeOuverte, resoudreResponsable } from './partage';
 
@@ -94,15 +95,22 @@ journeeRouter.post('/journee/ouverture', async (req, res) => {
 
   const { etablissementId } = await getContexteServeur(req.user!.id);
 
-  const existante = await getJourneeOuverte(etablissementId);
-  if (existante) {
-    res.status(409).json({ error: 'Une journée de caisse est déjà ouverte' });
-    return;
-  }
-
-  const journee = await prisma.journeeCaisse.create({
-    data: { etablissementId, fondDeCaisse: arrondi(fondDeCaisse), ouverteParId: req.user!.id },
-    include: INCLUDE_JOURNEE,
+  // Sous verrou : deux tablettes qui ouvrent la journée au même instant ne
+  // doivent pas en créer deux, sinon les paiements se répartiraient entre elles
+  // et chaque clôture compterait une caisse incomplète.
+  const journee = await prisma.$transaction(async (tx) => {
+    await verrouillerEtablissement(tx, etablissementId);
+    const existante = await tx.journeeCaisse.findFirst({
+      where: { etablissementId, statut: 'OUVERTE' },
+      select: { id: true },
+    });
+    if (existante) {
+      throw new ErreurMetier(409, 'Une journée de caisse est déjà ouverte');
+    }
+    return tx.journeeCaisse.create({
+      data: { etablissementId, fondDeCaisse: arrondi(fondDeCaisse), ouverteParId: req.user!.id },
+      include: INCLUDE_JOURNEE,
+    });
   });
 
   res.status(201).json(toPublicJournee(journee));

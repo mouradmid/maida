@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../src/app';
 import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
 import { emailConfirmationReservation, emailMotDePasseOublie } from '../src/lib/emails';
-import { AUTH_COOKIE_NAME, signToken } from '../src/lib/jwt';
+import { AUTH_COOKIE_NAME, signerJetonTerminal, signToken } from '../src/lib/jwt';
 import { prisma } from '../src/lib/prisma';
 
 const NOM_COMPTE_TEST = 'TEST-AUTO';
@@ -219,20 +219,20 @@ describe('Authentification', () => {
   it('refuse un PIN inconnu', async () => {
     const res = await request(app)
       .post('/api/auth/login-pin')
-      .send({ etablissementId, codePin: '0000' });
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: '0000' });
     expect(res.status).toBe(401);
   });
 
   it('connecte les serveurs par PIN', async () => {
     const res1 = await serveur
       .post('/api/auth/login-pin')
-      .send({ etablissementId, codePin: PIN_SERVEUR_DROITS });
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_DROITS });
     expect(res1.status).toBe(200);
     expect(res1.body.droits).toContain('CLOTURER');
     expect(res1.body.droits).toContain('REMISER');
     const res2 = await serveurSans
       .post('/api/auth/login-pin')
-      .send({ etablissementId, codePin: PIN_SERVEUR_SANS });
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_SANS });
     expect(res2.status).toBe(200);
     expect(res2.body.droits).toHaveLength(0);
   });
@@ -2249,7 +2249,12 @@ describe("Rattachement de la tablette par code d'installation", () => {
     for (const saisie of [CODE_TERMINAL_TEST, ' test-auto ', 'Test Auto']) {
       const res = await request(app).post('/api/auth/terminal').send({ code: saisie });
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ id: etablissementId, nom: 'Resto Test', ville: 'Testville' });
+      expect(res.body).toEqual({
+        id: etablissementId,
+        nom: 'Resto Test',
+        ville: 'Testville',
+        jeton: expect.any(String),
+      });
     }
   });
 
@@ -2284,8 +2289,12 @@ describe("Rattachement de la tablette par code d'installation", () => {
 
 describe('Journal des connexions et révocation immédiate', () => {
   it('trace les tentatives sans jamais enregistrer le code saisi', async () => {
-    await request(app).post('/api/auth/login-pin').send({ etablissementId, codePin: '0000' });
-    await request(app).post('/api/auth/login-pin').send({ etablissementId, codePin: PIN_SERVEUR_SANS });
+    await request(app)
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: '0000' });
+    await request(app)
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_SANS });
 
     const entrees = await prisma.connexionJournal.findMany({
       where: { etablissementId },
@@ -2998,5 +3007,209 @@ describe.skipIf(!identifiantsAdmin)("Ajout d'un restaurant par l'éditeur", () =
       .post('/api/admin/comptes-clients/inconnu-xyz/etablissements')
       .send({ nom: 'Nulle part' });
     expect(res.status).toBe(404);
+  });
+});
+
+// Audit de sécurité d'avant mise en ligne : chaque test fige un trou bouché.
+describe('Audit avant mise en ligne', () => {
+  const caisse = request.agent(app);
+  const patron = request.agent(app);
+  let tableAuditId = '';
+
+  beforeAll(async () => {
+    const table = await prisma.table.create({
+      data: { numero: 'T-AUDIT', nombreCouverts: 4, etablissementId },
+    });
+    tableAuditId = table.id;
+    const connexion = await caisse
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_DROITS });
+    expect(connexion.status).toBe(200);
+    const login = await patron
+      .post('/api/auth/login')
+      .send({ email: EMAIL_GERANT, password: MDP_GERANT });
+    expect(login.status).toBe(200);
+    // Une journée ouverte, quel que soit l'état laissé par les blocs précédents.
+    await caisse.post('/api/caisse/journee/ouverture').send({ fondDeCaisse: 0 });
+  });
+
+  async function additionsOuvertesSurAudit() {
+    return prisma.addition.findMany({ where: { tableId: tableAuditId, statut: 'OUVERTE' } });
+  }
+
+  it("l'identifiant d'un restaurant (imprimé sur ses QR codes) ne suffit plus à essayer des PIN", async () => {
+    const res = await request(app)
+      .post('/api/auth/login-pin')
+      .send({ etablissementId, codePin: PIN_SERVEUR_DROITS });
+    expect(res.status).toBe(401);
+    expect(res.body.terminalARattacher).toBe(true);
+  });
+
+  it("la preuve de rattachement ne vaut pas session, ni l'inverse", async () => {
+    const jeton = signerJetonTerminal(etablissementId);
+    const commeSession = await request(app)
+      .get('/api/caisse/tables')
+      .set('Cookie', `${AUTH_COOKIE_NAME}=${jeton}`);
+    expect(commeSession.status).toBe(401);
+
+    const session = signToken({ sub: 'x', role: 'SERVEUR' });
+    const commeTerminal = await request(app)
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: session, codePin: PIN_SERVEUR_DROITS });
+    expect(commeTerminal.status).toBe(401);
+  });
+
+  it("la connexion du gérant ignore la casse de l'adresse", async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL_GERANT.toUpperCase(), password: MDP_GERANT });
+    expect(res.status).toBe(200);
+  });
+
+  it("une commande refusée ne laisse pas d'addition vide sur la table", async () => {
+    const res = await caisse.post('/api/caisse/commandes').send({
+      canal: 'SUR_PLACE',
+      tableId: tableAuditId,
+      lignes: [{ produitId: 'produit-inexistant', quantite: 1 }],
+    });
+    expect(res.status).toBe(400);
+    expect(await additionsOuvertesSurAudit()).toHaveLength(0);
+  });
+
+  it('deux commandes simultanées sur une table vide ouvrent une seule addition', async () => {
+    const envoyer = () =>
+      caisse.post('/api/caisse/commandes').send({
+        canal: 'SUR_PLACE',
+        tableId: tableAuditId,
+        lignes: [{ produitId: produitPlatId, quantite: 1 }],
+      });
+    const [a, b] = await Promise.all([envoyer(), envoyer()]);
+    expect([a.status, b.status]).toEqual([201, 201]);
+    expect(a.body.additionId).toBe(b.body.additionId);
+    expect(await additionsOuvertesSurAudit()).toHaveLength(1);
+  });
+
+  it('deux caisses qui encaissent la même table au même instant ne la font pas payer deux fois', async () => {
+    const [addition] = await additionsOuvertesSurAudit();
+    const payer = () =>
+      caisse
+        .post(`/api/caisse/additions/${addition.id}/paiements`)
+        .send({ mode: 'MONTANT', montant: 2000, moyenPaiement: 'ESPECES' });
+    const [a, b] = await Promise.all([payer(), payer()]);
+    expect([a.status, b.status].sort()).toEqual([201, 400]);
+
+    const paiements = await prisma.paiement.findMany({ where: { additionId: addition.id } });
+    expect(paiements).toHaveLength(1);
+  });
+
+  it("une demande QR acceptée deux fois au même instant ne part qu'une fois en cuisine", async () => {
+    await patron.patch('/api/gerant/parametres').send({ commandeClientActive: true });
+    const demande = await request(app)
+      .post('/api/public/commandes')
+      .send({
+        etablissementId,
+        tableNumero: 'T-AUDIT',
+        lignes: [{ produitId: produitBoissonId, quantite: 1 }],
+      });
+    expect(demande.status).toBe(201);
+
+    const accepter = () => caisse.post(`/api/caisse/demandes/${demande.body.id}/accepter`);
+    const [a, b] = await Promise.all([accepter(), accepter()]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    const commandes = await prisma.commande.count({
+      where: { etablissementId, addition: { tableId: tableAuditId }, noteCuisine: { contains: 'QR' } },
+    });
+    expect(commandes).toBe(1);
+  });
+
+  it('refuse une adresse e-mail qui glisserait un second destinataire', async () => {
+    await patron.patch('/api/gerant/parametres').send({ reservationEnLigneActive: true });
+    const res = await request(app)
+      .post('/api/public/reservations')
+      .send({
+        etablissementId,
+        nomClient: 'Client',
+        telephone: '0550000000',
+        email: 'client@exemple.dz>,victime@ailleurs.com',
+        nombreCouverts: 2,
+        date: new Date(Date.now() + 3 * 24 * 60 * 60_000).toISOString(),
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it("le gérant désactive un serveur qui quitte l'équipe : il perd la main sur-le-champ", async () => {
+    const cree = await patron
+      .post('/api/gerant/serveurs')
+      .send({ nom: 'Partant', prenom: 'Test', codePin: '3333' });
+    expect(cree.status).toBe(201);
+
+    const partant = request.agent(app);
+    const jeton = signerJetonTerminal(etablissementId);
+    const avant = await partant
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: jeton, codePin: '3333' });
+    expect(avant.status).toBe(200);
+
+    const desactive = await patron
+      .patch(`/api/gerant/serveurs/${cree.body.id}`)
+      .send({ statut: 'DESACTIVE' });
+    expect(desactive.status).toBe(200);
+    expect(desactive.body.statut).toBe('DESACTIVE');
+
+    expect((await partant.get('/api/caisse/tables')).status).toBe(401);
+    const apres = await request(app)
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: jeton, codePin: '3333' });
+    expect(apres.status).toBe(401);
+  });
+
+  it("le gérant change le code d'un serveur, sans jamais reprendre celui d'un autre", async () => {
+    const serveurs = await patron.get('/api/gerant/serveurs');
+    const sans = serveurs.body.find((s: { prenom: string }) => s.prenom === 'SansDroit');
+
+    const pris = await patron
+      .patch(`/api/gerant/serveurs/${sans.id}`)
+      .send({ codePin: PIN_SERVEUR_DROITS });
+    expect(pris.status).toBe(409);
+    const duGerant = await patron.patch(`/api/gerant/serveurs/${sans.id}`).send({ codePin: PIN_GERANT });
+    expect(duGerant.status).toBe(409);
+
+    const change = await patron.patch(`/api/gerant/serveurs/${sans.id}`).send({ codePin: '4444' });
+    expect(change.status).toBe(200);
+    const ancien = await request(app)
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_SANS });
+    expect(ancien.status).toBe(401);
+
+    // Remis comme avant pour ne pas dérouter d'éventuels blocs suivants.
+    await patron.patch(`/api/gerant/serveurs/${sans.id}`).send({ codePin: PIN_SERVEUR_SANS });
+  });
+
+  it('le gérant choisit son code de validation, mot de passe à l’appui', async () => {
+    const etat = await patron.get('/api/gerant/code-pin');
+    expect(etat.body.defini).toBe(true);
+
+    const mauvaisMotDePasse = await patron
+      .put('/api/gerant/code-pin')
+      .send({ codePin: '8765', motDePasse: 'mauvais' });
+    expect(mauvaisMotDePasse.status).toBe(403);
+
+    const codeDunServeur = await patron
+      .put('/api/gerant/code-pin')
+      .send({ codePin: PIN_SERVEUR_SANS, motDePasse: MDP_GERANT });
+    expect(codeDunServeur.status).toBe(409);
+
+    const change = await patron
+      .put('/api/gerant/code-pin')
+      .send({ codePin: '8765', motDePasse: MDP_GERANT });
+    expect(change.status).toBe(204);
+
+    const gerantEnBase = await prisma.utilisateur.findFirstOrThrow({
+      where: { email: EMAIL_GERANT },
+      select: { codePinHash: true },
+    });
+    expect(await bcrypt.compare('8765', gerantEnBase.codePinHash!)).toBe(true);
+
+    await patron.put('/api/gerant/code-pin').send({ codePin: PIN_GERANT, motDePasse: MDP_GERANT });
   });
 });

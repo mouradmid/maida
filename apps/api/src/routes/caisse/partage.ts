@@ -53,8 +53,37 @@ export async function getContexteAvecDroit(serveurId: string, droit: DroitUtilis
   return { etablissementId: serveur.etablissementId, aLeDroit: serveur.droits.includes(droit) };
 }
 
+// Essais de code gérant ratés, par serveur. Le code ne fait que 4 chiffres :
+// sans frein, un serveur pourrait le trouver en essayant les 10 000 depuis sa
+// caisse, puis s'accorder lui-même remises, annulations et clôtures. Gardé en
+// mémoire — l'application tourne en un seul exemplaire, et un redémarrage qui
+// efface les compteurs n'offre pas plus que quelques essais de plus.
+const ESSAIS_CODE_GERANT = 5;
+const FENETRE_CODE_GERANT_MS = 15 * 60_000;
+const echecsCodeGerant = new Map<string, { nombre: number; depuis: number }>();
+
+function codeGerantBloque(serveurId: string): boolean {
+  if (process.env.NODE_ENV === 'test') return false;
+  const echecs = echecsCodeGerant.get(serveurId);
+  if (!echecs) return false;
+  if (Date.now() - echecs.depuis > FENETRE_CODE_GERANT_MS) {
+    echecsCodeGerant.delete(serveurId);
+    return false;
+  }
+  return echecs.nombre >= ESSAIS_CODE_GERANT;
+}
+
+function noterEchecCodeGerant(serveurId: string) {
+  const echecs = echecsCodeGerant.get(serveurId);
+  if (!echecs || Date.now() - echecs.depuis > FENETRE_CODE_GERANT_MS) {
+    echecsCodeGerant.set(serveurId, { nombre: 1, depuis: Date.now() });
+  } else {
+    echecs.nombre += 1;
+  }
+}
+
 // Action sensible : soit le serveur a le droit requis, soit un gérant de
-// l'établissement valide avec son code PIN et porte la responsabilité.
+// l'enseigne valide avec son code PIN et porte la responsabilité.
 export async function resoudreResponsable(options: {
   serveurId: string;
   etablissementId: string;
@@ -79,19 +108,34 @@ export async function resoudreResponsable(options: {
       body: { error: options.messageDroitManquant, codeGerantRequis: true },
     };
   }
+  if (codeGerantBloque(serveur.id)) {
+    return {
+      ok: false,
+      status: 429,
+      body: {
+        error:
+          'Trop de codes gérant incorrects. Patientez un quart d’heure, ou le gérant se connecte lui-même.',
+        codeGerantRequis: true,
+      },
+    };
+  }
+  // Tout gérant de l'enseigne peut valider, pas seulement celui rattaché à ce
+  // restaurant : c'est le même patron qui passe d'une salle à l'autre.
   const gerants = await prisma.utilisateur.findMany({
     where: {
-      etablissementId: options.etablissementId,
       role: 'GERANT',
       statut: 'ACTIF',
       codePinHash: { not: null },
+      compteClient: { etablissements: { some: { id: options.etablissementId } } },
     },
   });
   for (const gerant of gerants) {
     if (gerant.codePinHash && (await bcrypt.compare(options.codeGerant, gerant.codePinHash))) {
+      echecsCodeGerant.delete(serveur.id);
       return { ok: true, responsableId: gerant.id, demandeeParId: serveur.id };
     }
   }
+  noterEchecCodeGerant(serveur.id);
   return { ok: false, status: 403, body: { error: 'Code gérant invalide', codeGerantRequis: true } };
 }
 

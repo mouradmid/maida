@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { rendreAuStock } from '../../lib/commandes';
+import { ErreurMetier, verrouillerAddition } from '../../lib/erreurs';
 import { prisma } from '../../lib/prisma';
 import { getContexteServeur, resoudreResponsable } from './partage';
 import { INCLUDE_COMMANDE, toPublicCommande } from './vues';
@@ -126,6 +127,39 @@ annulationsRouter.post('/commandes/:id/annulation', async (req, res) => {
     typeof commentaire === 'string' && commentaire.trim() ? commentaire.trim() : null;
 
   const commandeMaj = await prisma.$transaction(async (tx) => {
+    // Quantités relues sous verrou : un article payé ou offert sur une autre
+    // caisse depuis la première lecture ne doit pas être annulé en plus.
+    await verrouillerAddition(tx, commande.additionId);
+    const lignesFraiches = await tx.ligneCommande.findMany({ where: { commandeId: commande.id } });
+    const restantsParId = new Map(
+      lignesFraiches.map((l) => [
+        l.id,
+        l.quantite - l.quantitePayee - l.quantiteAnnulee - l.quantiteOfferte,
+      ]),
+    );
+    if (portee === 'COMMANDE') {
+      cibles = lignesFraiches
+        .filter((l) => (restantsParId.get(l.id) ?? 0) > 0)
+        .map((l) => ({ ligneCommandeId: l.id, quantite: restantsParId.get(l.id)! }));
+      if (cibles.length === 0) {
+        throw new ErreurMetier(
+          400,
+          'Plus rien à annuler sur cette commande (articles déjà payés ou annulés)',
+        );
+      }
+    } else {
+      for (const cible of cibles) {
+        const restant = restantsParId.get(cible.ligneCommandeId) ?? 0;
+        if (cible.quantite > restant) {
+          const ligne = lignesParId.get(cible.ligneCommandeId)!;
+          throw new ErreurMetier(
+            400,
+            `Quantité non annulable pour ${ligne.nomProduit} (reste ${restant}, le payé ne s'annule pas)`,
+          );
+        }
+      }
+    }
+
     for (const cible of cibles) {
       await tx.ligneCommande.update({
         where: { id: cible.ligneCommandeId },

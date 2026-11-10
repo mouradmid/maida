@@ -6,6 +6,7 @@ import { EnTeteEspace } from '../components/EnTeteEspace';
 import { GestionMenu } from '../components/GestionMenu';
 import { GestionServeurs } from '../components/GestionServeurs';
 import { PlanDeSalle } from '../components/PlanDeSalle';
+import { CodeGerant } from '../components/CodeGerant';
 import { CodeTerminal } from '../components/CodeTerminal';
 import { ConfigMoyensPaiement } from '../components/ConfigMoyensPaiement';
 import { AnnulationsRemises } from '../components/AnnulationsRemises';
@@ -114,6 +115,7 @@ export function EspaceGerant() {
             {onglet === 'equipe' && (
               <>
                 <CodeTerminal />
+                <CodeGerant />
                 <GestionServeurs />
               </>
             )}

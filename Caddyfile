@@ -17,6 +17,14 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
+		# Aucun autre site ne peut afficher Maïda dans un cadre invisible pour
+		# faire cliquer un gérant à son insu (« clickjacking »).
+		X-Frame-Options DENY
+		Content-Security-Policy "frame-ancestors 'none'"
+		# La caisse n'a besoin ni de la caméra, ni du micro, ni de la position.
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Inutile d'annoncer quel logiciel répond.
+		-Server
 	}
 
 	log {

@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api, type DroitUtilisateur } from '../lib/api';
-import { badgeNeutre, badgeVert, boutonPrimaire, carte, champ, messageErreur } from '../lib/ui';
+import {
+  badgeNeutre,
+  badgeVert,
+  boutonDiscret,
+  boutonPrimaire,
+  carte,
+  champ,
+  messageErreur,
+} from '../lib/ui';
 
 interface Serveur {
   id: string;
@@ -18,6 +26,8 @@ export function GestionServeurs() {
   const [nom, setNom] = useState('');
   const [prenom, setPrenom] = useState('');
   const [codePin, setCodePin] = useState('');
+  // Serveur dont on est en train de changer le code, et le code saisi.
+  const [codeEnEdition, setCodeEnEdition] = useState<{ id: string; code: string } | null>(null);
 
   async function charger() {
     setChargement(true);
@@ -41,6 +51,42 @@ export function GestionServeurs() {
       : [...serveur.droits, droit];
     try {
       await api.updateDroitsServeur(serveur.id, droits);
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  // Un serveur qui part est désactivé, jamais supprimé : ses commandes et ses
+  // encaissements gardent son nom. Il perd l'accès à la caisse sur-le-champ.
+  async function handleStatut(serveur: Serveur) {
+    const desactiver = serveur.statut === 'ACTIF';
+    if (
+      desactiver &&
+      !window.confirm(
+        `Désactiver ${serveur.prenom} ${serveur.nom} ?
+
+Son code ne lui ouvrira plus la caisse, ` + 'et sa session en cours est coupée immédiatement.',
+      )
+    ) {
+      return;
+    }
+    setErreur(null);
+    try {
+      await api.updateServeur(serveur.id, { statut: desactiver ? 'DESACTIVE' : 'ACTIF' });
+      await charger();
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleNouveauCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!codeEnEdition) return;
+    setErreur(null);
+    try {
+      await api.updateServeur(codeEnEdition.id, { codePin: codeEnEdition.code });
+      setCodeEnEdition(null);
       await charger();
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
@@ -114,6 +160,50 @@ export function GestionServeurs() {
                   <span className={s.statut === 'ACTIF' ? badgeVert : badgeNeutre}>
                     {s.statut === 'ACTIF' ? 'actif' : 'désactivé'}
                   </span>
+                </span>
+                <span className="flex flex-wrap items-center gap-3">
+                  {codeEnEdition?.id === s.id ? (
+                    <form onSubmit={handleNouveauCode} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{4}"
+                        maxLength={4}
+                        autoFocus
+                        placeholder="Nouveau code"
+                        value={codeEnEdition.code}
+                        onChange={(e) =>
+                          setCodeEnEdition({ id: s.id, code: e.target.value.replace(/[^0-9]/g, '') })
+                        }
+                        className={`${champ} w-32`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={codeEnEdition.code.length !== 4}
+                        className={boutonDiscret}
+                      >
+                        Enregistrer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCodeEnEdition(null)}
+                        className="text-sm text-ink-faint hover:text-ink-soft"
+                      >
+                        Annuler
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setCodeEnEdition({ id: s.id, code: '' })}
+                      className={boutonDiscret}
+                    >
+                      Nouveau code
+                    </button>
+                  )}
+                  <button type="button" onClick={() => handleStatut(s)} className={boutonDiscret}>
+                    {s.statut === 'ACTIF' ? 'Désactiver' : 'Réactiver'}
+                  </button>
                 </span>
                 <span className="flex flex-wrap gap-2">
                   {DROITS_UI.map(({ droit, actif, inactif, titre }) => {

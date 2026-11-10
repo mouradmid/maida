@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { erreurLignesEntree, resoudreLignesCommande, type LigneEntree } from '../lib/commandes';
-import { envoyerEmail } from '../lib/email';
+import { emailValide, envoyerEmail } from '../lib/email';
 import { emailConfirmationReservation } from '../lib/emails';
 import { prisma } from '../lib/prisma';
 import { choisirTableDisponible } from '../lib/reservations';
@@ -245,11 +245,7 @@ publicRouter.post('/reservations', limiteReservationClient, async (req, res) => 
     res.status(400).json({ error: 'Votre téléphone est requis' });
     return;
   }
-  if (
-    email !== undefined &&
-    email !== '' &&
-    (typeof email !== 'string' || email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-  ) {
+  if (email !== undefined && email !== '' && (typeof email !== 'string' || !emailValide(email))) {
     res.status(400).json({ error: 'Adresse e-mail invalide' });
     return;
   }

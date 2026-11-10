@@ -1,5 +1,6 @@
 import { Router, type Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
+import { ErreurMetier, verrouillerAddition } from '../../lib/erreurs';
 import { prisma } from '../../lib/prisma';
 import {
   arrondi,
@@ -111,19 +112,27 @@ gestesRouter.post('/additions/:id/remise', async (req, res) => {
     return;
   }
 
-  const { solde } = calculerTotaux(addition);
-  const montantRemise = mode === 'POURCENTAGE' ? arrondi((solde * valeur) / 100) : arrondi(valeur);
-  if (montantRemise <= 0) {
-    res.status(400).json({ error: 'Le montant de la remise est nul' });
-    return;
-  }
-  if (montantRemise > solde + 0.01) {
-    res.status(400).json({ error: `La remise dépasse le solde restant (${solde} DA)` });
-    return;
-  }
-
   try {
     const resultat = await prisma.$transaction(async (tx) => {
+      // Le solde se lit sous verrou : un paiement passé entre-temps sur une
+      // autre caisse doit être vu, sinon la remise dépasserait ce qui reste dû.
+      await verrouillerAddition(tx, addition.id);
+      const actuelle = await tx.addition.findUniqueOrThrow({
+        where: { id: addition.id },
+        include: INCLUDE_ADDITION,
+      });
+      if (actuelle.statut !== 'OUVERTE') {
+        throw new ErreurMetier(400, 'Cette addition est déjà soldée');
+      }
+      const { solde } = calculerTotaux(actuelle);
+      const montantRemise = mode === 'POURCENTAGE' ? arrondi((solde * valeur) / 100) : arrondi(valeur);
+      if (montantRemise <= 0) {
+        throw new ErreurMetier(400, 'Le montant de la remise est nul');
+      }
+      if (montantRemise > solde + 0.01) {
+        throw new ErreurMetier(400, `La remise dépasse le solde restant (${solde} DA)`);
+      }
+
       await tx.remise.create({
         data: {
           type: 'REMISE',
@@ -147,11 +156,11 @@ gestesRouter.post('/additions/:id/remise', async (req, res) => {
           data: { statut: 'PAYEE', fermeeLe: new Date() },
         });
       }
-      return { soldeRestant, cloturee: soldeRestant <= 0.01 };
+      return { montantRemise, soldeRestant, cloturee: soldeRestant <= 0.01 };
     });
 
     res.status(201).json({
-      montant: montantRemise,
+      montant: resultat.montantRemise,
       soldeRestant: resultat.soldeRestant,
       additionCloturee: resultat.cloturee,
     });
@@ -256,9 +265,32 @@ gestesRouter.post('/additions/:id/offert', async (req, res) => {
 
   try {
     const resultat = await prisma.$transaction(async (tx) => {
+      // Quantités relues sous verrou : l'article a pu être payé ou offert par
+      // une autre caisse depuis la première lecture.
+      await verrouillerAddition(tx, addition.id);
+      const actuelle = await tx.addition.findUniqueOrThrow({
+        where: { id: addition.id },
+        include: INCLUDE_ADDITION,
+      });
+      if (actuelle.statut !== 'OUVERTE') {
+        throw new ErreurMetier(400, 'Cette addition est déjà soldée');
+      }
+      const lignesActuelles = new Map(actuelle.commandes.flatMap((c) => c.lignes).map((l) => [l.id, l]));
+      for (const cible of lignes as LigneAOffrir[]) {
+        const ligne = lignesActuelles.get(cible.ligneCommandeId)!;
+        const offrable =
+          ligne.quantite - ligne.quantitePayee - ligne.quantiteAnnulee - ligne.quantiteOfferte;
+        if (cible.quantite > offrable) {
+          throw new ErreurMetier(
+            400,
+            `Quantité non offrable pour ${ligne.nomProduit} (reste ${offrable})`,
+          );
+        }
+      }
+
       let premiere = true;
       for (const cible of lignes as LigneAOffrir[]) {
-        const ligne = lignesParId.get(cible.ligneCommandeId)!;
+        const ligne = lignesActuelles.get(cible.ligneCommandeId)!;
         await tx.ligneCommande.update({
           where: { id: ligne.id },
           data: { quantiteOfferte: { increment: cible.quantite } },
