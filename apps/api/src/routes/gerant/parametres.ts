@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { assurerLienPublic } from '../../lib/lienPublic';
+import { lireHoraires, validerHoraires } from '../../lib/reservations';
 import { prisma } from '../../lib/prisma';
 import { formaterCodeTerminal, genererCodeTerminal } from '../../lib/securite';
 import { contexteDe } from './partage';
@@ -50,14 +52,25 @@ parametresRouter.get('/parametres', async (req, res) => {
     prisma.compteClient.findUnique({ where: { id: compteClientId }, select: { modules: true } }),
     prisma.etablissement.findUniqueOrThrow({
       where: { id: etablissementId },
-      select: { ...SELECTION_ETABLISSEMENT, codeTerminal: true },
+      select: {
+        ...SELECTION_ETABLISSEMENT,
+        nom: true,
+        codeTerminal: true,
+        horairesReservation: true,
+      },
     }),
   ]);
 
-  const { codeTerminal, ...reglages } = etablissement;
+  const { nom, codeTerminal, horairesReservation, ...reglages } = etablissement;
   res.json({
     ...reponseParametres(compte?.modules, reglages),
+    nomEtablissement: nom,
     codeTerminal: formaterCodeTerminal(codeTerminal),
+    // Les services ouverts à la réservation en ligne (ceux par défaut tant que
+    // le gérant ne les a pas réglés).
+    horairesReservation: lireHoraires(horairesReservation),
+    // Fin de l'adresse publique de réservation, créée à la première lecture.
+    lienReservation: await assurerLienPublic(etablissementId),
   });
 });
 
@@ -78,7 +91,16 @@ parametresRouter.post('/terminal/code', async (req, res) => {
 
 parametresRouter.patch('/parametres', async (req, res) => {
   const corps = req.body ?? {};
-  const data: Record<string, boolean | number> = {};
+  const data: Record<string, boolean | number | object> = {};
+
+  if (corps.horairesReservation !== undefined) {
+    const horaires = validerHoraires(corps.horairesReservation);
+    if (typeof horaires === 'string') {
+      res.status(400).json({ error: horaires });
+      return;
+    }
+    data.horairesReservation = horaires as unknown as object;
+  }
 
   for (const cle of BOOLEENS) {
     const valeur = corps[cle];
@@ -112,9 +134,13 @@ parametresRouter.patch('/parametres', async (req, res) => {
     prisma.etablissement.update({
       where: { id: etablissementId },
       data,
-      select: SELECTION_ETABLISSEMENT,
+      select: { ...SELECTION_ETABLISSEMENT, horairesReservation: true },
     }),
   ]);
 
-  res.json(reponseParametres(compte?.modules, etablissement));
+  const { horairesReservation, ...reglages } = etablissement;
+  res.json({
+    ...reponseParametres(compte?.modules, reglages),
+    horairesReservation: lireHoraires(horairesReservation),
+  });
 });

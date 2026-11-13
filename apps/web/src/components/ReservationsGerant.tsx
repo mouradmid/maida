@@ -3,6 +3,9 @@ import { api, type ParametresGerant } from '../lib/api';
 import { badgeNeutre, bascule, boutonSecondaire, carte, champ, messageErreur } from '../lib/ui';
 import { type CelluleCsv, dateFichier, dateHeureCsv, telechargerCsv } from '../lib/export';
 import { LIBELLES_STATUT_RESERVATION } from '../lib/libelles';
+import { BesoinsReservation } from './BesoinsReservation';
+import { HorairesReservation } from './HorairesReservation';
+import { LienReservation } from './LienReservation';
 import { Tuile } from './Tuile';
 
 type Donnees = Awaited<ReturnType<typeof api.reservationsGerant>>;
@@ -123,8 +126,8 @@ const DELAIS = [
 /**
  * Réglages de la réservation en ligne : le gérant l'ouvre, et fixe jusqu'où.
  *
- * Elle passe par le menu QR — sans ce module, le client n'a aucune page où
- * réserver, et la carte n'a pas lieu d'être.
+ * Le client réserve par le lien public du restaurant, partagé sur ses réseaux.
+ * Elle fait partie du module « QR menu » : sans lui, la carte n'apparaît pas.
  */
 function ReglagesReservationEnLigne({
   parametres,
@@ -140,7 +143,9 @@ function ReglagesReservationEnLigne({
     setEnCours(true);
     setErreur(null);
     try {
-      onChange(await api.updateParametres(data));
+      // La réponse ne reprend pas le lien ni le code d'installation : on garde
+      // ceux qu'on a.
+      onChange({ ...parametres, ...(await api.updateParametres(data)) });
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
     } finally {
@@ -156,8 +161,9 @@ function ReglagesReservationEnLigne({
         <div className="min-w-0">
           <h3 className="font-semibold text-stone-900">Réservation en ligne</h3>
           <p className="mt-0.5 max-w-xl text-sm text-stone-500">
-            Vos clients réservent depuis le menu QR, sans vous appeler. Maïda leur attribue une table
-            libre et confirme tout de suite — la réservation apparaît à la caisse comme les autres.
+            Vos clients réservent eux-mêmes, depuis votre lien, sans vous appeler. Ils choisissent un
+            créneau dans vos horaires ; Maïda leur attribue une table libre et confirme tout de suite. La
+            réservation apparaît à la caisse comme les autres.
           </p>
         </div>
         <button
@@ -230,6 +236,21 @@ function ReglagesReservationEnLigne({
             <span className="text-xs text-stone-500">Au-delà, la réservation passe par vous.</span>
           </label>
         </div>
+      )}
+
+      {active && (
+        <>
+          <LienReservation
+            lien={parametres.lienReservation}
+            nomEtablissement={parametres.nomEtablissement}
+          />
+          <HorairesReservation
+            key={JSON.stringify(parametres.horairesReservation)}
+            horaires={parametres.horairesReservation}
+            enCours={enCours}
+            onEnregistrer={(horairesReservation) => enregistrer({ horairesReservation })}
+          />
+        </>
       )}
 
       {erreur && <p className={messageErreur}>{erreur}</p>}
@@ -364,6 +385,7 @@ export function ReservationsGerant() {
                     <span className={badgeNeutre}>Table {r.table.numero}</span>
                     <span className={badgeNeutre}>{r.nombreCouverts} couv.</span>
                     {!r.prisePar && <span className={badgeNeutre}>En ligne</span>}
+                    <BesoinsReservation occasion={r.occasion} restrictions={r.restrictions} />
                   </span>
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statut.classes}`}

@@ -3,7 +3,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { emailValide, envoyerEmail } from '../../lib/email';
 import { emailConfirmationReservation } from '../../lib/emails';
 import { prisma } from '../../lib/prisma';
-import { trouverConflitReservation } from '../../lib/reservations';
+import { lireBesoins, trouverConflitReservation } from '../../lib/reservations';
 import { getContexteServeur } from './partage';
 
 export const reservationsRouter = Router();
@@ -23,6 +23,8 @@ function toPublicReservation(r: Prisma.ReservationGetPayload<{ include: typeof I
     date: r.date,
     dureeMinutes: r.dureeMinutes,
     note: r.note,
+    occasion: r.occasion,
+    restrictions: r.restrictions,
     statut: r.statut,
     table: r.table,
     prisePar: r.prisePar,
@@ -64,6 +66,8 @@ reservationsRouter.post('/reservations', async (req, res) => {
     note,
     tableId,
     cleIdempotence,
+    occasion,
+    restrictions,
   } = req.body ?? {};
 
   if (typeof nomClient !== 'string' || !nomClient.trim() || nomClient.length > 100) {
@@ -102,6 +106,11 @@ reservationsRouter.post('/reservations', async (req, res) => {
     dateReservation.getTime() > maintenant + 365 * 24 * 60 * 60_000
   ) {
     res.status(400).json({ error: 'Date de réservation invalide (elle doit être à venir)' });
+    return;
+  }
+  const besoins = lireBesoins(occasion, restrictions);
+  if ('erreur' in besoins) {
+    res.status(400).json({ error: besoins.erreur });
     return;
   }
   const duree = dureeMinutes ?? 120;
@@ -162,6 +171,8 @@ reservationsRouter.post('/reservations', async (req, res) => {
         date: dateReservation,
         dureeMinutes: duree,
         note: typeof note === 'string' && note.trim() ? note.trim() : null,
+        occasion: besoins.occasion ?? null,
+        restrictions: besoins.restrictions ?? [],
         tableId: table.id,
         etablissementId,
         priseParId: req.user!.id,
@@ -217,7 +228,23 @@ reservationsRouter.post('/reservations', async (req, res) => {
 });
 
 reservationsRouter.patch('/reservations/:id', async (req, res) => {
-  const { statut, tableId, nombreCouverts, date, nomClient, telephone, email, note } = req.body ?? {};
+  const {
+    statut,
+    tableId,
+    nombreCouverts,
+    date,
+    nomClient,
+    telephone,
+    email,
+    note,
+    occasion,
+    restrictions,
+  } = req.body ?? {};
+  const besoins = lireBesoins(occasion, restrictions);
+  if ('erreur' in besoins) {
+    res.status(400).json({ error: besoins.erreur });
+    return;
+  }
 
   const veutChangerStatut = statut !== undefined;
   const veutChangerTable = tableId !== undefined;
@@ -236,7 +263,9 @@ reservationsRouter.patch('/reservations/:id', async (req, res) => {
     !veutChangerNom &&
     !veutChangerTelephone &&
     !veutChangerEmail &&
-    !veutChangerNote
+    !veutChangerNote &&
+    occasion === undefined &&
+    restrictions === undefined
   ) {
     res.status(400).json({ error: 'Aucune modification demandée' });
     return;
@@ -367,6 +396,12 @@ reservationsRouter.patch('/reservations/:id', async (req, res) => {
 
   if (veutChangerStatut) {
     data.statut = statut;
+  }
+  if (besoins.occasion !== undefined) {
+    data.occasion = besoins.occasion;
+  }
+  if (besoins.restrictions !== undefined) {
+    data.restrictions = besoins.restrictions;
   }
 
   const majApres = await prisma.reservation.update({

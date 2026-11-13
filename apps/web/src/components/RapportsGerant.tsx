@@ -236,7 +236,8 @@ export function RapportsGerant({ nbRestaurants = 1 }: { nbRestaurants?: number }
   async function handleToggleSuiviCouts() {
     if (!parametres) return;
     try {
-      setParametres(await api.updateParametres({ suiviCoutsActive: !parametres.suiviCoutsActive }));
+      const maj = await api.updateParametres({ suiviCoutsActive: !parametres.suiviCoutsActive });
+      setParametres({ ...parametres, ...maj });
     } catch (err) {
       setErreur(err instanceof Error ? err.message : 'Erreur');
     }

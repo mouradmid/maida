@@ -1,7 +1,12 @@
 // Libellés métier partagés par l'interface, les tickets et les exports.
 // Un seul endroit à corriger quand un intitulé change.
 
-import type { ModePaiement, StatutReservation } from './api';
+import type {
+  ModePaiement,
+  OccasionReservation,
+  RestrictionAlimentaire,
+  StatutReservation,
+} from './api';
 
 export const LIBELLES_MOYEN: Record<ModePaiement, string> = {
   ESPECES: 'Espèces',
@@ -25,3 +30,40 @@ export const LIBELLES_STATUT_RESERVATION: Record<StatutReservation, { texte: str
     ANNULEE: { texte: 'Annulée', classes: 'bg-stone-100 text-stone-500' },
     NO_SHOW: { texte: 'No-show', classes: 'bg-red-100 text-red-800' },
   };
+
+// Occasions et restrictions alimentaires d'une réservation : mêmes mots sur la
+// page publique, à la caisse et dans l'espace gérant. L'ordre des clés est
+// celui de l'affichage.
+export const LIBELLES_OCCASION: Record<OccasionReservation, { texte: string; icone: string }> = {
+  ANNIVERSAIRE: { texte: 'Anniversaire', icone: '🎂' },
+  ROMANTIQUE: { texte: 'Dîner en amoureux', icone: '❤️' },
+  AFFAIRES: { texte: "Repas d'affaires", icone: '💼' },
+  FAMILLE: { texte: 'Repas de famille', icone: '👨‍👩‍👧' },
+  FETE: { texte: 'Fête, célébration', icone: '🎉' },
+  AUTRE: { texte: 'Autre occasion', icone: '✨' },
+};
+
+export const LIBELLES_RESTRICTION: Record<RestrictionAlimentaire, string> = {
+  VEGETARIEN: 'Végétarien',
+  VEGAN: 'Végan',
+  SANS_GLUTEN: 'Sans gluten',
+  SANS_LACTOSE: 'Sans lactose',
+  ALLERGIE_ARACHIDES: 'Allergie arachides',
+  ALLERGIE_FRUITS_A_COQUE: 'Allergie fruits à coque',
+  ALLERGIE_FRUITS_DE_MER: 'Allergie fruits de mer',
+};
+
+export const OCCASIONS = Object.keys(LIBELLES_OCCASION) as OccasionReservation[];
+export const RESTRICTIONS = Object.keys(LIBELLES_RESTRICTION) as RestrictionAlimentaire[];
+
+// Jours de la semaine dans l'ordre d'un restaurant (lundi d'abord), avec leur
+// numéro JavaScript (0 = dimanche).
+export const JOURS_SEMAINE: Array<{ numero: number; court: string; long: string }> = [
+  { numero: 1, court: 'Lun', long: 'Lundi' },
+  { numero: 2, court: 'Mar', long: 'Mardi' },
+  { numero: 3, court: 'Mer', long: 'Mercredi' },
+  { numero: 4, court: 'Jeu', long: 'Jeudi' },
+  { numero: 5, court: 'Ven', long: 'Vendredi' },
+  { numero: 6, court: 'Sam', long: 'Samedi' },
+  { numero: 0, court: 'Dim', long: 'Dimanche' },
+];

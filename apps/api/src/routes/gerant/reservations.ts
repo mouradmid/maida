@@ -74,6 +74,8 @@ reservationsRouter.get('/reservations', async (req, res) => {
       nombreCouverts: r.nombreCouverts,
       date: r.date,
       note: r.note,
+      occasion: r.occasion,
+      restrictions: r.restrictions,
       statut: r.statut,
       table: r.table,
       prisePar: r.prisePar,

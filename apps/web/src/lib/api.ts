@@ -132,6 +132,25 @@ export interface TableCaisse {
 
 export type StatutReservation = 'A_VENIR' | 'ARRIVEE' | 'ANNULEE' | 'NO_SHOW';
 
+export type OccasionReservation =
+  'ANNIVERSAIRE' | 'ROMANTIQUE' | 'AFFAIRES' | 'FAMILLE' | 'FETE' | 'AUTRE';
+
+export type RestrictionAlimentaire =
+  | 'VEGETARIEN'
+  | 'VEGAN'
+  | 'SANS_GLUTEN'
+  | 'SANS_LACTOSE'
+  | 'ALLERGIE_ARACHIDES'
+  | 'ALLERGIE_FRUITS_A_COQUE'
+  | 'ALLERGIE_FRUITS_DE_MER';
+
+/** Un service ouvert à la réservation : le vendredi (5) de 19:00 à 22:30. */
+export interface PlageHoraire {
+  jour: number;
+  debut: string;
+  fin: string;
+}
+
 export interface Reservation {
   id: string;
   nomClient: string;
@@ -141,9 +160,11 @@ export interface Reservation {
   date: string;
   dureeMinutes: number;
   note: string | null;
+  occasion: OccasionReservation | null;
+  restrictions: RestrictionAlimentaire[];
   statut: StatutReservation;
   table: { id: string; numero: string };
-  // `null` = réservation prise en ligne par le client depuis le menu QR :
+  // `null` = réservation prise en ligne par le client depuis le lien public du restaurant :
   // personne de l'équipe n'a décroché.
   prisePar: { nom: string; prenom: string } | null;
 }
@@ -326,7 +347,7 @@ export interface ParametresGerant {
   moduleQrMenu: boolean;
   suiviCoutsActive: boolean;
   commandeClientActive: boolean;
-  // Réservation en ligne depuis le menu QR, et les limites que le gérant lui fixe.
+  // Réservation en ligne par le lien public du restaurant, et les limites que le gérant lui fixe.
   reservationEnLigneActive: boolean;
   reservationCouvertsMax: number;
   reservationDelaiMinMinutes: number;
@@ -334,6 +355,11 @@ export interface ParametresGerant {
   // Code que l'on tape une fois sur une tablette pour la rattacher à ce
   // restaurant, présenté en deux blocs (« ABCD-2345 »).
   codeTerminal: string | null;
+  nomEtablissement: string;
+  // Fin de l'adresse publique de réservation (« le-bon-grill »), à partager.
+  lienReservation: string;
+  // Services ouverts à la réservation en ligne.
+  horairesReservation: PlageHoraire[];
 }
 
 export interface DemandeClient {
@@ -810,13 +836,6 @@ export const api = {
     apiFetch<{
       etablissement: { nom: string; adresse: string | null; ville: string | null };
       commandeClientActive: boolean;
-      // `null` quand le restaurant ne prend pas les réservations en ligne.
-      // Sinon, les limites à afficher et à respecter avant même d'envoyer.
-      reservationEnLigne: {
-        couvertsMax: number;
-        delaiMinMinutes: number;
-        horizonJours: number;
-      } | null;
       categories: Array<{
         id: string;
         nom: string;
@@ -850,8 +869,30 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  // Réservation prise par le client depuis le menu QR : confirmée sur-le-champ
-  // (la table est choisie par le serveur) ou refusée avec la raison.
+  // Page publique de réservation, atteinte par le lien que le restaurant
+  // partage sur ses réseaux.
+  pageReservation: (lien: string) =>
+    apiFetch<{
+      etablissementId: string;
+      etablissement: { nom: string; adresse: string | null; ville: string | null };
+      // `null` quand le restaurant ne prend pas les réservations en ligne.
+      // Sinon, les limites à afficher et à respecter avant même d'envoyer.
+      reservationEnLigne: {
+        couvertsMax: number;
+        delaiMinMinutes: number;
+        horizonJours: number;
+        joursOuverts: number[];
+      } | null;
+    }>(`/public/reservation/${encodeURIComponent(lien)}`),
+
+  // Créneaux d'un jour (« AAAA-MM-JJ ») pour un groupe, chacun libre ou complet.
+  creneauxReservation: (lien: string, jour: string, couverts: number) =>
+    apiFetch<{ creneaux: Array<{ heure: string; service: string; disponible: boolean }> }>(
+      `/public/reservation/${encodeURIComponent(lien)}/creneaux?jour=${jour}&couverts=${couverts}`,
+    ),
+
+  // Réservation prise par le client lui-même : confirmée sur-le-champ (la
+  // table est choisie par le serveur) ou refusée avec la raison.
   reserverEnLigne: (data: {
     etablissementId: string;
     nomClient: string;
@@ -860,6 +901,8 @@ export const api = {
     nombreCouverts: number;
     date: string;
     note?: string;
+    occasion?: OccasionReservation;
+    restrictions?: RestrictionAlimentaire[];
   }) =>
     apiFetch<{
       id: string;
@@ -889,6 +932,8 @@ export const api = {
     date: string;
     dureeMinutes?: number;
     note?: string;
+    occasion?: OccasionReservation;
+    restrictions?: RestrictionAlimentaire[];
     tableId: string;
     // Présente quand la réservation a été prise hors ligne : rejouable sans doublon.
     cleIdempotence?: string;
@@ -910,6 +955,8 @@ export const api = {
       telephone?: string;
       email?: string;
       note?: string;
+      occasion?: OccasionReservation | null;
+      restrictions?: RestrictionAlimentaire[];
     },
   ) =>
     apiFetch<Reservation>(`/caisse/reservations/${id}`, {
@@ -1067,11 +1114,17 @@ export const api = {
     reservationCouvertsMax?: number;
     reservationDelaiMinMinutes?: number;
     reservationHorizonJours?: number;
+    horairesReservation?: PlageHoraire[];
   }) =>
-    apiFetch<ParametresGerant>('/gerant/parametres', {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
+    // La réponse ne reprend ni le code d'installation ni le lien : l'appelant
+    // fusionne avec ce qu'il a déjà.
+    apiFetch<Omit<ParametresGerant, 'nomEtablissement' | 'codeTerminal' | 'lienReservation'>>(
+      '/gerant/parametres',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    ),
 
   regenererCodeTerminal: () =>
     apiFetch<{ codeTerminal: string }>('/gerant/terminal/code', { method: 'POST' }),

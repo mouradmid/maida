@@ -4,11 +4,6 @@ import { api, ErreurReseau } from '../lib/api';
 import { da } from '../lib/ui';
 import { Logo } from '../components/Logo';
 import { Modal } from '../components/Modal';
-import {
-  FormulaireReservation,
-  type CreneauxReservation,
-  type ReservationConfirmee,
-} from '../components/FormulaireReservation';
 
 type MenuPublicData = Awaited<ReturnType<typeof api.menuPublic>>;
 type ProduitPublic = MenuPublicData['categories'][number]['produits'][number];
@@ -26,29 +21,10 @@ function cleLigne(produitId: string, options: LignePanier['options']) {
     .join(',')}`;
 }
 
-// Format attendu par <input type="datetime-local"> : heure locale du client,
-// sans fuseau. C'est la même que celle du restaurant — l'Algérie n'a qu'un
-// fuseau et pas d'heure d'été.
-function pourChampDateHeure(date: Date): string {
-  const deuxChiffres = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${date.getFullYear()}-${deuxChiffres(date.getMonth() + 1)}-${deuxChiffres(date.getDate())}` +
-    `T${deuxChiffres(date.getHours())}:${deuxChiffres(date.getMinutes())}`
-  );
-}
-
-function dateHeureLisible(iso: string): string {
-  return new Date(iso).toLocaleString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 // Menu consultable — et commandable si le restaurant l'a activé — par le
 // client, depuis le QR code posé sur sa table. Public, pensé pour un téléphone.
+// La réservation n'est pas ici : on réserve de chez soi, par le lien que le
+// restaurant partage (pages/ReservationPublique.tsx).
 export function MenuPublic() {
   const { etablissementId } = useParams();
   const [parametres] = useSearchParams();
@@ -67,13 +43,6 @@ export function MenuPublic() {
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [erreurCommande, setErreurCommande] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<number | null>(null);
-
-  // Réservation en ligne : les créneaux acceptables sont figés à l'ouverture du
-  // formulaire (des bornes recalculées à chaque rendu se décaleraient sous les
-  // doigts du client), et leur présence suffit à dire que le formulaire est
-  // ouvert. Le reste de sa saisie lui appartient.
-  const [creneaux, setCreneaux] = useState<CreneauxReservation | null>(null);
-  const [reservationConfirmee, setReservationConfirmee] = useState<ReservationConfirmee | null>(null);
 
   useEffect(() => {
     if (!etablissementId) return;
@@ -206,34 +175,6 @@ export function MenuPublic() {
     );
   }
 
-  if (reservationConfirmee) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-        <span className="text-6xl">🍽️</span>
-        <h1 className="text-xl font-bold text-stone-900">Votre table est réservée</h1>
-        <p className="text-stone-600">
-          {dateHeureLisible(reservationConfirmee.date)}
-          <br />
-          {reservationConfirmee.nombreCouverts} personne
-          {reservationConfirmee.nombreCouverts > 1 ? 's' : ''} · table{' '}
-          <span className="font-bold text-brand-700">{reservationConfirmee.table}</span>
-        </p>
-        <p className="max-w-sm text-sm text-stone-500">
-          {reservationConfirmee.confirmationEnvoyee
-            ? 'Une confirmation part par e-mail. En cas d’empêchement, prévenez le restaurant.'
-            : 'En cas d’empêchement, prévenez le restaurant : la table pourra servir à quelqu’un d’autre.'}
-        </p>
-        <button
-          type="button"
-          onClick={() => setReservationConfirmee(null)}
-          className="rounded-lg bg-brand-600 px-5 py-2.5 font-semibold text-white"
-        >
-          Revenir au menu
-        </button>
-      </div>
-    );
-  }
-
   const defiler = (categorieId: string) => {
     setCategorieActive(categorieId);
     document.getElementById(`categorie-${categorieId}`)?.scrollIntoView({
@@ -255,31 +196,6 @@ export function MenuPublic() {
           <span className="mt-3 inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-sm font-semibold">
             Table {table}
           </span>
-        )}
-        {menu.reservationEnLigne && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => {
-                const limites = menu.reservationEnLigne!;
-                const maintenant = Date.now();
-                const auPlusTot = new Date(maintenant + limites.delaiMinMinutes * 60_000);
-                const min = pourChampDateHeure(auPlusTot);
-                // Première proposition : le premier créneau acceptable, arrondi
-                // à l'heure suivante — le client n'a plus qu'à ajuster.
-                auPlusTot.setMinutes(0, 0, 0);
-                auPlusTot.setHours(auPlusTot.getHours() + 1);
-                setCreneaux({
-                  min,
-                  max: pourChampDateHeure(new Date(maintenant + limites.horizonJours * 24 * 3600_000)),
-                  defaut: pourChampDateHeure(auPlusTot),
-                });
-              }}
-              className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-brand-800 shadow-sm"
-            >
-              Réserver une table
-            </button>
-          </div>
         )}
       </header>
 
@@ -398,21 +314,6 @@ export function MenuPublic() {
             </div>
           </div>
         </Modal>
-      )}
-
-      {/* Réservation en ligne */}
-      {creneaux && menu.reservationEnLigne && (
-        <FormulaireReservation
-          etablissementId={etablissementId!}
-          couvertsMax={menu.reservationEnLigne.couvertsMax}
-          horizonJours={menu.reservationEnLigne.horizonJours}
-          creneaux={creneaux}
-          onFerme={() => setCreneaux(null)}
-          onConfirmee={(r) => {
-            setCreneaux(null);
-            setReservationConfirmee(r);
-          }}
-        />
       )}
 
       {/* Panier */}

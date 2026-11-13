@@ -2,7 +2,13 @@
 // sont stockées localement puis rejouées dès que la connexion revient.
 // Chaque commande porte une clé d'idempotence : la resynchroniser deux fois
 // ne crée jamais de doublon côté serveur.
-import { api, ErreurReseau, type TableCaisse } from './api';
+import {
+  api,
+  ErreurReseau,
+  type OccasionReservation,
+  type RestrictionAlimentaire,
+  type TableCaisse,
+} from './api';
 import { reseauCoupe, sAbonnerReseau } from './reseau';
 
 export interface CommandeEnAttente {
@@ -196,6 +202,8 @@ export interface ReservationEnAttente {
     nombreCouverts: number;
     date: string;
     note?: string;
+    occasion?: OccasionReservation;
+    restrictions?: RestrictionAlimentaire[];
     tableId: string;
   };
 }

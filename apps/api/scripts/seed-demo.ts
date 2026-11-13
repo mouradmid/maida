@@ -297,10 +297,11 @@ async function main() {
     data: {
       adresse: '12 rue des Frères Boudjema, Hydra',
       ville: 'Alger',
-      // La démo montre la commande client depuis le QR, et la réservation en
-      // ligne — les deux se voient depuis le menu public.
+      // La démo montre la commande client depuis le QR de table, et la
+      // réservation en ligne par le lien public (/reserver/le-bon-grill).
       commandeClientActive: true,
       reservationEnLigneActive: true,
+      lienPublic: 'le-bon-grill',
       // Code d'installation figé : il est affiché sur la page d'accueil du site
       // de démonstration, il ne doit donc pas changer à chaque rafraîchissement.
       codeTerminal: CODE_TERMINAL_DEMO,
@@ -692,7 +693,7 @@ async function main() {
       priseParId: serveurs[1].id,
     },
   });
-  // Une troisième prise en ligne par le client depuis le QR : `priseParId` nul,
+  // Une troisième prise en ligne par le client lui-même : `priseParId` nul,
   // c'est ce qui la fait apparaître « En ligne » chez le gérant.
   await prisma.reservation.create({
     data: {
@@ -701,7 +702,9 @@ async function main() {
       email: 'amine.ferhat@gmail.com',
       nombreCouverts: 4,
       date: dansMinutes(240),
-      note: 'Réservé depuis le QR code',
+      note: 'Table au calme si possible',
+      occasion: 'ANNIVERSAIRE',
+      restrictions: ['SANS_GLUTEN'],
       tableId: tablesParNumero.get('9')!,
       etablissementId,
       priseParId: null,

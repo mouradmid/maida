@@ -4,12 +4,21 @@ import { erreurLignesEntree, resoudreLignesCommande, type LigneEntree } from '..
 import { emailValide, envoyerEmail } from '../lib/email';
 import { emailConfirmationReservation } from '../lib/emails';
 import { prisma } from '../lib/prisma';
-import { choisirTableDisponible } from '../lib/reservations';
+import { verrouillerEtablissement } from '../lib/erreurs';
+import {
+  choisirTableDisponible,
+  creneauxDuJour,
+  dansLesHoraires,
+  JOUR_ISO,
+  lireBesoins,
+  lireHoraires,
+} from '../lib/reservations';
 
 // Routes publiques, sans authentification : le menu consultable par les
 // clients du restaurant (QR code à table), leur demande de commande — qui
-// reste en attente jusqu'à validation par un serveur — et leur réservation
-// de table, confirmée sur-le-champ dans les limites fixées par le gérant.
+// reste en attente jusqu'à validation par un serveur — et la réservation de
+// table depuis le lien public du restaurant, confirmée sur-le-champ dans les
+// limites fixées par le gérant.
 export const publicRouter = Router();
 
 // Anti-abus : la commande client est publique, on borne le débit par IP.
@@ -89,13 +98,7 @@ publicRouter.get('/menu/:etablissementId', async (req, res) => {
 
   const parametres = await prisma.etablissement.findUnique({
     where: { id: etablissement.id },
-    select: {
-      commandeClientActive: true,
-      reservationEnLigneActive: true,
-      reservationCouvertsMax: true,
-      reservationDelaiMinMinutes: true,
-      reservationHorizonJours: true,
-    },
+    select: { commandeClientActive: true },
   });
 
   res.json({
@@ -105,16 +108,6 @@ publicRouter.get('/menu/:etablissementId', async (req, res) => {
       ville: etablissement.ville,
     },
     commandeClientActive: parametres?.commandeClientActive ?? false,
-    // Les limites descendent avec le menu : le formulaire du client peut ainsi
-    // les afficher et les faire respecter avant l'envoi, plutôt que de le
-    // laisser remplir un créneau qui sera refusé.
-    reservationEnLigne: parametres?.reservationEnLigneActive
-      ? {
-          couvertsMax: parametres.reservationCouvertsMax,
-          delaiMinMinutes: parametres.reservationDelaiMinMinutes,
-          horizonJours: parametres.reservationHorizonJours,
-        }
-      : null,
     categories: categories
       // Le client ne voit pas les articles épuisés (rupture manuelle ou stock à 0).
       .map((c) => ({
@@ -140,6 +133,124 @@ publicRouter.get('/menu/:etablissementId', async (req, res) => {
           })),
         })),
       })),
+  });
+});
+
+/**
+ * Page publique de réservation d'un restaurant, atteinte par son lien lisible
+ * (« /reserver/le-bon-grill ») depuis ses réseaux, son site ou WhatsApp.
+ *
+ * Le menu QR, lui, sert au client déjà assis à table : réserver se fait de
+ * chez soi, il fallait donc une porte d'entrée qui ne passe pas par la salle.
+ */
+publicRouter.get('/reservation/:lien', async (req, res) => {
+  const etablissement = await prisma.etablissement.findUnique({
+    where: { lienPublic: req.params.lien.toLowerCase() },
+    select: {
+      id: true,
+      nom: true,
+      adresse: true,
+      ville: true,
+      statut: true,
+      reservationEnLigneActive: true,
+      reservationCouvertsMax: true,
+      reservationDelaiMinMinutes: true,
+      reservationHorizonJours: true,
+      horairesReservation: true,
+      compteClient: { select: { statut: true, modules: true } },
+    },
+  });
+  if (
+    !etablissement ||
+    etablissement.statut !== 'ACTIF' ||
+    etablissement.compteClient.statut !== 'ACTIF' ||
+    !etablissement.compteClient.modules.includes('QR_MENU')
+  ) {
+    res.status(404).json({ error: 'Restaurant introuvable' });
+    return;
+  }
+
+  res.json({
+    etablissementId: etablissement.id,
+    etablissement: {
+      nom: etablissement.nom,
+      adresse: etablissement.adresse,
+      ville: etablissement.ville,
+    },
+    // `null` quand le gérant a fermé la réservation en ligne : la page le dit
+    // et renvoie vers le téléphone, plutôt qu'une erreur. Sinon, les limites
+    // à afficher et à respecter avant même l'envoi.
+    reservationEnLigne: etablissement.reservationEnLigneActive
+      ? {
+          couvertsMax: etablissement.reservationCouvertsMax,
+          delaiMinMinutes: etablissement.reservationDelaiMinMinutes,
+          horizonJours: etablissement.reservationHorizonJours,
+          // Jours de la semaine (0 = dimanche) où au moins un service est
+          // ouvert : le calendrier du client grise les autres d'emblée.
+          joursOuverts: [
+            ...new Set(lireHoraires(etablissement.horairesReservation).map((p) => p.jour)),
+          ].sort(),
+        }
+      : null,
+  });
+});
+
+const DUREE_RESERVATION_MINUTES = 120;
+
+/**
+ * Les créneaux d'un jour pour un groupe : « 19:00, 19:30 (complet), 20:00… ».
+ * Le client choisit parmi eux au lieu de deviner une heure qui sera refusée.
+ */
+publicRouter.get('/reservation/:lien/creneaux', async (req, res) => {
+  const { jour, couverts } = req.query;
+  const nombre = Number(couverts);
+  if (typeof jour !== 'string' || !JOUR_ISO.test(jour)) {
+    res.status(400).json({ error: 'Jour invalide (AAAA-MM-JJ)' });
+    return;
+  }
+  if (!Number.isInteger(nombre) || nombre <= 0) {
+    res.status(400).json({ error: 'Nombre de personnes invalide' });
+    return;
+  }
+
+  const etablissement = await prisma.etablissement.findUnique({
+    where: { lienPublic: req.params.lien.toLowerCase() },
+    select: {
+      id: true,
+      statut: true,
+      reservationEnLigneActive: true,
+      reservationCouvertsMax: true,
+      reservationDelaiMinMinutes: true,
+      reservationHorizonJours: true,
+      horairesReservation: true,
+      compteClient: { select: { statut: true, modules: true } },
+    },
+  });
+  if (
+    !etablissement ||
+    etablissement.statut !== 'ACTIF' ||
+    etablissement.compteClient.statut !== 'ACTIF' ||
+    !etablissement.compteClient.modules.includes('QR_MENU') ||
+    !etablissement.reservationEnLigneActive
+  ) {
+    res.status(404).json({ error: 'Réservation indisponible' });
+    return;
+  }
+  if (nombre > etablissement.reservationCouvertsMax) {
+    res.json({ creneaux: [] });
+    return;
+  }
+
+  res.json({
+    creneaux: await creneauxDuJour({
+      etablissementId: etablissement.id,
+      jour,
+      couverts: nombre,
+      plages: lireHoraires(etablissement.horairesReservation),
+      delaiMinMinutes: etablissement.reservationDelaiMinMinutes,
+      horizonJours: etablissement.reservationHorizonJours,
+      dureeMinutes: DUREE_RESERVATION_MINUTES,
+    }),
   });
 });
 
@@ -221,7 +332,7 @@ publicRouter.post('/commandes', limiteCommandeClient, async (req, res) => {
 });
 
 /**
- * Réservation prise par le client lui-même depuis le menu QR.
+ * Réservation prise par le client lui-même depuis le lien public du restaurant.
  *
  * Confirmée sur-le-champ : le client repart avec une table ou avec un refus
  * clair, jamais avec une attente. Ce qui la borne, ce sont les limites fixées
@@ -229,7 +340,17 @@ publicRouter.post('/commandes', limiteCommandeClient, async (req, res) => {
  * peut pas réserver plus de tables qu'il n'y en a.
  */
 publicRouter.post('/reservations', limiteReservationClient, async (req, res) => {
-  const { etablissementId, nomClient, telephone, email, nombreCouverts, date, note } = req.body ?? {};
+  const {
+    etablissementId,
+    nomClient,
+    telephone,
+    email,
+    nombreCouverts,
+    date,
+    note,
+    occasion,
+    restrictions,
+  } = req.body ?? {};
 
   if (typeof etablissementId !== 'string') {
     res.status(400).json({ error: 'Établissement requis' });
@@ -257,6 +378,11 @@ publicRouter.post('/reservations', limiteReservationClient, async (req, res) => 
     res.status(400).json({ error: 'Le nombre de personnes doit être un entier positif' });
     return;
   }
+  const besoins = lireBesoins(occasion, restrictions);
+  if ('erreur' in besoins) {
+    res.status(400).json({ error: besoins.erreur });
+    return;
+  }
   const dateReservation = typeof date === 'string' ? new Date(date) : null;
   if (!dateReservation || Number.isNaN(dateReservation.getTime())) {
     res.status(400).json({ error: 'Horaire invalide' });
@@ -273,6 +399,7 @@ publicRouter.post('/reservations', limiteReservationClient, async (req, res) => 
       reservationCouvertsMax: true,
       reservationDelaiMinMinutes: true,
       reservationHorizonJours: true,
+      horairesReservation: true,
       compteClient: { select: { statut: true, modules: true } },
     },
   });
@@ -321,35 +448,53 @@ publicRouter.post('/reservations', limiteReservationClient, async (req, res) => 
     return;
   }
 
-  const DUREE_MINUTES = 120;
-  const table = await choisirTableDisponible(
-    etablissement.id,
-    nombreCouverts,
-    debutCreneau,
-    DUREE_MINUTES,
-  );
-  if (!table) {
+  // Le restaurant ne prend que pendant ses services : un créneau hors horaires
+  // est refusé ici même si le formulaire du client a été contourné.
+  if (!dansLesHoraires(lireHoraires(etablissement.horairesReservation), debutCreneau)) {
+    res.status(400).json({
+      error:
+        "Le restaurant ne prend pas de réservation à cette heure-là. Choisissez l'un des créneaux proposés.",
+    });
+    return;
+  }
+
+  // Sous verrou : deux clients qui visent la dernière table du même créneau
+  // passent l'un après l'autre, et le second se voit proposer autre chose.
+  const resultat = await prisma.$transaction(async (tx) => {
+    await verrouillerEtablissement(tx, etablissement.id);
+    const table = await choisirTableDisponible(
+      etablissement.id,
+      nombreCouverts,
+      debutCreneau,
+      DUREE_RESERVATION_MINUTES,
+    );
+    if (!table) return null;
+    const reservation = await tx.reservation.create({
+      data: {
+        nomClient: nomClient.trim(),
+        telephone: telephone.trim(),
+        email: typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null,
+        nombreCouverts,
+        date: dateReservation,
+        dureeMinutes: DUREE_RESERVATION_MINUTES,
+        note: typeof note === 'string' && note.trim() ? note.trim() : null,
+        occasion: besoins.occasion ?? null,
+        restrictions: besoins.restrictions ?? [],
+        tableId: table.id,
+        etablissementId: etablissement.id,
+        // Personne n'a décroché : c'est le client qui a rempli le formulaire.
+        priseParId: null,
+      },
+    });
+    return { table, reservation };
+  });
+  if (!resultat) {
     res.status(409).json({
       error: 'Plus de table libre à cette heure. Essayez un autre créneau, ou appelez le restaurant.',
     });
     return;
   }
-
-  const reservation = await prisma.reservation.create({
-    data: {
-      nomClient: nomClient.trim(),
-      telephone: telephone.trim(),
-      email: typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null,
-      nombreCouverts,
-      date: dateReservation,
-      dureeMinutes: DUREE_MINUTES,
-      note: typeof note === 'string' && note.trim() ? note.trim() : null,
-      tableId: table.id,
-      etablissementId: etablissement.id,
-      // Personne n'a décroché : c'est le client qui a rempli le formulaire.
-      priseParId: null,
-    },
-  });
+  const { table, reservation } = resultat;
 
   // Confirmation non bloquante : la table est prise, qu'un serveur d'e-mail
   // réponde ou non (envoyerEmail ne lève jamais et trace le résultat).

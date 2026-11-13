@@ -147,7 +147,7 @@ model Etablissement {
   // clients depuis le QR à table. Désactivé par défaut : opt-in explicite.
   commandeClientActive Boolean             @default(false)
 
-  // Réservation en ligne par le client depuis le menu QR. Opt-in lui aussi, et
+  // Réservation en ligne par le client par son lien public. Opt-in lui aussi, et
   // borné par le gérant : une réservation en ligne engage une table sans que
   // personne n'ait décroché, donc il fixe jusqu'où il accepte d'aller. Au-delà,
   // le client est renvoyé vers le téléphone plutôt que refusé sans explication.
@@ -160,8 +160,19 @@ model Etablissement {
   reservationDelaiMinMinutes Int     @default(120)
   // Horizon maximum : au-delà, le restaurant préfère être appelé.
   reservationHorizonJours    Int     @default(30)
+  // Fin de l'adresse publique de réservation (« /reserver/le-bon-grill »), que
+  // le gérant partage sur ses réseaux, son site ou WhatsApp. Lisible parce
+  // qu'elle s'affiche et se recopie ; tirée du nom à la première consultation
+  // par le gérant, puis stable : un lien publié ne doit jamais casser.
+  lienPublic                 String? @unique
+  // Services ouverts à la réservation en ligne, par jour de la semaine :
+  // [{ jour: 0-6 (0 = dimanche), debut: "12:00", fin: "14:30" }, …]. Le client
+  // ne voit que des créneaux tombant dans ces plages. Nul = les horaires par
+  // défaut (midi et soir, tous les jours), pour que la réservation marche dès
+  // l'activation ; le gérant les ajuste ensuite.
+  horairesReservation        Json?
 
-  creeLe               DateTime            @default(now())
+  creeLe DateTime @default(now())
 
   compteClientId String
   compteClient   CompteClient @relation(fields: [compteClientId], references: [id])
@@ -206,16 +217,16 @@ model Utilisateur {
   etablissementId String?
   etablissement   Etablissement? @relation(fields: [etablissementId], references: [id])
 
-  commandes            Commande[]
-  annulationsValidees  Annulation[]    @relation("AnnulationsValidees")
-  annulationsDemandees Annulation[]    @relation("AnnulationsDemandees")
-  journeesOuvertes     JourneeCaisse[] @relation("JourneesOuvertes")
-  journeesCloturees    JourneeCaisse[] @relation("JourneesCloturees")
-  cloturesDemandees    JourneeCaisse[] @relation("CloturesDemandees")
-  remisesAccordees     Remise[]        @relation("RemisesAccordees")
-  remisesDemandees     Remise[]        @relation("RemisesDemandees")
-  reservationsPrises   Reservation[]
-  demandesTraitees     DemandeClient[]
+  commandes              Commande[]
+  annulationsValidees    Annulation[]            @relation("AnnulationsValidees")
+  annulationsDemandees   Annulation[]            @relation("AnnulationsDemandees")
+  journeesOuvertes       JourneeCaisse[]         @relation("JourneesOuvertes")
+  journeesCloturees      JourneeCaisse[]         @relation("JourneesCloturees")
+  cloturesDemandees      JourneeCaisse[]         @relation("CloturesDemandees")
+  remisesAccordees       Remise[]                @relation("RemisesAccordees")
+  remisesDemandees       Remise[]                @relation("RemisesDemandees")
+  reservationsPrises     Reservation[]
+  demandesTraitees       DemandeClient[]
   jetonsReinitialisation JetonReinitialisation[]
 
   @@map("utilisateurs")
@@ -602,6 +613,29 @@ model DemandeClient {
   @@map("demandes_clients")
 }
 
+// Ce que le client fête, s'il le dit : la salle prépare la bougie, la table
+// tranquille ou le coin pour la famille avant qu'il n'arrive.
+enum OccasionReservation {
+  ANNIVERSAIRE
+  ROMANTIQUE
+  AFFAIRES
+  FAMILLE
+  FETE
+  AUTRE
+}
+
+// Restrictions alimentaires annoncées à la réservation, pour que la cuisine
+// les connaisse avant la commande plutôt qu'au moment de servir.
+enum RestrictionAlimentaire {
+  VEGETARIEN
+  VEGAN
+  SANS_GLUTEN
+  SANS_LACTOSE
+  ALLERGIE_ARACHIDES
+  ALLERGIE_FRUITS_A_COQUE
+  ALLERGIE_FRUITS_DE_MER
+}
+
 enum StatutReservation {
   A_VENIR
   ARRIVEE
@@ -613,20 +647,22 @@ enum StatutReservation {
 // lui-même depuis le menu QR — auquel cas `priseParId` est nul : personne de
 // l'équipe n'a décroché, c'est le client qui a rempli le formulaire.
 model Reservation {
-  id             String            @id @default(cuid())
+  id             String                   @id @default(cuid())
   nomClient      String
   telephone      String?
   email          String?
   nombreCouverts Int
   date           DateTime
   // Durée d'occupation prévue : sert à détecter les chevauchements.
-  dureeMinutes   Int               @default(120)
+  dureeMinutes   Int                      @default(120)
   note           String?
-  statut         StatutReservation @default(A_VENIR)
-  creeLe         DateTime          @default(now())
+  occasion       OccasionReservation?
+  restrictions   RestrictionAlimentaire[] @default([])
+  statut         StatutReservation        @default(A_VENIR)
+  creeLe         DateTime                 @default(now())
   // Générée par la caisse pour les réservations prises hors ligne : garantit
   // qu'une resynchronisation répétée ne crée jamais de doublon.
-  cleIdempotence String?           @unique
+  cleIdempotence String?                  @unique
 
   tableId String
   table   Table  @relation(fields: [tableId], references: [id])
@@ -634,7 +670,7 @@ model Reservation {
   etablissementId String
   etablissement   Etablissement @relation(fields: [etablissementId], references: [id])
 
-  // Nul pour une réservation prise en ligne par le client depuis le QR : c'est
+  // Nul pour une réservation prise en ligne par le client par le lien public : c'est
   // ce nul, et lui seul, qui distingue les deux origines. D'où le `Restrict` —
   // si une suppression d'employé pouvait vider ce champ, tout son historique
   // se relirait un jour comme « pris en ligne ».

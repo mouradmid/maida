@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ErreurReseau, type Reservation, type TableCaisse } from '../lib/api';
+import {
+  api,
+  ErreurReseau,
+  type OccasionReservation,
+  type Reservation,
+  type RestrictionAlimentaire,
+  type TableCaisse,
+} from '../lib/api';
 import {
   lireCache,
   lireReservationsEnAttente,
@@ -10,7 +17,14 @@ import {
 } from '../lib/horsLigne';
 import { useHorsLigne } from '../hooks/useHorsLigne';
 import { badgeNeutre, boutonPrimaire, carte, champ, messageErreur, messageSucces } from '../lib/ui';
-import { LIBELLES_STATUT_RESERVATION } from '../lib/libelles';
+import {
+  LIBELLES_OCCASION,
+  LIBELLES_RESTRICTION,
+  LIBELLES_STATUT_RESERVATION,
+  OCCASIONS,
+  RESTRICTIONS,
+} from '../lib/libelles';
+import { BesoinsReservation } from './BesoinsReservation';
 
 function jourISO(date: Date) {
   const decale = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -49,6 +63,8 @@ export function Reservations() {
   const [couverts, setCouverts] = useState('2');
   const [tableId, setTableId] = useState('');
   const [note, setNote] = useState('');
+  const [occasion, setOccasion] = useState<OccasionReservation | ''>('');
+  const [restrictions, setRestrictions] = useState<RestrictionAlimentaire[]>([]);
 
   // Mémorisée sur le jour affiché : l'effet ci-dessous la déclare en dépendance
   // au lieu de la laisser hors du tableau (elle est aussi rappelée à la main
@@ -110,6 +126,8 @@ export function Reservations() {
       nombreCouverts: Number(couverts),
       date: new Date(`${jour}T${heure}:00`).toISOString(),
       note: note.trim() || undefined,
+      occasion: occasion || undefined,
+      restrictions: restrictions.length ? restrictions : undefined,
       tableId,
     };
     // Clé générée avant l'envoi et réutilisée en cas de repli : une requête
@@ -122,6 +140,8 @@ export function Reservations() {
       setTelephone('');
       setEmail('');
       setNote('');
+      setOccasion('');
+      setRestrictions([]);
     };
 
     const enregistrerEnFile = () => {
@@ -421,6 +441,11 @@ export function Reservations() {
                       {r.prisePar ? `prise par ${r.prisePar.prenom}` : 'réservée en ligne'}
                       {r.note && <> · « {r.note} »</>}
                     </span>
+                    {(r.occasion || r.restrictions.length > 0) && (
+                      <span className="flex flex-wrap gap-1.5">
+                        <BesoinsReservation occasion={r.occasion} restrictions={r.restrictions} />
+                      </span>
+                    )}
                   </div>
                   {modifiable && (
                     <span className="flex shrink-0 flex-wrap items-center gap-2">
@@ -602,9 +627,44 @@ export function Reservations() {
               </option>
             ))}
           </select>
+          <select
+            value={occasion}
+            onChange={(e) => setOccasion(e.target.value as OccasionReservation | '')}
+            className={champ}
+          >
+            <option value="">Pas d'occasion particulière</option>
+            {OCCASIONS.map((o) => (
+              <option key={o} value={o}>
+                {LIBELLES_OCCASION[o].icone} {LIBELLES_OCCASION[o].texte}
+              </option>
+            ))}
+          </select>
+          <div className="flex flex-wrap gap-1.5" aria-label="Restrictions alimentaires">
+            {RESTRICTIONS.map((x) => {
+              const choisie = restrictions.includes(x);
+              return (
+                <button
+                  key={x}
+                  type="button"
+                  onClick={() =>
+                    setRestrictions(choisie ? restrictions.filter((y) => y !== x) : [...restrictions, x])
+                  }
+                  aria-pressed={choisie}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    choisie
+                      ? 'bg-red-100 text-red-800'
+                      : 'border border-stone-300 bg-card text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  {choisie ? '⚠ ' : ''}
+                  {LIBELLES_RESTRICTION[x]}
+                </button>
+              );
+            })}
+          </div>
           <input
             type="text"
-            placeholder="Note (anniversaire, terrasse...)"
+            placeholder="Note (terrasse, chaise haute...)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             className={champ}

@@ -10,7 +10,9 @@ import { app } from '../src/app';
 import { comptesReels, purgerDonneesDemo } from '../src/lib/demo';
 import { emailConfirmationReservation, emailMotDePasseOublie } from '../src/lib/emails';
 import { AUTH_COOKIE_NAME, signerJetonTerminal, signToken } from '../src/lib/jwt';
+import { Prisma } from '../src/generated/prisma/client';
 import { prisma } from '../src/lib/prisma';
+import { instantAlger } from '../src/lib/reservations';
 
 const NOM_COMPTE_TEST = 'TEST-AUTO';
 const EMAIL_GERANT = 'gerant@test-auto.maida';
@@ -1641,14 +1643,18 @@ describe('Commande client depuis le QR', () => {
   });
 });
 
-// Le client réserve lui-même depuis le menu QR. La réservation est confirmée
+// Le client réserve lui-même depuis le lien public du restaurant. La réservation est confirmée
 // sur-le-champ : ce qui la borne, ce sont les limites du gérant et le plan de
 // salle — on ne peut pas réserver plus de tables qu'il n'en existe.
-describe('Réservation en ligne depuis le QR', () => {
+describe('Réservation en ligne par le lien public', () => {
   // Un créneau lointain, à l'écart de celui des réservations prises à la caisse
   // par les tests précédents : ici, les deux tables doivent être libres.
-  const creneau = (decalageJours = 10) =>
-    new Date(Date.now() + decalageJours * 24 * 60 * 60_000).toISOString();
+  // Un soir à 20 h (heure d'Alger) : dans le service du soir des horaires par
+  // défaut, quel que soit le moment où la suite tourne.
+  const creneau = (decalageJours = 10) => {
+    const jour = new Date(Date.now() + decalageJours * 24 * 60 * 60_000).toISOString().slice(0, 10);
+    return new Date(instantAlger(jour, '20:00')).toISOString();
+  };
   const clientType = { nomClient: 'Client QR', telephone: '0550 99 88 77', nombreCouverts: 2 };
   let tableAttribuee = '';
 
@@ -1669,14 +1675,52 @@ describe('Réservation en ligne depuis le QR', () => {
     expect(res.status).toBe(200);
     expect(res.body.reservationEnLigneActive).toBe(true);
 
-    // Les limites descendent avec le menu, pour que le formulaire les applique
-    // avant même d'envoyer quoi que ce soit.
-    const menu = await request(app).get(`/api/public/menu/${etablissementId}`);
-    expect(menu.body.reservationEnLigne).toEqual({
+    // Les limites descendent avec la page de réservation, pour que le
+    // formulaire les applique avant même d'envoyer quoi que ce soit.
+    const parametres = await gerant.get('/api/gerant/parametres');
+    const page = await request(app).get(`/api/public/reservation/${parametres.body.lienReservation}`);
+    expect(page.status).toBe(200);
+    expect(page.body.etablissementId).toBe(etablissementId);
+    expect(page.body.reservationEnLigne).toEqual({
       couvertsMax: 4,
       delaiMinMinutes: 120,
       horizonJours: 30,
+      joursOuverts: [0, 1, 2, 3, 4, 5, 6],
     });
+  });
+
+  it('donne au restaurant un lien lisible et stable, à partager sur ses réseaux', async () => {
+    const premier = await gerant.get('/api/gerant/parametres');
+    expect(premier.body.lienReservation).toBe('resto-test');
+    const second = await gerant.get('/api/gerant/parametres');
+    expect(second.body.lienReservation).toBe('resto-test');
+
+    // Casse indifférente : le lien recopié à la main doit marcher quand même.
+    const majuscules = await request(app).get('/api/public/reservation/Resto-Test');
+    expect(majuscules.status).toBe(200);
+
+    const inconnu = await request(app).get('/api/public/reservation/nulle-part');
+    expect(inconnu.status).toBe(404);
+
+    // Le menu de table ne propose plus la réservation : elle a sa propre page.
+    const menu = await request(app).get(`/api/public/menu/${etablissementId}`);
+    expect(menu.body.reservationEnLigne).toBeUndefined();
+  });
+
+  it('un homonyme reçoit un lien distinct', async () => {
+    const { slugifier } = await import('../src/lib/lienPublic');
+    expect(slugifier("Café d'El Djazaïr")).toBe('cafe-d-el-djazair');
+    expect(slugifier('مطعم')).toBe('restaurant');
+
+    const homonyme = await prisma.etablissement.create({
+      data: { nom: 'Resto Test', codeTerminal: 'HOMONYME', compteClientId },
+    });
+    try {
+      const { assurerLienPublic } = await import('../src/lib/lienPublic');
+      expect(await assurerLienPublic(homonyme.id)).toBe('resto-test-2');
+    } finally {
+      await prisma.etablissement.delete({ where: { id: homonyme.id } });
+    }
   });
 
   it('refuse une valeur de réglage hors bornes', async () => {
@@ -3211,5 +3255,187 @@ describe('Audit avant mise en ligne', () => {
     expect(await bcrypt.compare('8765', gerantEnBase.codePinHash!)).toBe(true);
 
     await patron.put('/api/gerant/code-pin').send({ codePin: PIN_GERANT, motDePasse: MDP_GERANT });
+  });
+});
+
+// Réservation à la façon de Zenchef / TheFork : horaires de service, créneaux
+// proposés (et grisés quand c'est complet), occasion et restrictions.
+describe('Créneaux, occasion et restrictions de la réservation en ligne', () => {
+  const patron = request.agent(app);
+  const caisse = request.agent(app);
+  let lien = '';
+  // Prochain vendredi à au moins trois jours : loin du délai minimum, proche
+  // de l'horizon.
+  let vendredi = '';
+  let jeudi = '';
+
+  beforeAll(async () => {
+    await patron.post('/api/auth/login').send({ email: EMAIL_GERANT, password: MDP_GERANT });
+    await caisse
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_DROITS });
+    await patron.patch('/api/gerant/parametres').send({
+      reservationEnLigneActive: true,
+      reservationCouvertsMax: 8,
+      reservationDelaiMinMinutes: 120,
+      reservationHorizonJours: 30,
+    });
+    lien = (await patron.get('/api/gerant/parametres')).body.lienReservation;
+    for (let n = 3; n < 10; n++) {
+      const jour = new Date(Date.now() + n * 24 * 60 * 60_000).toISOString().slice(0, 10);
+      const jourSemaine = new Date(instantAlger(jour, '12:00')).getUTCDay();
+      if (jourSemaine === 5 && !vendredi) vendredi = jour;
+      if (jourSemaine === 4 && !jeudi) jeudi = jour;
+    }
+  });
+
+  afterAll(async () => {
+    await prisma.etablissement.update({
+      where: { id: etablissementId },
+      data: { horairesReservation: Prisma.DbNull },
+    });
+  });
+
+  it('refuse des horaires incohérents', async () => {
+    const aLEnvers = await patron
+      .patch('/api/gerant/parametres')
+      .send({ horairesReservation: [{ jour: 5, debut: '20:00', fin: '19:00' }] });
+    expect(aLEnvers.status).toBe(400);
+
+    const chevauchement = await patron.patch('/api/gerant/parametres').send({
+      horairesReservation: [
+        { jour: 5, debut: '12:00', fin: '15:00' },
+        { jour: 5, debut: '14:00', fin: '16:00' },
+      ],
+    });
+    expect(chevauchement.status).toBe(400);
+
+    const heureFausse = await patron
+      .patch('/api/gerant/parametres')
+      .send({ horairesReservation: [{ jour: 5, debut: '25:00', fin: '26:00' }] });
+    expect(heureFausse.status).toBe(400);
+  });
+
+  it('le gérant règle ses services ; le client ne voit que les jours ouverts', async () => {
+    const res = await patron
+      .patch('/api/gerant/parametres')
+      .send({ horairesReservation: [{ jour: 5, debut: '19:00', fin: '20:00' }] });
+    expect(res.status).toBe(200);
+    expect(res.body.horairesReservation).toEqual([{ jour: 5, debut: '19:00', fin: '20:00' }]);
+
+    const page = await request(app).get(`/api/public/reservation/${lien}`);
+    expect(page.body.reservationEnLigne.joursOuverts).toEqual([5]);
+  });
+
+  it('propose les créneaux du service, et rien un jour fermé', async () => {
+    const ouvert = await request(app).get(
+      `/api/public/reservation/${lien}/creneaux?jour=${vendredi}&couverts=2`,
+    );
+    expect(ouvert.status).toBe(200);
+    expect(ouvert.body.creneaux).toEqual([
+      { heure: '19:00', service: 'Soir', disponible: true },
+      { heure: '19:30', service: 'Soir', disponible: true },
+      { heure: '20:00', service: 'Soir', disponible: true },
+    ]);
+
+    const ferme = await request(app).get(
+      `/api/public/reservation/${lien}/creneaux?jour=${jeudi}&couverts=2`,
+    );
+    expect(ferme.body.creneaux).toEqual([]);
+
+    const groupeTropGrand = await request(app).get(
+      `/api/public/reservation/${lien}/creneaux?jour=${vendredi}&couverts=20`,
+    );
+    expect(groupeTropGrand.body.creneaux).toEqual([]);
+  });
+
+  it('refuse une heure hors des services, même en contournant le formulaire', async () => {
+    const res = await request(app)
+      .post('/api/public/reservations')
+      .send({
+        etablissementId,
+        nomClient: 'Hors Service',
+        telephone: '0550 00 00 01',
+        nombreCouverts: 2,
+        date: new Date(instantAlger(vendredi, '21:00')).toISOString(),
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('créneaux proposés');
+  });
+
+  it("transmet l'occasion et les restrictions alimentaires jusqu'à la caisse", async () => {
+    const invalide = await request(app)
+      .post('/api/public/reservations')
+      .send({
+        etablissementId,
+        nomClient: 'Occasion Fausse',
+        telephone: '0550 00 00 02',
+        nombreCouverts: 2,
+        date: new Date(instantAlger(vendredi, '19:30')).toISOString(),
+        occasion: 'MARIAGE_SECRET',
+      });
+    expect(invalide.status).toBe(400);
+
+    const res = await request(app)
+      .post('/api/public/reservations')
+      .send({
+        etablissementId,
+        nomClient: 'Amina Anniversaire',
+        telephone: '0550 00 00 03',
+        nombreCouverts: 2,
+        date: new Date(instantAlger(vendredi, '19:30')).toISOString(),
+        occasion: 'ANNIVERSAIRE',
+        restrictions: ['SANS_GLUTEN', 'ALLERGIE_ARACHIDES', 'SANS_GLUTEN'],
+      });
+    expect(res.status).toBe(201);
+
+    const debut = new Date(instantAlger(vendredi, '00:00')).toISOString();
+    const fin = new Date(instantAlger(vendredi, '23:59')).toISOString();
+    const liste = await caisse.get(
+      `/api/caisse/reservations?debut=${encodeURIComponent(debut)}&fin=${encodeURIComponent(fin)}`,
+    );
+    const vue = liste.body.find((r: { nomClient: string }) => r.nomClient === 'Amina Anniversaire');
+    expect(vue.occasion).toBe('ANNIVERSAIRE');
+    expect(vue.restrictions.sort()).toEqual(['ALLERGIE_ARACHIDES', 'SANS_GLUTEN']);
+
+    // La caisse peut corriger ce que le client a déclaré.
+    const corrige = await caisse
+      .patch(`/api/caisse/reservations/${vue.id}`)
+      .send({ occasion: null, restrictions: ['VEGETARIEN'] });
+    expect(corrige.status).toBe(200);
+    expect(corrige.body.occasion).toBeNull();
+    expect(corrige.body.restrictions).toEqual(['VEGETARIEN']);
+  });
+
+  it('grise un créneau quand toutes les tables assez grandes sont prises', async () => {
+    const tables = await prisma.table.findMany({
+      where: { etablissementId, statut: 'ACTIF', nombreCouverts: { gte: 2 } },
+      select: { id: true },
+    });
+    const date = new Date(instantAlger(vendredi, '19:00'));
+    await prisma.reservation.createMany({
+      data: tables.map((t, i) => ({
+        nomClient: `Complet ${i}`,
+        nombreCouverts: 2,
+        date,
+        tableId: t.id,
+        etablissementId,
+      })),
+    });
+
+    const res = await request(app).get(
+      `/api/public/reservation/${lien}/creneaux?jour=${vendredi}&couverts=2`,
+    );
+    const a19h = res.body.creneaux.find((c: { heure: string }) => c.heure === '19:00');
+    expect(a19h.disponible).toBe(false);
+
+    const tentative = await request(app).post('/api/public/reservations').send({
+      etablissementId,
+      nomClient: 'Trop Tard',
+      telephone: '0550 00 00 04',
+      nombreCouverts: 2,
+      date: date.toISOString(),
+    });
+    expect(tentative.status).toBe(409);
   });
 });
