@@ -20,11 +20,14 @@ enum StatutCompteClient {
   SUSPENDU
 }
 
-// Modules optionnels accordés par l'éditeur à un compte client
-// (base des futures offres commerciales — extensible).
+// Modules optionnels accordés par l'éditeur à un compte client : ce sont les
+// options facturées en plus de l'abonnement.
 enum ModuleCompte {
   FOOD_COST
   QR_MENU
+  // Réservation par le client lui-même, depuis le lien public du restaurant.
+  // La prise de réservation au téléphone, à la caisse, reste incluse pour tous.
+  RESERVATION_EN_LIGNE
 }
 
 enum StatutEtablissement {

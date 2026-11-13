@@ -41,6 +41,7 @@ function reponseParametres(modules: string[] | undefined, etablissement: Reglage
   return {
     moduleFoodCost: modules?.includes('FOOD_COST') ?? false,
     moduleQrMenu: modules?.includes('QR_MENU') ?? false,
+    moduleReservationEnLigne: modules?.includes('RESERVATION_EN_LIGNE') ?? false,
     ...etablissement,
   };
 }

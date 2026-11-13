@@ -143,6 +143,13 @@ export function GestionComptesClients() {
       titre: 'Menu public consultable par QR code à table',
       retrait: 'son menu public et ses QR codes sont désactivés',
     },
+    {
+      module: 'RESERVATION_EN_LIGNE',
+      libelle: 'Réservation en ligne',
+      titre:
+        'Lien public de réservation (réseaux, site, WhatsApp) avec créneaux. La réservation au téléphone reste incluse.',
+      retrait: 'son lien de réservation ne fonctionne plus ; la caisse peut toujours réserver',
+    },
   ];
 
   async function handleToggleModule(compte: CompteClient, module: ModuleCompte, retrait: string) {

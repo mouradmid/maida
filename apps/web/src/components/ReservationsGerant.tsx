@@ -127,7 +127,8 @@ const DELAIS = [
  * Réglages de la réservation en ligne : le gérant l'ouvre, et fixe jusqu'où.
  *
  * Le client réserve par le lien public du restaurant, partagé sur ses réseaux.
- * Elle fait partie du module « QR menu » : sans lui, la carte n'apparaît pas.
+ * C'est une option facturée (module « Réservation en ligne ») : sans elle, la
+ * carte n'apparaît pas, et la réservation se prend au téléphone, à la caisse.
  */
 function ReglagesReservationEnLigne({
   parametres,
@@ -308,7 +309,7 @@ export function ReservationsGerant() {
         </div>
       </div>
 
-      {parametres?.moduleQrMenu && (
+      {parametres?.moduleReservationEnLigne && (
         <ReglagesReservationEnLigne parametres={parametres} onChange={setParametres} />
       )}
 

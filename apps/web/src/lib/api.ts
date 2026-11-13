@@ -340,11 +340,12 @@ export interface ResultatPaiement {
   additionCloturee: boolean;
 }
 
-export type ModuleCompte = 'FOOD_COST' | 'QR_MENU';
+export type ModuleCompte = 'FOOD_COST' | 'QR_MENU' | 'RESERVATION_EN_LIGNE';
 
 export interface ParametresGerant {
   moduleFoodCost: boolean;
   moduleQrMenu: boolean;
+  moduleReservationEnLigne: boolean;
   suiviCoutsActive: boolean;
   commandeClientActive: boolean;
   // Réservation en ligne par le lien public du restaurant, et les limites que le gérant lui fixe.

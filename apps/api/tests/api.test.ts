@@ -93,7 +93,12 @@ async function purgerCompteTest() {
 beforeAll(async () => {
   await purgerCompteTest(); // au cas où une exécution précédente a planté
 
-  const compte = await prisma.compteClient.create({ data: { nomEnseigne: NOM_COMPTE_TEST } });
+  const compte = await prisma.compteClient.create({
+    data: {
+      nomEnseigne: NOM_COMPTE_TEST,
+      modules: ['FOOD_COST', 'QR_MENU', 'RESERVATION_EN_LIGNE'],
+    },
+  });
   compteClientId = compte.id;
   const etab = await prisma.etablissement.create({
     data: {
@@ -1906,6 +1911,41 @@ describe.skipIf(!identifiantsAdmin)('Module food cost activable', () => {
     const parametresApres = await gerant.get('/api/gerant/parametres');
     expect(parametresApres.body.moduleQrMenu).toBe(true);
   });
+
+  it('option réservation en ligne : retirée → lien coupé, mais la caisse réserve toujours', async () => {
+    // À ce stade le compte a FOOD_COST et QR_MENU, sans la réservation en ligne.
+    const parametres = await gerant.get('/api/gerant/parametres');
+    expect(parametres.body.moduleReservationEnLigne).toBe(false);
+    const lien = parametres.body.lienReservation;
+
+    const page = await request(app).get(`/api/public/reservation/${lien}`);
+    expect(page.status).toBe(404);
+    const creneaux = await request(app).get(
+      `/api/public/reservation/${lien}/creneaux?jour=2030-01-01&couverts=2`,
+    );
+    expect(creneaux.status).toBe(404);
+
+    // La réservation au téléphone reste incluse dans l'abonnement.
+    const caisse = request.agent(app);
+    await caisse
+      .post('/api/auth/login-pin')
+      .send({ jetonTerminal: signerJetonTerminal(etablissementId), codePin: PIN_SERVEUR_DROITS });
+    const auTelephone = await caisse.post('/api/caisse/reservations').send({
+      nomClient: 'Appel Sans Option',
+      nombreCouverts: 2,
+      date: new Date(Date.now() + 5 * 24 * 60 * 60_000).toISOString(),
+      tableId: table2Id,
+    });
+    expect(auTelephone.status).toBe(201);
+
+    await admin
+      .patch(`/api/admin/comptes-clients/${compteClientId}`)
+      .send({ modules: ['FOOD_COST', 'QR_MENU', 'RESERVATION_EN_LIGNE'] });
+    const rouverte = await request(app).get(`/api/public/reservation/${lien}`);
+    expect(rouverte.status).toBe(200);
+    const apres = await gerant.get('/api/gerant/parametres');
+    expect(apres.body.moduleReservationEnLigne).toBe(true);
+  });
 });
 
 describe('Gestion du stock (ruptures et quantités)', () => {
@@ -3270,6 +3310,11 @@ describe('Créneaux, occasion et restrictions de la réservation en ligne', () =
   let jeudi = '';
 
   beforeAll(async () => {
+    // Les blocs « modules » ont pu retirer l'option en route.
+    await prisma.compteClient.update({
+      where: { id: compteClientId },
+      data: { modules: ['FOOD_COST', 'QR_MENU', 'RESERVATION_EN_LIGNE'] },
+    });
     await patron.post('/api/auth/login').send({ email: EMAIL_GERANT, password: MDP_GERANT });
     await caisse
       .post('/api/auth/login-pin')

@@ -290,7 +290,12 @@ async function main() {
   // et les coordonnées sont normalisées (l'adresse d'origine avait un encodage cassé).
   await prisma.compteClient.update({
     where: { id: etablissement.compteClientId },
-    data: { statut: 'ACTIF', demo: true },
+    // Toutes les options : la démo doit pouvoir tout montrer.
+    data: {
+      statut: 'ACTIF',
+      demo: true,
+      modules: ['FOOD_COST', 'QR_MENU', 'RESERVATION_EN_LIGNE'],
+    },
   });
   await prisma.etablissement.update({
     where: { id: etablissementId },

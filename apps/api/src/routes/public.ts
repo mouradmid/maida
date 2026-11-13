@@ -164,7 +164,7 @@ publicRouter.get('/reservation/:lien', async (req, res) => {
     !etablissement ||
     etablissement.statut !== 'ACTIF' ||
     etablissement.compteClient.statut !== 'ACTIF' ||
-    !etablissement.compteClient.modules.includes('QR_MENU')
+    !etablissement.compteClient.modules.includes('RESERVATION_EN_LIGNE')
   ) {
     res.status(404).json({ error: 'Restaurant introuvable' });
     return;
@@ -230,7 +230,7 @@ publicRouter.get('/reservation/:lien/creneaux', async (req, res) => {
     !etablissement ||
     etablissement.statut !== 'ACTIF' ||
     etablissement.compteClient.statut !== 'ACTIF' ||
-    !etablissement.compteClient.modules.includes('QR_MENU') ||
+    !etablissement.compteClient.modules.includes('RESERVATION_EN_LIGNE') ||
     !etablissement.reservationEnLigneActive
   ) {
     res.status(404).json({ error: 'Réservation indisponible' });
@@ -407,7 +407,7 @@ publicRouter.post('/reservations', limiteReservationClient, async (req, res) => 
     !etablissement ||
     etablissement.statut !== 'ACTIF' ||
     etablissement.compteClient.statut !== 'ACTIF' ||
-    !etablissement.compteClient.modules.includes('QR_MENU')
+    !etablissement.compteClient.modules.includes('RESERVATION_EN_LIGNE')
   ) {
     res.status(404).json({ error: 'Réservation indisponible' });
     return;

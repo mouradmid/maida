@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ModuleCompte" ADD VALUE 'RESERVATION_EN_LIGNE';
