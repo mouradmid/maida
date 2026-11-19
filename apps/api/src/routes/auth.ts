@@ -60,7 +60,9 @@ const limitePin = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clePin(req.ip),
+  // `ipKeyGenerator` écrit ici même : la bibliothèque inspecte le texte de cette
+  // fonction et crie à l'oubli de l'IPv6 si elle ne l'y voit pas.
+  keyGenerator: (req) => `pin:${ipKeyGenerator(req.ip ?? '')}`,
   message: MESSAGE_PIN,
 });
 const limitePinJournee = rateLimit({
@@ -69,7 +71,7 @@ const limitePinJournee = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: false,
   legacyHeaders: false,
-  keyGenerator: (req) => clePin(req.ip),
+  keyGenerator: (req) => `pin:${ipKeyGenerator(req.ip ?? '')}`,
   message: MESSAGE_PIN,
 });
 
