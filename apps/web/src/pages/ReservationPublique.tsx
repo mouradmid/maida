@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ErreurReseau, type OccasionReservation, type RestrictionAlimentaire } from '../lib/api';
 import { LIBELLES_OCCASION, LIBELLES_RESTRICTION, OCCASIONS, RESTRICTIONS } from '../lib/libelles';
@@ -86,6 +86,8 @@ export function ReservationPublique() {
   const [creneaux, setCreneaux] = useState<Creneau[] | null>(null);
   const [heure, setHeure] = useState<string | null>(null);
   const [etape, setEtape] = useState<'creneau' | 'coordonnees'>('creneau');
+  // Vrai dès que le client touche un jour : on ne le déplace plus ensuite.
+  const jourChoisiParClient = useRef(false);
 
   const [nomClient, setNomClient] = useState('');
   const [telephone, setTelephone] = useState('');
@@ -126,12 +128,25 @@ export function ReservationPublique() {
     setHeure(null);
     api
       .creneauxReservation(lien, jour, couverts)
-      .then((r) => !annule && setCreneaux(r.creneaux))
+      .then((r) => {
+        if (annule) return;
+        // Tant que le client n'a pas choisi lui-même, on ne l'accueille pas sur
+        // un jour sans place : le soir, « aujourd'hui » n'a plus de créneau, et
+        // il croirait le restaurant complet. On avance au jour ouvert suivant.
+        if (!jourChoisiParClient.current && !r.creneaux.some((c) => c.disponible)) {
+          const suivant = jours.find((j) => j.ouvert && j.iso > jour);
+          if (suivant) {
+            setJour(suivant.iso);
+            return;
+          }
+        }
+        setCreneaux(r.creneaux);
+      })
       .catch(() => !annule && setCreneaux([]));
     return () => {
       annule = true;
     };
-  }, [lien, jour, couverts]);
+  }, [lien, jour, couverts, jours]);
 
   async function reserver(e: React.FormEvent) {
     e.preventDefault();
@@ -274,7 +289,10 @@ export function ReservationPublique() {
                     key={j.iso}
                     type="button"
                     disabled={!j.ouvert}
-                    onClick={() => setJour(j.iso)}
+                    onClick={() => {
+                      jourChoisiParClient.current = true;
+                      setJour(j.iso);
+                    }}
                     aria-pressed={jour === j.iso}
                     className={`${pastille(jour === j.iso)} shrink-0 first-letter:uppercase disabled:cursor-not-allowed disabled:opacity-35`}
                   >
